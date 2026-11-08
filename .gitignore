@@ -1,0 +1,7 @@
+# Made by setup and the server, never committed
+/config.json
+/certs/
+/devices.json
+/admin.token
+/news-server
+/news-server.exe

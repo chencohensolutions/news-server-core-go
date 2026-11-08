@@ -1,0 +1,17 @@
+# --- News sites -----------------------------------------------------------------
+# The sites the server reads, from the news repo's sources/<id>/config.json.
+
+extend type Query {
+  "Every site the server reads, sorted by id."
+  sources: [Source!]!
+}
+
+type Source {
+  "Stable id, the folder's name under sources/ (\"siteh\"); stored on every article."
+  id: String!
+  "Display name."
+  name: String!
+  baseUrl: String!
+  "BCP-47 tag of the content (\"he\")."
+  language: String!
+}
