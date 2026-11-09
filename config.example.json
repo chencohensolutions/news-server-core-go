@@ -1,0 +1,10 @@
+{
+  "tls_cert": "certs/server.pem",
+  "tls_key": "certs/server-key.pem",
+  "client_ca": "certs/ca.pem",
+  "client_ca_key": "certs/ca-key.pem",
+  "public_url": "https://myhome.example.org:56399",
+  "port": "56399",
+  "sources_dir": "news/sources",
+  "users": [{ "username": "hen" }]
+}

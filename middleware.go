@@ -1,0 +1,104 @@
+package main
+
+import (
+	"compress/gzip"
+	"log"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/chencohensolutions/news-server-core-go/auth"
+	"github.com/chencohensolutions/news-server-core-go/enroll"
+)
+
+// identify attaches the client IP and, when the client presented a certificate, its user and device.
+// Requests without a certificate pass through anonymously only when allowAnonymous is set;
+// a certificate that is unknown or revoked is always rejected.
+func identify(config auth.AppConfig, registry *enroll.Registry, allowAnonymous bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ip = r.RemoteAddr
+		}
+		ctx := auth.WithClientIP(r.Context(), ip)
+
+		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+			if !allowAnonymous {
+				log.Printf("Client connection rejected: no client certificate from %s", r.RemoteAddr)
+				http.Error(w, "client certificate required", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		clientCert := r.TLS.PeerCertificates[0]
+		commonName := clientCert.Subject.CommonName
+		currentUser := config.FindUser(commonName)
+		if currentUser == nil {
+			log.Printf("Failed login: unknown client (cert CN '%s') from %s", commonName, r.RemoteAddr)
+			http.Error(w, "unauthorized client certificate", http.StatusUnauthorized)
+			return
+		}
+		serial := enroll.SerialString(clientCert.SerialNumber)
+		if registry.IsRevoked(serial) {
+			log.Printf("Failed login: revoked certificate %s (user %s) from %s", serial, currentUser.Username, r.RemoteAddr)
+			http.Error(w, "client certificate revoked", http.StatusUnauthorized)
+			return
+		}
+		ctx = auth.WithSerial(ctx, serial)
+		if device, ok := registry.Find(serial); ok {
+			if device.RenewedFrom != "" {
+				if old, err := registry.UseRenewal(serial, time.Now().UTC()); err != nil {
+					log.Printf("Renewed certificate %s in use, but %s couldn't be revoked: %v", serial, device.RenewedFrom, err)
+				} else if old != "" {
+					log.Printf("Renewed certificate %s of %q in use: %s revoked", serial, device.Name, old)
+				}
+			}
+			ctx = auth.WithDeviceName(ctx, device.Name)
+		}
+		log.Printf("Client connected: username=%s from %s (%s %s)", currentUser.Username, r.RemoteAddr, r.Method, r.URL.Path)
+		next.ServeHTTP(w, r.WithContext(auth.WithUser(ctx, currentUser)))
+	})
+}
+
+// gzipped compresses responses for clients that accept it: a list of headlines is mostly repeated field
+// names, and shrinks severalfold.
+func gzipped(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", "Accept-Encoding")
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(w)
+		defer zw.Close()
+		next.ServeHTTP(gzipWriter{ResponseWriter: w, writer: zw}, r)
+	})
+}
+
+type gzipWriter struct {
+	http.ResponseWriter
+	writer *gzip.Writer
+}
+
+func (g gzipWriter) Write(b []byte) (int, error) { return g.writer.Write(b) }
+
+func (g gzipWriter) WriteHeader(status int) {
+	g.ResponseWriter.Header().Del("Content-Length")
+	g.ResponseWriter.WriteHeader(status)
+}
+
+func (g gzipWriter) Unwrap() http.ResponseWriter { return g.ResponseWriter }
+
+// withDeadlines bounds how long one request may take to arrive and to be answered.
+func withDeadlines(read, write time.Duration, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rc := http.NewResponseController(w)
+		rc.SetReadDeadline(time.Now().Add(read))
+		rc.SetWriteDeadline(time.Now().Add(write))
+		next.ServeHTTP(w, r)
+	})
+}

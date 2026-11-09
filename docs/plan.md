@@ -1,0 +1,54 @@
+# Plan
+
+The full plan, with the reasoning and sources, is the
+[News server in Go plan](https://claude.ai/artifact/3NdgTnVgtQLsXf2Zw9cp1d) (Nov 8, 2026). This page keeps the
+decisions and milestones next to the code.
+
+## Decisions
+
+- **Port the Kotlin, don't redesign it.** Only the engine (~600 lines: `HtmlExtractor`, `JsonPath`, `Dates`, `Urls`,
+  `Politeness`, `ScraperEngine`, config parsing) and the story clustering (~1,400 lines: `UnigramTokenizer`,
+  `TextEmbedder`, `SimilarityGraph`, `StoryClustering`, `StoryFinder`) are rewritten. The 33 site configs and their
+  golden fixtures carry over unchanged through the `news/` submodule.
+- **CSS with goquery + cascadia.** The configs use `:has`, `:not` and `:nth-of-type`, which cascadia supports. None of
+  the 123 `regex` fields uses lookarounds or backreferences, so Go's RE2 reads them all.
+- **Stories:** the same average-link clustering as the app, with `bge-m3` by default (too big for the phone), on ONNX
+  Runtime through purego like the journal server.
+- **Summaries: Gemini free tier only**, `gemini-3.5-flash-lite`. Every 10 minutes, one request with every story that
+  changed in the last 12 hours, and one for the 12-hour digest built from the story summaries: 288 requests a day,
+  under the free tier's ~500. A daily request budget (~400, configurable), 429s back off to the next run, the digest
+  goes first when the budget is short. Structured output (a JSON schema), thinking low.
+- **The app connects like the journal app:** gqlgen schema-first GraphQL, Apollo Kotlin in the app with the schema
+  copied by a Gradle task, mTLS with enrollment codes and QR codes.
+
+## Milestones
+
+1. **Skeleton** (this commit): the repo, `news/` as a submodule, mTLS, enrollment and the admin API from the journal
+   server, `serverInfo` and `sources`.
+2. **Engine port:** configs, extraction and politeness in Go, passing every golden fixture; `news-server extract`.
+3. **Fetching:** a scheduler for every site, SQLite storage
+   (`modernc.org/sqlite`, no cgo).
+4. **Stories:** embeddings and clustering, matching the Kotlin groups on a frozen feed.
+5. **API and app:** `headlines`, `article`, `stories`, `digest`, `changes`; Apollo in the news app, the server as a
+   setting with the phone's scraper as fallback.
+6. **Summaries:** the 10-minute job, tests with a fake Gemini, the eval; the summary in the app (UI lab mock first).
+7. **Run it** on the PC as a service for a week before the phone stops scraping.
+
+## Harness
+
+1. **Port parity:** `go test` runs every `news/sources/*/fixtures` page against its `expected/*.json`. A Kotlin JVM
+   test exports a frozen feed (token ids, vectors, groups); Go must match it (vectors within 1e-4).
+2. **Server behavior:** a fake clock for the scheduler (10-minute runs, the 12-hour edge, overlapping runs skipped,
+   only changed stories re-summarized); a local test site with 403, 429 and 304; a fake Gemini with recorded answers;
+   an end-to-end mTLS test (`newTestEnv`).
+3. **Summary eval:** `news-server eval` on a few frozen 12-hour windows in `testdata/`: Hebrew, one paragraph, valid
+   JSON, faithful to the sources (a judge model with a fixed rubric), covers each site's main fact. On the free tier
+   too, so a small set, optionally in a second Google project.
+
+## Open questions
+
+- Is one of the per-story summary and the 12-hour digest enough, or both?
+- A separate program (this one), or a second service inside the journal server?
+- Only the owner's devices, or other people too?
+- New-article notifications from the server (push), or from the phone polling?
+- Does the app switch in milestone 5 cover iOS too?
