@@ -199,3 +199,13 @@ func TestEnrollmentLinkOpensTheNewsApp(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestCheckRunsTheFixturesOfEverySource(t *testing.T) {
+	var out bytes.Buffer
+	if _, err := runSiteCommand("check", []string{filepath.Join("news", "sources", "_example")}, &out); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if !strings.HasPrefix(out.String(), "ok   _example") {
+		t.Fatal(out.String())
+	}
+}
