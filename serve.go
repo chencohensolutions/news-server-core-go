@@ -64,8 +64,8 @@ func serve(config auth.AppConfig) {
 		os.Exit(0)
 	}()
 	go serveAdmin(config, enrollment)
-	db, job := startReading(config)
-	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version, Store: db, Discovery: forPhones}
+	db, settings, job := startReading(config, found)
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones}
 	if job != nil {
 		api.Stories = job.Stories
 	}

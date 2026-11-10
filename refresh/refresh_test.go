@@ -219,3 +219,17 @@ func TestArticleBackoffDoublesUpToSixHours(t *testing.T) {
 		}
 	}
 }
+
+func TestASiteSwitchedOffIsNotRead(t *testing.T) {
+	r, s, _ := setup(t)
+	s.set("a.example/", `<div class="i"><a href="/1">One</a></div>`)
+	s.set("b.example/", `<div class="i"><a href="/1">Two</a></div>`)
+	r.Settings = func(id string) store.SiteSetting { return store.SiteSetting{Enabled: id != "a"} }
+	r.Run(context.Background())
+	if n := s.count("a.example"); n != 0 {
+		t.Fatalf("a was read %d times", n)
+	}
+	if s.count("b.example/") == 0 {
+		t.Fatal("b wasn't read")
+	}
+}

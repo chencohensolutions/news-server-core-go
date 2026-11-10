@@ -30,7 +30,7 @@ func (r *queryResolver) Headlines(ctx context.Context, since *time.Time, sourceI
 	}
 	out := make([]*model.Headline, 0, len(stored))
 	for _, h := range stored {
-		if sourceIds == nil || only[h.SourceID] {
+		if (sourceIds == nil || only[h.SourceID]) && r.enabled(h.SourceID) {
 			out = append(out, model.StoredHeadline(h))
 		}
 	}
@@ -90,6 +90,9 @@ func (r *queryResolver) Stories(ctx context.Context) (*model.StoryList, error) {
 	for _, s := range found {
 		story := &model.Story{}
 		for _, report := range s.Reports {
+			if !r.enabled(report.SourceID) {
+				continue
+			}
 			// A headline pruned since the grouping is still shown, seen when the stories were grouped.
 			times, ok := seen[report.URL]
 			if !ok {
@@ -97,7 +100,9 @@ func (r *queryResolver) Stories(ctx context.Context) (*model.StoryList, error) {
 			}
 			story.Reports = append(story.Reports, model.HeadlineOf(report, times[0], times[1]))
 		}
-		list.Stories = append(list.Stories, story)
+		if len(story.Reports) > 0 {
+			list.Stories = append(list.Stories, story)
+		}
 	}
 	return list, nil
 }

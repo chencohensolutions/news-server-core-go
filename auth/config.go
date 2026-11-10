@@ -39,9 +39,10 @@ type AppConfig struct {
 	RefreshMinutes int `json:"refresh_minutes"`
 	// Days a headline no longer on its site is kept; 0 is DefaultKeepDays.
 	KeepDays int `json:"keep_days"`
-	// Sources read from their RSS feed instead of their pages (the app's per-site setting).
-	FeedSources []string `json:"feed_sources"`
-	// Each site's wait between its requests in milliseconds, by source id; the others wait 250 ms.
+	// Sources read from their RSS feed instead of their pages, and each site's wait between its requests in
+	// milliseconds (the others wait 250 ms): the starting values; the app's Sources screen changes them (setSource),
+	// and its choices, kept in the database, win.
+	FeedSources []string       `json:"feed_sources"`
 	SiteWaitsMs map[string]int `json:"site_waits_ms"`
 	// Stories: the ONNX Runtime library ("" looks in ./onnxruntime and the usual places), the folder the models are
 	// in (news-server models downloads them), the model (bge-m3 or multilingual-e5-small), what headlines are

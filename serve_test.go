@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -81,7 +82,11 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version, Store: db}
+	settings, err := sites.NewSettings(context.Background(), db, found, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db}
 
 	pool := x509.NewCertPool()
 	pool.AddCert(caCert)

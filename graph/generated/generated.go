@@ -32,6 +32,7 @@ type Config = graphql.Config[ResolverRoot, DirectiveRoot, ComplexityRoot]
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Source() SourceResolver
 }
 
 type DirectiveRoot struct {
@@ -101,6 +102,7 @@ type ComplexityRoot struct {
 	Mutation struct {
 		EnrollDevice     func(childComplexity int, input model.EnrollDeviceInput) int
 		RenewCertificate func(childComplexity int, csr string, keyProtection model.KeyProtection) int
+		SetSource        func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
 	}
 
 	Query struct {
@@ -130,9 +132,13 @@ type ComplexityRoot struct {
 
 	Source struct {
 		BaseURL  func(childComplexity int) int
+		Enabled  func(childComplexity int) int
+		Feed     func(childComplexity int) int
+		HasFeed  func(childComplexity int) int
 		ID       func(childComplexity int) int
 		Language func(childComplexity int) int
 		Name     func(childComplexity int) int
+		WaitMs   func(childComplexity int) int
 	}
 
 	Story struct {
@@ -148,6 +154,7 @@ type ComplexityRoot struct {
 type MutationResolver interface {
 	EnrollDevice(ctx context.Context, input model.EnrollDeviceInput) (model.EnrollDeviceResult, error)
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
+	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
 }
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
@@ -157,6 +164,12 @@ type QueryResolver interface {
 	Articles(ctx context.Context, urls []string) ([]*model.Article, error)
 	Stories(ctx context.Context) (*model.StoryList, error)
 	Sources(ctx context.Context) ([]*sites.Source, error)
+}
+type SourceResolver interface {
+	Enabled(ctx context.Context, obj *sites.Source) (bool, error)
+
+	Feed(ctx context.Context, obj *sites.Source) (bool, error)
+	WaitMs(ctx context.Context, obj *sites.Source) (int, error)
 }
 
 type executableSchema graphql.ExecutableSchemaState[ResolverRoot, DirectiveRoot, ComplexityRoot]
@@ -430,6 +443,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RenewCertificate(childComplexity, args["csr"].(string), args["keyProtection"].(model.KeyProtection)), true
+	case "Mutation.setSource":
+		if e.ComplexityRoot.Mutation.SetSource == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setSource_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SetSource(childComplexity, args["id"].(string), args["enabled"].(*bool), args["feed"].(*bool), args["waitMs"].(*int)), true
 
 	case "Query.article":
 		if e.ComplexityRoot.Query.Article == nil {
@@ -557,6 +581,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Source.BaseURL(childComplexity), true
+	case "Source.enabled":
+		if e.ComplexityRoot.Source.Enabled == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.Enabled(childComplexity), true
+	case "Source.feed":
+		if e.ComplexityRoot.Source.Feed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.Feed(childComplexity), true
+	case "Source.hasFeed":
+		if e.ComplexityRoot.Source.HasFeed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.HasFeed(childComplexity), true
 	case "Source.id":
 		if e.ComplexityRoot.Source.ID == nil {
 			break
@@ -575,6 +617,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Source.Name(childComplexity), true
+	case "Source.waitMs":
+		if e.ComplexityRoot.Source.WaitMs == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.WaitMs(childComplexity), true
 
 	case "Story.reports":
 		if e.ComplexityRoot.Story.Reports == nil {
@@ -886,11 +934,21 @@ enum EnrollmentRejectedReason {
 }
 `, BuiltIn: false},
 	{Name: "../schema/sources.graphql", Input: `# --- News sites -----------------------------------------------------------------
-# The sites the server reads, from the news repo's sources/<id>/config.json.
+# The sites the server reads, from the news repo's sources/<id>/config.json, and the app's Sources screen's
+# settings for each, kept on the server.
 
 extend type Query {
-  "Every site the server reads, sorted by id."
+  "Every site the server knows, sorted by id, with its settings; switched-off sites too."
   sources: [Source!]!
+}
+
+extend type Mutation {
+  """
+  Changes one site's settings; the fields left out keep their value. They count from the server's next read of the
+  sites. A site switched off is not read, and its headlines leave headlines and stories at once. An unknown id or a
+  waitMs out of range fails with BAD_REQUEST in extensions.code.
+  """
+  setSource(id: String!, enabled: Boolean, feed: Boolean, waitMs: Int): Source!
 }
 
 type Source {
@@ -901,6 +959,14 @@ type Source {
   baseUrl: String!
   "BCP-47 tag of the content (\"he\")."
   language: String!
+  "Whether the server reads the site."
+  enabled: Boolean!
+  "Whether the site has an RSS feed, so feed can be set."
+  hasFeed: Boolean!
+  "Whether the server reads the site's headlines from its RSS feed instead of its pages."
+  feed: Boolean!
+  "The site's wait between two of its requests, in milliseconds (0 to 60000; 250 unless set)."
+  waitMs: Int!
 }
 `, BuiltIn: false},
 }
@@ -1034,6 +1100,14 @@ func (ec *executionContext) childFields_Source(ctx context.Context, field graphq
 		return ec.fieldContext_Source_baseUrl(ctx, field)
 	case "language":
 		return ec.fieldContext_Source_language(ctx, field)
+	case "enabled":
+		return ec.fieldContext_Source_enabled(ctx, field)
+	case "hasFeed":
+		return ec.fieldContext_Source_hasFeed(ctx, field)
+	case "feed":
+		return ec.fieldContext_Source_feed(ctx, field)
+	case "waitMs":
+		return ec.fieldContext_Source_waitMs(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Source", field.Name)
 }
@@ -1205,6 +1279,44 @@ func (ec *executionContext) field_Mutation_renewCertificate_args(ctx context.Con
 		return nil, err
 	}
 	args["keyProtection"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setSource_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "enabled",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["enabled"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "feed",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["feed"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "waitMs",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["waitMs"] = arg3
 	return args, nil
 }
 
@@ -2343,6 +2455,50 @@ func (ec *executionContext) fieldContext_Mutation_renewCertificate(ctx context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_setSource(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setSource(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetSource(ctx, fc.Args["id"].(string), fc.Args["enabled"].(*bool), fc.Args["feed"].(*bool), fc.Args["waitMs"].(*int))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *sites.Source) graphql.Marshaler {
+			return ec.marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setSource(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Source(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setSource_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_enrollmentPreview(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3010,6 +3166,98 @@ func (ec *executionContext) _Source_language(ctx context.Context, field graphql.
 }
 func (ec *executionContext) fieldContext_Source_language(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Source", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Source_enabled(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_enabled(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Source().Enabled(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_enabled(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Source_hasFeed(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_hasFeed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.HasFeed, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_hasFeed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Source_feed(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_feed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Source().Feed(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_feed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Source_waitMs(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_waitMs(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Source().WaitMs(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_waitMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Int does not have child fields"))
 }
 
 func (ec *executionContext) _Story_reports(ctx context.Context, field graphql.CollectedField, obj *model.Story) (ret graphql.Marshaler) {
@@ -4678,6 +4926,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "setSource":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setSource(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5023,23 +5278,136 @@ func (ec *executionContext) _Source(ctx context.Context, sel ast.SelectionSet, o
 		case "id":
 			out.Values[i] = ec._Source_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._Source_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "baseUrl":
 			out.Values[i] = ec._Source_baseUrl(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "language":
 			out.Values[i] = ec._Source_language(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "enabled":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Source_enabled(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "hasFeed":
+			out.Values[i] = ec._Source_hasFeed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "feed":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Source_feed(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "waitMs":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Source_waitMs(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5647,6 +6015,10 @@ func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋchencohensoluti
 	return ec._ServerInfo(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNSource2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx context.Context, sel ast.SelectionSet, v sites.Source) graphql.Marshaler {
+	return ec._Source(ctx, sel, &v)
+}
+
 func (ec *executionContext) marshalNSource2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSourceᚄ(ctx context.Context, sel ast.SelectionSet, v []*sites.Source) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -5957,6 +6329,24 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	_ = sel
 	_ = ctx
 	res := graphql.MarshalBoolean(*v)
+	return res
+}
+
+func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalInt(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.SelectionSet, v *int) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalInt(*v)
 	return res
 }
 

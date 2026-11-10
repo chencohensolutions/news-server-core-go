@@ -20,8 +20,9 @@ type Refresher struct {
 	Engine  *scrape.Engine
 	Store   *store.Store
 	Sources []*scrape.SourceConfig
-	// Feeds are the sources read from their RSS feed (SourceConfig.WithFeed) instead of their pages.
-	Feeds map[string]bool
+	// Settings, when set, says per site whether it is read, and from its RSS feed (SourceConfig.WithFeed) instead of
+	// its pages; nil reads every site's pages.
+	Settings func(id string) store.SiteSetting
 	// Keep is how long a headline no longer on its site stays; 0 is a week.
 	Keep time.Duration
 	Now  func() time.Time
@@ -58,6 +59,9 @@ func (r *Refresher) Run(ctx context.Context) Result {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, config := range r.Sources {
+		if r.Settings != nil && !r.Settings(config.ID).Enabled {
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -93,7 +97,7 @@ func (r *Refresher) keep() time.Duration {
 // a site down for one run doesn't lose them.
 func (r *Refresher) site(ctx context.Context, config *scrape.SourceConfig) (headlines, articles int, err error) {
 	read := config
-	if r.Feeds[config.ID] {
+	if r.Settings != nil && r.Settings(config.ID).Feed {
 		read = config.WithFeed()
 	}
 	items, err := r.Engine.FetchLatest(ctx, read)

@@ -46,4 +46,11 @@ func TestLoadTheNewsRepoSources(t *testing.T) {
 	if len(got) < 30 {
 		t.Fatalf("only %d sources", len(got))
 	}
+	feeds := map[string]bool{}
+	for _, s := range got {
+		feeds[s.ID] = s.HasFeed
+	}
+	if !feeds["siteb"] || feeds["sitee"] {
+		t.Fatalf("siteb has a feed, sitee doesn't: %v", feeds)
+	}
 }

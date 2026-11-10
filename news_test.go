@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chencohensolutions/news-server-core-go/graph/resolver"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
+	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/stories"
 )
 
@@ -133,6 +135,43 @@ func TestTheNewsNeedsACertificate(t *testing.T) {
 		_, resp := env.query(t, nil, q, nil)
 		if len(resp.Errors) != 1 || resp.Errors[0].Extensions["code"] != "UNAUTHORIZED" {
 			t.Fatalf("%s: %+v", q, resp.Errors)
+		}
+	}
+}
+
+func TestTheAppSetsTheServersSites(t *testing.T) {
+	env := newTestEnv(t)
+	seed(t, env)
+	resp := mustQuery(t, env, `{ sources { id enabled hasFeed feed waitMs } }`, nil)
+	if got := string(resp.Data["sources"]); got != `[{"id":"siteh","enabled":true,"hasFeed":false,"feed":false,"waitMs":250}]` {
+		t.Fatalf("sources: %s", got)
+	}
+	// Switched off, with a longer wait: its headlines and stories go at once, and the server keeps the choice.
+	resp = mustQuery(t, env, `mutation { setSource(id: "siteh", enabled: false, waitMs: 1000) { id enabled waitMs } }`, nil)
+	if got := string(resp.Data["setSource"]); got != `{"id":"siteh","enabled":false,"waitMs":1000}` {
+		t.Fatalf("setSource: %s", got)
+	}
+	resp = mustQuery(t, env, `{ headlines { url } }`, nil)
+	if got := string(resp.Data["headlines"]); got != `[{"url":"https://sitee/1"}]` {
+		t.Fatalf("headlines: %s", got)
+	}
+	reopened, err := sites.NewSettings(context.Background(), env.db, env.api.Sites, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Get("siteh"); got != (sites.Setting{Enabled: false, WaitMs: 1000}) {
+		t.Fatalf("after a restart: %+v", got)
+	}
+	// What it can't take.
+	cert, _ := env.enrollDevice(t, "hen")
+	for _, mutation := range []string{
+		`mutation { setSource(id: "nope", enabled: true) { id } }`,
+		`mutation { setSource(id: "siteh", feed: true) { id } }`,
+		`mutation { setSource(id: "siteh", waitMs: 60001) { id } }`,
+	} {
+		_, resp := env.query(t, cert, mutation, nil)
+		if len(resp.Errors) != 1 || resp.Errors[0].Extensions["code"] != resolver.CodeBadRequest {
+			t.Fatalf("%s: %+v", mutation, resp.Errors)
 		}
 	}
 }
