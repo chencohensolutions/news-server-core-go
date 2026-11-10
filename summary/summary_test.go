@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -154,6 +155,10 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	if len(saved) != 2 {
 		t.Fatalf("%d summaries", len(saved))
 	}
+	// A story's sentences cite only its own articles: the rain article's id in the budget story is dropped.
+	if got := saved[StoryKey(found[1])].Sentences; len(got) != 1 || strings.Join(got[0].Sources, " ") != budgetSited.URL+" "+budgetSiteg.URL {
+		t.Fatalf("budget %+v", got)
+	}
 	// The digest: the stories with reports in the last hour, from their summaries; its thoughts are not the answer.
 	if !strings.Contains(fake.prompts[1], "- גשם כבד ירד הבוקר בצפון. [a1,a2]") || strings.Contains(fake.prompts[1], "התקציב") {
 		t.Fatalf("digest prompt:\n%s", fake.prompts[1])
@@ -236,4 +241,32 @@ func TestTheFreeTiersDayIsPacific(t *testing.T) {
 func mustJSON(v any) string {
 	data, _ := json.Marshal(v)
 	return string(data)
+}
+
+func TestOneRequestTakesAtMostTwelveStories(t *testing.T) {
+	w, fake, _ := setup(t)
+	ctx := context.Background()
+	var many []stories.Story
+	for i := range 15 {
+		a := scrape.ArticleSummary{SourceID: "siteh", URL: fmt.Sprintf("https://siteh/%d", i), Title: "א"}
+		b := scrape.ArticleSummary{SourceID: "sitee", URL: fmt.Sprintf("https://sitee/%d", i), Title: "ב"}
+		if err := w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{a, b}, now); err != nil {
+			t.Fatal(err)
+		}
+		many = append(many, stories.Story{Reports: []scrape.ArticleSummary{a, b}})
+	}
+	if _, err := w.Run(ctx, many); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(fake.prompts[0], "=== סיפור s"); n != 12 {
+		t.Fatalf("%d stories in one request", n)
+	}
+}
+
+func TestACutSentenceIsNotKept(t *testing.T) {
+	for text, want := range map[string]bool{"ירד גשם.": true, "האם ירד גשם?": true, `הוא אמר "די."`: true, "בעקבות הסערה הורה יו": false, "": false} {
+		if finished(text) != want {
+			t.Errorf("%q: %v", text, !want)
+		}
+	}
 }

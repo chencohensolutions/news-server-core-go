@@ -28,8 +28,9 @@ const (
 	DefaultBudget     = 400 // requests a day, under the free tier's limit
 	DefaultHours      = 12
 	DefaultMinReports = 2
-	DefaultMaxChars   = 120_000 // of article text in one request
-	articleChars      = 1_500   // of each article's body
+	DefaultMaxChars   = 40_000 // of article text in one request
+	maxStories        = 12     // stories in one request: a long answer is where the model cuts sentences short
+	articleChars      = 1_500  // of each article's body
 	digestStories     = 8
 )
 
@@ -237,15 +238,19 @@ func (s *sources) id(url string) string {
 	return id
 }
 
-// sentences turns the answer's sentences into URLs, dropping unknown footnotes and sentences left without one.
-func (s *sources) sentences(in []answerSentence) []Sentence {
+// sentences turns the answer's sentences into URLs. It drops footnotes that aren't in the request, or not among
+// allowed when that is set (a story's own articles), and sentences left without one or not finished (a cut answer).
+func (s *sources) sentences(in []answerSentence, allowed map[string]bool) []Sentence {
 	out := []Sentence{}
 	for _, a := range in {
 		text := strings.TrimSpace(a.Text)
+		if !finished(text) {
+			continue
+		}
 		var urls []string
 		seen := map[string]bool{}
 		for _, id := range a.Sources {
-			if url, ok := s.ids[strings.TrimSpace(id)]; ok && !seen[url] {
+			if url, ok := s.ids[strings.TrimSpace(id)]; ok && !seen[url] && (allowed == nil || allowed[url]) {
 				seen[url] = true
 				urls = append(urls, url)
 			}
@@ -255,6 +260,12 @@ func (s *sources) sentences(in []answerSentence) []Sentence {
 		}
 	}
 	return out
+}
+
+// finished says text ends a sentence: a cut answer stops mid-word.
+func finished(text string) bool {
+	text = strings.TrimRight(text, "\"'״׳)”’ ")
+	return strings.HasSuffix(text, ".") || strings.HasSuffix(text, "!") || strings.HasSuffix(text, "?") || strings.HasSuffix(text, "…")
 }
 
 type answerSentence struct {
@@ -319,7 +330,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			b.WriteString(w.report(ctx, ids, r))
 			b.WriteString("\n")
 		}
-		if len(byID) > 0 && len([]rune(prompt.String()))+len([]rune(b.String())) > limit {
+		if len(byID) == maxStories || len(byID) > 0 && len([]rune(prompt.String()))+len([]rune(b.String())) > limit {
 			waiting = len(changed) - i
 			break
 		}
@@ -346,8 +357,12 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		if !ok {
 			continue
 		}
-		summary := StorySummary{Title: strings.TrimSpace(a.Title), Sentences: ids.sentences(a.Sentences),
-			Contradictions: ids.sentences(a.Contradictions), WrittenAt: now}
+		own := map[string]bool{}
+		for _, r := range s.Reports {
+			own[r.URL] = true
+		}
+		summary := StorySummary{Title: strings.TrimSpace(a.Title), Sentences: ids.sentences(a.Sentences, own),
+			Contradictions: ids.sentences(a.Contradictions, own), WrittenAt: now}
 		if len(summary.Sentences) == 0 {
 			continue
 		}
@@ -441,7 +456,7 @@ func (w *Writer) writeDigest(ctx context.Context, window []stories.Story, saved 
 	if err := json.Unmarshal(raw, &answer); err != nil {
 		return false, fmt.Errorf("summaries: reading Gemini's digest: %w", err)
 	}
-	digest := Digest{Title: strings.TrimSpace(answer.Title), Sentences: ids.sentences(answer.Sentences), WrittenAt: now, Stories: keys}
+	digest := Digest{Title: strings.TrimSpace(answer.Title), Sentences: ids.sentences(answer.Sentences, nil), WrittenAt: now, Stories: keys}
 	if len(digest.Sentences) == 0 {
 		return false, errors.New("summaries: Gemini's digest has no sentence with a source")
 	}

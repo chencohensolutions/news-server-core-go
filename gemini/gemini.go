@@ -22,6 +22,9 @@ const DefaultModel = "gemini-3.5-flash-lite"
 // DefaultBaseURL is the Gemini API.
 const DefaultBaseURL = "https://generativelanguage.googleapis.com/v1beta"
 
+// maxOutputTokens is the most an answer may be: high, so a batch of stories is never cut by the default.
+const maxOutputTokens = 32_768
+
 // ErrRateLimited is a 429: the free tier's per-minute or per-day limit.
 var ErrRateLimited = errors.New("gemini: rate limited (429)")
 
@@ -91,6 +94,7 @@ func (c *Client) Generate(ctx context.Context, req Request) (json.RawMessage, Us
 			"responseMimeType":   "application/json",
 			"responseJsonSchema": req.Schema,
 			"thinkingConfig":     map[string]any{"thinkingLevel": "low"},
+			"maxOutputTokens":    maxOutputTokens,
 		},
 	})
 	if err != nil {
