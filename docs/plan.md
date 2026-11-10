@@ -23,9 +23,10 @@ decisions and milestones next to the code.
 
 ## Milestones
 
-1. **Skeleton** (this commit): the repo, `news/` as a submodule, mTLS, enrollment and the admin API from the journal
+1. **Skeleton** (done, PR #1): the repo, `news/` as a submodule, mTLS, enrollment and the admin API from the journal
    server, `serverInfo` and `sources`.
-2. **Engine port:** configs, extraction and politeness in Go, passing every golden fixture; `news-server extract`.
+2. **Engine port** (done): configs, extraction and politeness in Go (`scrape/`), passing every golden fixture and the
+   Kotlin unit tests; `news-server check`, `extract` and `fetch`.
 3. **Fetching:** a scheduler for every site, SQLite storage
    (`modernc.org/sqlite`, no cgo).
 4. **Stories:** embeddings and clustering, matching the Kotlin groups on a frozen feed.

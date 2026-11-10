@@ -16,8 +16,13 @@ Milestone 1, the skeleton:
   `enrollmentPreview` and `enrollDevice` are `@public`, certificates renew with `renewCertificate`.
 - **Admin API** on loopback with a token rewritten on every start, and the commands that call it: `enroll-code`,
   `devices`, `revoke`.
-- **The site configs** come from the news repo, a git submodule at `news/`. `sources` lists them; reading the sites
-  comes with milestone 2, the engine port.
+- **The site configs** come from the news repo, a git submodule at `news/`. `sources` lists them.
+
+Milestone 2, the engine port (`scrape/`): the news app's scraper translated file by file. It reads a site's config
+(CSS selectors, JSON paths, regex transforms, dates), downloads pages one at a time per site with a gap between them
+and a growing pause when a site pushes back, and gives the same output as the app on every saved page of every site
+(`news/sources/*/fixtures`). Jsoup's selector and text rules are reimplemented in `scrape/dom`, Java regex through
+`regexp2`. Not wired to a schedule yet: that is milestone 3.
 
 ## Getting started
 
@@ -37,13 +42,21 @@ go run . devices                # enrolled devices
 go run . revoke <serial>        # lock a device out
 ```
 
+The site tools need no config.json:
+
+```bash
+go run . check news/sources                          # every source's golden fixtures (or one source folder)
+go run . extract news/sources/siteh list page.html    # read a saved page with a config, print JSON
+go run . fetch news/sources/siteh                     # the live headlines (add an article URL for one article)
+```
+
 The port is one above the journal server's (56398) and the admin API is on 127.0.0.1:8082, so both servers can run
 on the same PC.
 
 ## Development
 
 ```bash
-go test ./...                    # end to end over real mTLS, no mocks
+go test ./...                    # end to end over real mTLS, plus every site's golden fixtures
 go vet ./...
 go tool gqlgen generate          # after editing graph/schema/*.graphql
 go tool gqlgen generate --config gqlgen.admin.yml
@@ -57,6 +70,9 @@ main.go, serve.go, middleware.go   start-up, routing, identify / gzip / deadline
 admin.go, admincli.go              the loopback admin API and the commands that call it
 auth/  enroll/                     config, request identity and @public, enrollment and issuing
 sites/                             reads news/sources/<id>/config.json
+scrape/                            the engine: configs, extraction, dates, URLs, politeness, downloading
+scrape/dom, jsonpath, rx           jsoup-compatible selectors and text, JSON paths, Java-like regex
+sitecli.go                         check, extract, fetch
 graph/                             public schema and resolvers; graph/admin/ for the admin API
 news/                              the news repo (submodule): sources/ configs and golden fixtures
 scripts/                           CA and server certificates
