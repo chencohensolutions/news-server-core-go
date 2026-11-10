@@ -2,7 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -67,7 +71,14 @@ func enrollCodeCommand(config auth.AppConfig, user string) error {
 	}
 	fmt.Printf("  Code     %s\n", code.Code)
 	fmt.Printf("  Expires  %s (in %d min), single use\n", code.ExpiresAt.Local().Format("15:04"), int(time.Until(code.ExpiresAt).Round(time.Minute).Minutes()))
-	link := enrollmentLink(code.Code, code.ServerURL)
+	fingerprint, err := serverFingerprint(config.TLSCert)
+	if err != nil {
+		// The link still works; the app then shows the key it sees for you to confirm.
+		fmt.Fprintf(os.Stderr, "warning: no server key in the link: %v\n", err)
+	} else {
+		fmt.Printf("  Key      %s (the app shows it when the code is typed)\n", shortFingerprint(fingerprint))
+	}
+	link := enrollmentLink(code.Code, code.ServerURL, fingerprint)
 	qr, err := qrcode.New(link, qrcode.Medium)
 	if err != nil {
 		return err
@@ -88,14 +99,52 @@ func terminalQR(qr *qrcode.QRCode) string {
 	return b.String()
 }
 
-// enrollmentLink is what the enrollment QR code holds: news://enroll?code=…&server=…, which opens the app's
-// enrollment on that code. Without a server the app keeps the address it has.
-func enrollmentLink(code string, serverURL *string) string {
+// enrollmentLink is what the enrollment QR code holds: news://enroll?code=…&server=…&fingerprint=…, which opens
+// the app's enrollment on that code. Without a server the app keeps the address it has. fingerprint (when not "") is
+// the server certificate's key, as journal-server-go's link carries it: the app checks the server's key against it
+// instead of a CA and the host name, from the first connection, so a self-made CA and an IP address both work.
+func enrollmentLink(code string, serverURL *string, fingerprint string) string {
 	query := url.Values{"code": {code}}
 	if serverURL != nil {
 		query.Set("server", *serverURL)
 	}
+	if fingerprint != "" {
+		query.Set("fingerprint", fingerprint)
+	}
 	return "news://enroll?" + query.Encode()
+}
+
+// Fingerprint is the SHA-256 of cert's public key (its SubjectPublicKeyInfo), in hex: what the app pins. The key,
+// not the certificate, so a renewed certificate for the same key keeps working.
+func Fingerprint(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return hex.EncodeToString(sum[:])
+}
+
+// serverFingerprint is the Fingerprint of the server certificate in the PEM file path (tls_cert).
+func serverFingerprint(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return "", fmt.Errorf("%s: no certificate", path)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", err
+	}
+	return Fingerprint(cert), nil
+}
+
+// shortFingerprint is the first 16 hex digits of fingerprint in groups of four, for a person to compare.
+func shortFingerprint(fingerprint string) string {
+	var groups []string
+	for i := 0; i+4 <= min(len(fingerprint), 16); i += 4 {
+		groups = append(groups, fingerprint[i:i+4])
+	}
+	return strings.Join(groups, " ")
 }
 
 func devicesCommand(config auth.AppConfig, args []string) error {

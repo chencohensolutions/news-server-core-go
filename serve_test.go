@@ -10,10 +10,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -203,11 +205,30 @@ func TestARevokedDeviceIsRefused(t *testing.T) {
 
 func TestEnrollmentLinkOpensTheNewsApp(t *testing.T) {
 	server := "https://news.example:56399"
-	if got := enrollmentLink("K7QM4XPD", &server); got != "news://enroll?code=K7QM4XPD&server=https%3A%2F%2Fnews.example%3A56399" {
+	if got := enrollmentLink("K7QM4XPD", &server, "ab12"); got != "news://enroll?code=K7QM4XPD&fingerprint=ab12&server=https%3A%2F%2Fnews.example%3A56399" {
 		t.Fatal(got)
 	}
-	if got := enrollmentLink("K7QM4XPD", nil); got != "news://enroll?code=K7QM4XPD" {
+	if got := enrollmentLink("K7QM4XPD", nil, ""); got != "news://enroll?code=K7QM4XPD" {
 		t.Fatal(got)
+	}
+}
+
+// The link's fingerprint is the key the phone sees in the TLS handshake.
+func TestTheLinksFingerprintIsTheKeyTheServerPresents(t *testing.T) {
+	env := newTestEnv(t)
+	resp, err := env.client(nil).Get(env.server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	seen := Fingerprint(resp.TLS.PeerCertificates[0])
+	path := filepath.Join(t.TempDir(), "server.pem")
+	os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: resp.TLS.PeerCertificates[0].Raw}), 0o644)
+	if got, err := serverFingerprint(path); err != nil || got != seen || len(got) != 64 {
+		t.Fatalf("%q, %v; the handshake has %q", got, err, seen)
+	}
+	if got := shortFingerprint(seen); len(got) != 19 || got[:4] != seen[:4] {
+		t.Fatalf("short %q", got)
 	}
 }
 
