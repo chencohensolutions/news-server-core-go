@@ -535,8 +535,12 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		delete(byID, storyID(a.Story))
 		written++
 	}
-	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d garbled, %d without a source of the story, %d cut short (one ended %q)",
-		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced, ids.mended, ids.mendedEnd)
+	cutShort := fmt.Sprint(ids.mended)
+	if ids.mended > 0 {
+		cutShort += fmt.Sprintf(" (one ended %q)", ids.mendedEnd)
+	}
+	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d garbled, %d without a source of the story, %s cut short",
+		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced, cutShort)
 	if written == 0 {
 		w.logf("summaries: nothing written; the answer starts: %s", cut(string(raw), 600))
 	}
