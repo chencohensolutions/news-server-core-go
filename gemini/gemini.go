@@ -28,6 +28,9 @@ const maxOutputTokens = 32_768
 // ErrRateLimited is a 429: the free tier's per-minute or per-day limit.
 var ErrRateLimited = errors.New("gemini: rate limited (429)")
 
+// ErrUnavailable is a 500 or 503: the model is busy ("high demand"); trying again a little later usually works.
+var ErrUnavailable = errors.New("gemini: unavailable")
+
 // Client is one API key and model.
 type Client struct {
 	Key     string
@@ -128,6 +131,9 @@ func (c *Client) Generate(ctx context.Context, req Request) (json.RawMessage, Us
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return nil, Usage{}, ErrRateLimited
+	}
+	if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusInternalServerError {
+		return nil, Usage{}, fmt.Errorf("%w: %s: %s", ErrUnavailable, resp.Status, apiError(data))
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, Usage{}, fmt.Errorf("gemini: %s: %s", resp.Status, apiError(data))

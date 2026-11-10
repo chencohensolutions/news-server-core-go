@@ -27,6 +27,7 @@ type fakeGemini struct {
 	requests []map[string]any
 	prompts  []string
 	status   int
+	busy     int // answer 503 this many times first
 }
 
 func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
@@ -41,6 +42,10 @@ func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
 		prompt := body["contents"].([]any)[0].(map[string]any)["parts"].([]any)[0].(map[string]any)["text"].(string)
 		f.prompts = append(f.prompts, prompt)
 		status := f.status
+		if f.busy > 0 {
+			f.busy--
+			status = http.StatusServiceUnavailable
+		}
 		f.mu.Unlock()
 		if status != 0 {
 			w.WriteHeader(status)
@@ -102,6 +107,7 @@ func setup(t *testing.T) (*Writer, *fakeGemini, []stories.Story) {
 	}
 	fake := &fakeGemini{}
 	w := &Writer{Gemini: fake.serve(t), Store: db, Now: func() time.Time { return now }, Log: t.Logf,
+		Sleep:    func(context.Context, time.Duration) error { return nil },
 		SiteName: func(id string) string { return map[string]string{"siteh": "siteh", "sitee": "SiteE"}[id] }}
 	found := []stories.Story{
 		{Reports: []scrape.ArticleSummary{rainSiteh, rainSiteE}},
@@ -268,5 +274,20 @@ func TestACutSentenceIsNotKept(t *testing.T) {
 		if finished(text) != want {
 			t.Errorf("%q: %v", text, !want)
 		}
+	}
+}
+
+func TestABusyGeminiIsTriedAgain(t *testing.T) {
+	w, fake, found := setup(t)
+	fake.busy = 1
+	result, err := w.Run(context.Background(), found)
+	if err != nil || result.Written != 2 || fake.count() != 3 {
+		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
+	}
+	// Still busy after every wait: the run ends, the next one tries again.
+	w2, fake2, found2 := setup(t)
+	fake2.busy = 10
+	if _, err := w2.Run(context.Background(), found2); !errors.Is(err, gemini.ErrUnavailable) || fake2.count() != 3 {
+		t.Fatalf("%v, %d requests", err, fake2.count())
 	}
 }

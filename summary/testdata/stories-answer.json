@@ -5,7 +5,7 @@
         "role": "model",
         "parts": [
           {
-            "text": "{\"stories\": [{\"story\": \"s1\", \"title\": \"גשם כבד בצפון\", \"sentences\": [{\"text\": \"גשם כבד ירד הבוקר בצפון.\", \"sources\": [\"a1\", \"a2\"]}, {\"text\": \"שני כבישים נסגרו.\", \"sources\": [\"a2\"]}, {\"text\": \"משפט בלי מקור.\", \"sources\": [\"a99\"]}, {\"text\": \"בעקבות הסערה הורה יו\", \"sources\": [\"a1\"]}], \"contradictions\": [{\"text\": \"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.\", \"sources\": [\"a1\", \"a2\"]}]}, {\"story\": \"s2\", \"title\": \"הכנסת אישרה את התקציב\", \"sentences\": [{\"text\": \"הכנסת אישרה את התקציב בקריאה שלישית.\", \"sources\": [\"a3\", \"a4\", \"a1\"]}], \"contradictions\": []}, {\"story\": \"s9\", \"title\": \"סיפור שלא היה בבקשה\", \"sentences\": [{\"text\": \"x\", \"sources\": [\"a1\"]}], \"contradictions\": []}]}"
+            "text": "{\"stories\": [{\"story\": \"s1\", \"title\": \"גשם כבד בצפון\", \"sentences\": [{\"text\": \"גשם כבד ירד הבוקר בצפון.\", \"sources\": [\"a1\", \"a2\"]}, {\"text\": \"שני כבישים נסגרו.\", \"sources\": [\"a2\"]}, {\"text\": \"משפט בלי מקור.\", \"sources\": [\"a99\"]}, {\"text\": \"בעקבות הסערה הורה יו\", \"sources\": [\"a1\"]}], \"contradictions\": [{\"text\": \"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.\", \"sources\": [\"a1\", \"a2\"]}]}, {\"story\": \"סיפור s2\", \"title\": \"הכנסת אישרה את התקציב\", \"sentences\": [{\"text\": \"הכנסת אישרה את התקציב בקריאה שלישית.\", \"sources\": [\"[a3]\", \"a4, a1\"]}], \"contradictions\": []}, {\"story\": \"s9\", \"title\": \"סיפור שלא היה בבקשה\", \"sentences\": [{\"text\": \"x\", \"sources\": [\"a1\"]}], \"contradictions\": []}]}"
           }
         ]
       },

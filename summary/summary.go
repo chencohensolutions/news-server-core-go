@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -74,7 +75,12 @@ type Writer struct {
 	SiteName func(id string) string
 	Now      func() time.Time
 	Log      func(format string, args ...any)
+	// Sleep waits between tries when Gemini is busy; nil waits for real.
+	Sleep func(ctx context.Context, d time.Duration) error
 }
+
+// busyWaits are the waits before trying a busy Gemini again (503 "high demand").
+var busyWaits = []time.Duration{20 * time.Second, time.Minute}
 
 // Result is what one run did.
 type Result struct {
@@ -205,25 +211,58 @@ func newestSeen(s stories.Story, firstSeen map[string]time.Time) time.Time {
 	return newest
 }
 
-// send counts the request against the day's budget, then sends it.
+// send counts the request against the day's budget, then sends it; when Gemini is busy it waits and tries again,
+// each try counted.
 func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json.RawMessage, error) {
-	if err := w.Store.CountGeminiRequest(ctx, day); err != nil {
-		return nil, err
+	for try := 0; ; try++ {
+		if err := w.Store.CountGeminiRequest(ctx, day); err != nil {
+			return nil, err
+		}
+		start := w.now()
+		answer, usage, err := w.Gemini.Generate(ctx, req)
+		if errors.Is(err, gemini.ErrUnavailable) && try < len(busyWaits) {
+			w.logf("summaries: %v; trying again in %s", err, busyWaits[try])
+			if err := w.sleep(ctx, busyWaits[try]); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		w.logf("summaries: Gemini answered in %s, %d tokens in, %d out", time.Since(start).Round(time.Millisecond), usage.PromptTokens, usage.AnswerTokens+usage.ThoughtsTokens)
+		return answer, nil
 	}
-	start := w.now()
-	answer, usage, err := w.Gemini.Generate(ctx, req)
-	if err != nil {
-		return nil, err
+}
+
+func (w *Writer) sleep(ctx context.Context, d time.Duration) error {
+	if w.Sleep != nil {
+		return w.Sleep(ctx, d)
 	}
-	w.logf("summaries: Gemini answered in %s, %d tokens in, %d out", time.Since(start).Round(time.Millisecond), usage.PromptTokens, usage.AnswerTokens+usage.ThoughtsTokens)
-	return answer, nil
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
 }
 
 // sources names articles a1, a2, … in a request, so the answer's footnotes are short and checked.
 type sources struct {
 	ids  map[string]string // id → URL
 	urls map[string]string // URL → id
+	// What sentences were dropped, for the log.
+	cut, unsourced int
 }
+
+// articleRef and storyRef find the ids in what the model wrote: it may write "[a3]" or "a3, a5" or "סיפור s2".
+var (
+	articleRef = regexp.MustCompile(`\ba\d+\b`)
+	storyRef   = regexp.MustCompile(`\bs\d+\b`)
+)
+
+// storyID is the story id in what the model wrote for one, or "".
+func storyID(s string) string { return storyRef.FindString(s) }
 
 func newSources() *sources {
 	return &sources{ids: map[string]string{}, urls: map[string]string{}}
@@ -245,17 +284,22 @@ func (s *sources) sentences(in []answerSentence, allowed map[string]bool) []Sent
 	for _, a := range in {
 		text := strings.TrimSpace(a.Text)
 		if !finished(text) {
+			s.cut++
 			continue
 		}
 		var urls []string
 		seen := map[string]bool{}
-		for _, id := range a.Sources {
-			if url, ok := s.ids[strings.TrimSpace(id)]; ok && !seen[url] && (allowed == nil || allowed[url]) {
-				seen[url] = true
-				urls = append(urls, url)
+		for _, ref := range a.Sources {
+			for _, id := range articleRef.FindAllString(ref, -1) {
+				if url, ok := s.ids[id]; ok && !seen[url] && (allowed == nil || allowed[url]) {
+					seen[url] = true
+					urls = append(urls, url)
+				}
 			}
 		}
-		if text != "" && len(urls) > 0 {
+		if len(urls) == 0 {
+			s.unsourced++
+		} else {
 			out = append(out, Sentence{Text: text, Sources: urls})
 		}
 	}
@@ -352,9 +396,11 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 	if err := json.Unmarshal(raw, &answer); err != nil {
 		return 0, len(changed), fmt.Errorf("summaries: reading Gemini's answer: %w", err)
 	}
+	unknown := 0
 	for _, a := range answer.Stories {
-		s, ok := byID[strings.TrimSpace(a.Story)]
+		s, ok := byID[storyID(a.Story)]
 		if !ok {
+			unknown++
 			continue
 		}
 		own := map[string]bool{}
@@ -373,8 +419,13 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		if err := w.Store.SaveSummary(ctx, StoryKey(s), data, now); err != nil {
 			return written, len(changed) - written, err
 		}
-		delete(byID, strings.TrimSpace(a.Story))
+		delete(byID, storyID(a.Story))
 		written++
+	}
+	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d cut short, %d without a source of the story",
+		len(answer.Stories), len(changed)-waiting, unknown, written, ids.cut, ids.unsourced)
+	if written == 0 {
+		w.logf("summaries: nothing written; the answer starts: %s", cut(string(raw), 600))
 	}
 	return written, len(changed) - written, nil
 }
