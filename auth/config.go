@@ -57,12 +57,15 @@ type AppConfig struct {
 	// Summaries (Gemini, free tier only): the file holding the API key (Google AI Studio, a project without
 	// billing; "" is gemini.key, and no file turns summaries off), the model ("" is gemini-3.5-flash-lite), the
 	// day's request budget (0 is 400, -1 turns summaries off), the hours of stories summarized (0 is 12), and the
-	// fewest reports a summarized story has (0 is 2). Summaries need stories.
-	GeminiKeyFile     string `json:"gemini_key_file"`
-	GeminiModel       string `json:"gemini_model"`
-	SummaryBudget     int    `json:"summary_budget"`
-	SummaryHours      int    `json:"summary_hours"`
-	SummaryMinReports int    `json:"summary_min_reports"`
+	// fewest reports a summarized story has (0 is 2). A run sends more story requests while stories wait, up to
+	// summary_requests_per_run (0 is 4), as long as the budget keeps two for each run left in the day. Summaries
+	// need stories.
+	GeminiKeyFile         string `json:"gemini_key_file"`
+	GeminiModel           string `json:"gemini_model"`
+	SummaryBudget         int    `json:"summary_budget"`
+	SummaryHours          int    `json:"summary_hours"`
+	SummaryMinReports     int    `json:"summary_min_reports"`
+	SummaryRequestsPerRun int    `json:"summary_requests_per_run"`
 	// Whether the server asks the home router (UPnP or NAT-PMP) to forward its port, so the phone reaches it away
 	// from home; on unless false. With public_url empty, the router's outside address goes in the enrollment link.
 	PortMapping *bool `json:"port_mapping"`

@@ -27,15 +27,16 @@ import (
 
 // Defaults for config.json's summary keys.
 const (
-	DefaultBudget     = 400 // requests a day, under the free tier's limit
-	DefaultHours      = 12
-	DefaultMinReports = 2
-	DefaultMaxChars   = 40_000 // of article text in one request
-	maxStories        = 12     // stories in one request: a long answer is where the model cuts sentences short
-	articleChars      = 800    // of each article's body
-	maxReports        = 8      // of a story's reports in the prompt, one per site first
-	maxFootnotes      = 5      // of one sentence: more can't all state it
-	digestStories     = 8
+	DefaultBudget      = 400 // requests a day, under the free tier's limit
+	DefaultHours       = 12
+	DefaultMinReports  = 2
+	DefaultMaxRequests = 4
+	DefaultMaxChars    = 40_000 // of article text in one request
+	maxStories         = 12     // stories in one request: a long answer is where the model cuts sentences short
+	articleChars       = 800    // of each article's body
+	maxReports         = 8      // of a story's reports in the prompt, one per site first
+	maxFootnotes       = 5      // of one sentence: more can't all state it
+	digestStories      = 8
 )
 
 // Sentence is one sentence and the URLs of the articles it comes from: its footnotes.
@@ -74,6 +75,11 @@ type Writer struct {
 	Hours      int // the stories summarized changed in the last Hours; 0 is DefaultHours
 	MinReports int // the fewest reports a story needs to be summarized; 0 is DefaultMinReports
 	MaxChars   int // article text in one request; 0 is DefaultMaxChars
+	// MaxRequests is the most story requests one run sends while stories wait; 0 is DefaultMaxRequests.
+	MaxRequests int
+	// Every is how often a run starts (refresh_minutes); 0 is 10 minutes. Extra requests keep the budget's share of
+	// the runs left in the day.
+	Every time.Duration
 	// SiteName is a source id's display name, for the prompt.
 	SiteName func(id string) string
 	Now      func() time.Time
@@ -198,20 +204,35 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		return result, err
 	}
 	left := orDefault(w.Budget, DefaultBudget) - used
-	// The digest goes first when the budget is short: with one request left, only the digest.
-	if len(changed) > 0 && left >= 2 {
-		written, waiting, err := w.writeStories(ctx, changed, day, now)
-		result.Written, result.Waiting = written, waiting
+	// Story requests while stories wait: the first whenever two requests are left (the digest goes first when the
+	// budget is short), more only while the day's budget keeps two for each run left until Google's day ends.
+	budget := orDefault(w.Budget, DefaultBudget)
+	for sent := 0; len(changed) > 0 && sent < orDefault(w.MaxRequests, DefaultMaxRequests); sent++ {
+		used, err := w.Store.GeminiRequests(ctx, day)
 		if err != nil {
 			return result, err
 		}
-		left--
-		if saved, err = w.Store.Summaries(ctx); err != nil {
+		left = budget - used
+		if left < 2 || sent > 0 && left-1 <= 2*w.runsLeft(now) {
+			break
+		}
+		written, asked, err := w.writeStories(ctx, changed, day, now)
+		result.Written += written
+		changed = changed[asked:]
+		if err != nil {
+			result.Waiting = len(changed) + asked - written
 			return result, err
 		}
-	} else {
-		result.Waiting = len(changed)
+		result.Waiting += asked - written
 	}
+	result.Waiting += len(changed)
+	if saved, err = w.Store.Summaries(ctx); err != nil {
+		return result, err
+	}
+	if used, err = w.Store.GeminiRequests(ctx, day); err != nil {
+		return result, err
+	}
+	left = budget - used
 	if left >= 1 {
 		wrote, err := w.writeDigest(ctx, window, saved, firstSeen, day, now)
 		result.Digest = wrote
@@ -226,6 +247,21 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		keep[StoryKey(s)] = true
 	}
 	return result, w.Store.PruneSummaries(ctx, keep, since)
+}
+
+// runsLeft is how many runs start before the free tier's day ends (midnight Pacific time).
+func (w *Writer) runsLeft(now time.Time) int {
+	pacific, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		pacific = time.UTC
+	}
+	local := now.In(pacific)
+	midnight := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, pacific)
+	every := w.Every
+	if every <= 0 {
+		every = 10 * time.Minute
+	}
+	return int(midnight.Sub(now) / every)
 }
 
 // newestSeen is when the server first saw s's newest report.
@@ -246,7 +282,7 @@ func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json
 		if err := w.Store.CountGeminiRequest(ctx, day); err != nil {
 			return nil, err
 		}
-		start := w.now()
+		start := time.Now()
 		answer, usage, err := w.Gemini.Generate(ctx, req)
 		if errors.Is(err, gemini.ErrUnavailable) && try < len(busyWaits) {
 			w.logf("summaries: %v; trying again in %s", err, busyWaits[try])
@@ -414,7 +450,8 @@ func cut(s string, n int) string {
 }
 
 // writeStories sends the changed stories that fit in MaxChars, the most reported first, and saves what comes back.
-func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day string, now time.Time) (written, waiting int, err error) {
+// It returns how many stories it wrote and how many it asked for (the first of changed).
+func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day string, now time.Time) (written, asked int, err error) {
 	ids := newSources()
 	byID := map[string]stories.Story{}
 	var prompt strings.Builder
@@ -428,15 +465,15 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			b.WriteString("\n")
 		}
 		if len(byID) == maxStories || len(byID) > 0 && len([]rune(prompt.String()))+len([]rune(b.String())) > limit {
-			waiting = len(changed) - i
 			break
 		}
 		prompt.WriteString(b.String())
 		byID[id] = s
 	}
+	asked = len(byID)
 	raw, err := w.send(ctx, day, gemini.Request{System: storiesSystem, Prompt: prompt.String(), Schema: storiesSchema})
 	if err != nil {
-		return 0, len(changed), err
+		return 0, asked, err
 	}
 	var answer struct {
 		Stories []struct {
@@ -447,7 +484,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		} `json:"stories"`
 	}
 	if err := json.Unmarshal(raw, &answer); err != nil {
-		return 0, len(changed), fmt.Errorf("summaries: reading Gemini's answer: %w", err)
+		return 0, asked, fmt.Errorf("summaries: reading Gemini's answer: %w", err)
 	}
 	unknown := 0
 	for _, a := range answer.Stories {
@@ -467,20 +504,20 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		}
 		data, err := json.Marshal(summary)
 		if err != nil {
-			return written, len(changed) - written, err
+			return written, asked, err
 		}
 		if err := w.Store.SaveSummary(ctx, StoryKey(s), data, now); err != nil {
-			return written, len(changed) - written, err
+			return written, asked, err
 		}
 		delete(byID, storyID(a.Story))
 		written++
 	}
 	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d cut short, %d without a source of the story",
-		len(answer.Stories), len(changed)-waiting, unknown, written, ids.cut, ids.unsourced)
+		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced)
 	if written == 0 {
 		w.logf("summaries: nothing written; the answer starts: %s", cut(string(raw), 600))
 	}
-	return written, len(changed) - written, nil
+	return written, asked, nil
 }
 
 // writeDigest writes the front page from the stories with the most reports first seen in the last hour, unless

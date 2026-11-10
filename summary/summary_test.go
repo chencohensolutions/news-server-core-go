@@ -322,3 +322,32 @@ func TestFootnotesAreCappedAndGarbledSentencesDropped(t *testing.T) {
 		t.Fatalf("%+v, %d cut", got, ids.cut)
 	}
 }
+
+func TestARunSendsMoreRequestsWhileTheBudgetHasRoom(t *testing.T) {
+	ctx := context.Background()
+	thirty := func(w *Writer) []stories.Story {
+		var many []stories.Story
+		for i := range 30 {
+			a := scrape.ArticleSummary{SourceID: "siteh", URL: fmt.Sprintf("https://siteh/%d", i), Title: "א"}
+			b := scrape.ArticleSummary{SourceID: "sitee", URL: fmt.Sprintf("https://sitee/%d", i), Title: "ב"}
+			if err := w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{a, b}, now); err != nil {
+				t.Fatal(err)
+			}
+			many = append(many, stories.Story{Reports: []scrape.ArticleSummary{a, b}})
+		}
+		return many
+	}
+	// Noon in Pacific time: 72 runs left in the day, 144 requests kept for them; 400 leaves room for all 3.
+	w, fake, _ := setup(t)
+	result, err := w.Run(ctx, thirty(w))
+	if err != nil || fake.count() != 4 || result != (Result{Written: 6, Waiting: 24, Digest: true}) {
+		// 12, 12 and 6 stories asked; the recorded answer writes s1 and s2 of each.
+		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
+	}
+	// A tight budget: one story request, then the digest.
+	w2, fake2, _ := setup(t)
+	w2.Budget = 146
+	if _, err := w2.Run(ctx, thirty(w2)); err != nil || fake2.count() != 2 {
+		t.Fatalf("%v, %d requests", err, fake2.count())
+	}
+}
