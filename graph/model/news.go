@@ -5,6 +5,7 @@ import (
 
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/store"
+	"github.com/chencohensolutions/news-server-core-go/summary"
 )
 
 // The news types of graph/schema/news.graphql, made from what the server stored (bound in gqlgen.yml).
@@ -58,6 +59,7 @@ type StoryList struct {
 
 type Story struct {
 	Reports []*Headline
+	Summary *StorySummary
 }
 
 // optional is s, nil when empty.
@@ -126,4 +128,27 @@ func ArticleOf(a *scrape.Article) *Article {
 		out.Video = &ArticleVideo{Poster: optional(v.Poster), Stream: optional(v.Stream), Embed: optional(v.Embed), Duration: optional(v.Duration)}
 	}
 	return out
+}
+
+// SentencesOf are sentences with their footnotes' sites and titles from headlines, by URL.
+func SentencesOf(sentences []summary.Sentence, headlines map[string]store.Headline) []*Sentence {
+	out := make([]*Sentence, 0, len(sentences))
+	for _, s := range sentences {
+		sentence := &Sentence{Text: s.Text, Footnotes: make([]*Footnote, 0, len(s.Sources))}
+		for _, url := range s.Sources {
+			note := &Footnote{URL: url}
+			if h, ok := headlines[url]; ok {
+				note.SourceID, note.Title = optional(h.SourceID), optional(h.Title)
+			}
+			sentence.Footnotes = append(sentence.Footnotes, note)
+		}
+		out = append(out, sentence)
+	}
+	return out
+}
+
+// StorySummaryOf is s for the API.
+func StorySummaryOf(s summary.StorySummary, headlines map[string]store.Headline) *StorySummary {
+	return &StorySummary{Title: s.Title, Sentences: SentencesOf(s.Sentences, headlines),
+		Contradictions: SentencesOf(s.Contradictions, headlines), WrittenAt: s.WrittenAt}
 }

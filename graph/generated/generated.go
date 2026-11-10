@@ -68,6 +68,12 @@ type ComplexityRoot struct {
 		Stream   func(childComplexity int) int
 	}
 
+	Digest struct {
+		Sentences func(childComplexity int) int
+		Title     func(childComplexity int) int
+		WrittenAt func(childComplexity int) int
+	}
+
 	EnrolledDevice struct {
 		Certificate func(childComplexity int) int
 		DeviceName  func(childComplexity int) int
@@ -83,6 +89,12 @@ type ComplexityRoot struct {
 
 	EnrollmentRejected struct {
 		Reason func(childComplexity int) int
+	}
+
+	Footnote struct {
+		SourceID func(childComplexity int) int
+		Title    func(childComplexity int) int
+		URL      func(childComplexity int) int
 	}
 
 	Headline struct {
@@ -108,11 +120,17 @@ type ComplexityRoot struct {
 	Query struct {
 		Article           func(childComplexity int, url string) int
 		Articles          func(childComplexity int, urls []string) int
+		Digest            func(childComplexity int) int
 		EnrollmentPreview func(childComplexity int, code string) int
 		Headlines         func(childComplexity int, since *time.Time, sourceIds []string) int
 		ServerInfo        func(childComplexity int) int
 		Sources           func(childComplexity int) int
 		Stories           func(childComplexity int) int
+	}
+
+	Sentence struct {
+		Footnotes func(childComplexity int) int
+		Text      func(childComplexity int) int
 	}
 
 	ServerDiscovery struct {
@@ -127,6 +145,7 @@ type ComplexityRoot struct {
 		Discovery         func(childComplexity int) int
 		RenewCertificates func(childComplexity int) int
 		Stories           func(childComplexity int) int
+		Summaries         func(childComplexity int) int
 		Version           func(childComplexity int) int
 	}
 
@@ -143,11 +162,19 @@ type ComplexityRoot struct {
 
 	Story struct {
 		Reports func(childComplexity int) int
+		Summary func(childComplexity int) int
 	}
 
 	StoryList struct {
 		GroupedAt func(childComplexity int) int
 		Stories   func(childComplexity int) int
+	}
+
+	StorySummary struct {
+		Contradictions func(childComplexity int) int
+		Sentences      func(childComplexity int) int
+		Title          func(childComplexity int) int
+		WrittenAt      func(childComplexity int) int
 	}
 }
 
@@ -164,6 +191,7 @@ type QueryResolver interface {
 	Articles(ctx context.Context, urls []string) ([]*model.Article, error)
 	Stories(ctx context.Context) (*model.StoryList, error)
 	Sources(ctx context.Context) ([]*sites.Source, error)
+	Digest(ctx context.Context) (*model.Digest, error)
 }
 type SourceResolver interface {
 	Enabled(ctx context.Context, obj *sites.Source) (bool, error)
@@ -303,6 +331,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ArticleVideo.Stream(childComplexity), true
 
+	case "Digest.sentences":
+		if e.ComplexityRoot.Digest.Sentences == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Digest.Sentences(childComplexity), true
+	case "Digest.title":
+		if e.ComplexityRoot.Digest.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Digest.Title(childComplexity), true
+	case "Digest.writtenAt":
+		if e.ComplexityRoot.Digest.WrittenAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Digest.WrittenAt(childComplexity), true
+
 	case "EnrolledDevice.certificate":
 		if e.ComplexityRoot.EnrolledDevice.Certificate == nil {
 			break
@@ -353,6 +400,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.EnrollmentRejected.Reason(childComplexity), true
+
+	case "Footnote.sourceId":
+		if e.ComplexityRoot.Footnote.SourceID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Footnote.SourceID(childComplexity), true
+	case "Footnote.title":
+		if e.ComplexityRoot.Footnote.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Footnote.Title(childComplexity), true
+	case "Footnote.url":
+		if e.ComplexityRoot.Footnote.URL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Footnote.URL(childComplexity), true
 
 	case "Headline.category":
 		if e.ComplexityRoot.Headline.Category == nil {
@@ -477,6 +543,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Articles(childComplexity, args["urls"].([]string)), true
+	case "Query.digest":
+		if e.ComplexityRoot.Query.Digest == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.Digest(childComplexity), true
 	case "Query.enrollmentPreview":
 		if e.ComplexityRoot.Query.EnrollmentPreview == nil {
 			break
@@ -518,6 +590,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Stories(childComplexity), true
+
+	case "Sentence.footnotes":
+		if e.ComplexityRoot.Sentence.Footnotes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Sentence.Footnotes(childComplexity), true
+	case "Sentence.text":
+		if e.ComplexityRoot.Sentence.Text == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Sentence.Text(childComplexity), true
 
 	case "ServerDiscovery.addresses":
 		if e.ComplexityRoot.ServerDiscovery.Addresses == nil {
@@ -568,6 +653,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ServerInfo.Stories(childComplexity), true
+	case "ServerInfo.summaries":
+		if e.ComplexityRoot.ServerInfo.Summaries == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerInfo.Summaries(childComplexity), true
 	case "ServerInfo.version":
 		if e.ComplexityRoot.ServerInfo.Version == nil {
 			break
@@ -630,6 +721,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Story.Reports(childComplexity), true
+	case "Story.summary":
+		if e.ComplexityRoot.Story.Summary == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Story.Summary(childComplexity), true
 
 	case "StoryList.groupedAt":
 		if e.ComplexityRoot.StoryList.GroupedAt == nil {
@@ -643,6 +740,31 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StoryList.Stories(childComplexity), true
+
+	case "StorySummary.contradictions":
+		if e.ComplexityRoot.StorySummary.Contradictions == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Contradictions(childComplexity), true
+	case "StorySummary.sentences":
+		if e.ComplexityRoot.StorySummary.Sentences == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Sentences(childComplexity), true
+	case "StorySummary.title":
+		if e.ComplexityRoot.StorySummary.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Title(childComplexity), true
+	case "StorySummary.writtenAt":
+		if e.ComplexityRoot.StorySummary.WrittenAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.WrittenAt(childComplexity), true
 
 	}
 	return 0, false
@@ -969,6 +1091,56 @@ type Source {
   waitMs: Int!
 }
 `, BuiltIn: false},
+	{Name: "../schema/summaries.graphql", Input: `# --- Summaries ------------------------------------------------------------------
+# The personal newspaper Gemini writes after each grouping (summary_* in config.json): a short article for each story
+# that changed in the last hours, and a digest of what is most covered in the last hour. Hebrew, facts only, each
+# fact once; every sentence has footnotes, the articles it comes from.
+
+extend type Query {
+  "The latest digest; null before the first, or when summaries are off."
+  digest: Digest
+}
+
+extend type ServerInfo {
+  "The server writes summaries (stories are on and a Gemini key is set)."
+  summaries: Boolean!
+}
+
+extend type Story {
+  "The story's generated article; null until it is written (a story that gains a report is written again)."
+  summary: StorySummary
+}
+
+type StorySummary {
+  title: String!
+  sentences: [Sentence!]!
+  "Where sites state different facts about the story, one sentence each saying which says what; usually none."
+  contradictions: [Sentence!]!
+  writtenAt: Time!
+}
+
+"The front page: what is most covered in the last hour."
+type Digest {
+  title: String!
+  sentences: [Sentence!]!
+  writtenAt: Time!
+}
+
+type Sentence {
+  text: String!
+  "The articles the sentence comes from, at least one."
+  footnotes: [Footnote!]!
+}
+
+"One article a sentence comes from: tapping it opens the article."
+type Footnote {
+  url: String!
+  "The article's site; null when the server no longer has its headline."
+  sourceId: String
+  "The article's title; null when the server no longer has its headline."
+  title: String
+}
+`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
@@ -1032,6 +1204,30 @@ func (ec *executionContext) childFields_ArticleVideo(ctx context.Context, field 
 	return nil, fmt.Errorf("no field named %q was found under type ArticleVideo", field.Name)
 }
 
+func (ec *executionContext) childFields_Digest(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "title":
+		return ec.fieldContext_Digest_title(ctx, field)
+	case "sentences":
+		return ec.fieldContext_Digest_sentences(ctx, field)
+	case "writtenAt":
+		return ec.fieldContext_Digest_writtenAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Digest", field.Name)
+}
+
+func (ec *executionContext) childFields_Footnote(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "url":
+		return ec.fieldContext_Footnote_url(ctx, field)
+	case "sourceId":
+		return ec.fieldContext_Footnote_sourceId(ctx, field)
+	case "title":
+		return ec.fieldContext_Footnote_title(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Footnote", field.Name)
+}
+
 func (ec *executionContext) childFields_Headline(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "sourceId":
@@ -1060,6 +1256,16 @@ func (ec *executionContext) childFields_Headline(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Headline", field.Name)
 }
 
+func (ec *executionContext) childFields_Sentence(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "text":
+		return ec.fieldContext_Sentence_text(ctx, field)
+	case "footnotes":
+		return ec.fieldContext_Sentence_footnotes(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Sentence", field.Name)
+}
+
 func (ec *executionContext) childFields_ServerDiscovery(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "fingerprint":
@@ -1086,6 +1292,8 @@ func (ec *executionContext) childFields_ServerInfo(ctx context.Context, field gr
 		return ec.fieldContext_ServerInfo_stories(ctx, field)
 	case "discovery":
 		return ec.fieldContext_ServerInfo_discovery(ctx, field)
+	case "summaries":
+		return ec.fieldContext_ServerInfo_summaries(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ServerInfo", field.Name)
 }
@@ -1116,6 +1324,8 @@ func (ec *executionContext) childFields_Story(ctx context.Context, field graphql
 	switch field.Name {
 	case "reports":
 		return ec.fieldContext_Story_reports(ctx, field)
+	case "summary":
+		return ec.fieldContext_Story_summary(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Story", field.Name)
 }
@@ -1128,6 +1338,20 @@ func (ec *executionContext) childFields_StoryList(ctx context.Context, field gra
 		return ec.fieldContext_StoryList_stories(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type StoryList", field.Name)
+}
+
+func (ec *executionContext) childFields_StorySummary(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "title":
+		return ec.fieldContext_StorySummary_title(ctx, field)
+	case "sentences":
+		return ec.fieldContext_StorySummary_sentences(ctx, field)
+	case "contradictions":
+		return ec.fieldContext_StorySummary_contradictions(ctx, field)
+	case "writtenAt":
+		return ec.fieldContext_StorySummary_writtenAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type StorySummary", field.Name)
 }
 
 func (ec *executionContext) childFields___Directive(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -1917,6 +2141,84 @@ func (ec *executionContext) fieldContext_ArticleVideo_duration(_ context.Context
 	return graphql.NewScalarFieldContext("ArticleVideo", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _Digest_title(ctx context.Context, field graphql.CollectedField, obj *model.Digest) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Digest_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Digest_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Digest", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Digest_sentences(ctx context.Context, field graphql.CollectedField, obj *model.Digest) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Digest_sentences(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Sentences, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Digest_sentences(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Digest",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Sentence(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Digest_writtenAt(ctx context.Context, field graphql.CollectedField, obj *model.Digest) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Digest_writtenAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.WrittenAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Digest_writtenAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Digest", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
 func (ec *executionContext) _EnrolledDevice_user(ctx context.Context, field graphql.CollectedField, obj *model.EnrolledDevice) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2099,6 +2401,75 @@ func (ec *executionContext) _EnrollmentRejected_reason(ctx context.Context, fiel
 }
 func (ec *executionContext) fieldContext_EnrollmentRejected_reason(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("EnrollmentRejected", field, false, false, errors.New("field of type EnrollmentRejectedReason does not have child fields"))
+}
+
+func (ec *executionContext) _Footnote_url(ctx context.Context, field graphql.CollectedField, obj *model.Footnote) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Footnote_url(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.URL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Footnote_url(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Footnote", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Footnote_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.Footnote) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Footnote_sourceId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Footnote_sourceId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Footnote", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Footnote_title(ctx context.Context, field graphql.CollectedField, obj *model.Footnote) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Footnote_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Footnote_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Footnote", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _Headline_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
@@ -2784,6 +3155,38 @@ func (ec *executionContext) fieldContext_Query_sources(_ context.Context, field 
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_digest(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_digest(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().Digest(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Digest) graphql.Marshaler {
+			return ec.marshalODigest2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐDigest(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_digest(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Digest(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2855,6 +3258,61 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields___Schema(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Sentence_text(ctx context.Context, field graphql.CollectedField, obj *model.Sentence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Sentence_text(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Text, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Sentence_text(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Sentence", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Sentence_footnotes(ctx context.Context, field graphql.CollectedField, obj *model.Sentence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Sentence_footnotes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Footnotes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {
+			return ec.marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Sentence_footnotes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Sentence",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Footnote(ctx, field)
 		},
 	}
 	return fc, nil
@@ -3076,6 +3534,29 @@ func (ec *executionContext) fieldContext_ServerInfo_discovery(_ context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _ServerInfo_summaries(ctx context.Context, field graphql.CollectedField, obj *model.ServerInfo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerInfo_summaries(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Summaries, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerInfo_summaries(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerInfo", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
 func (ec *executionContext) _Source_id(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3292,6 +3773,38 @@ func (ec *executionContext) fieldContext_Story_reports(_ context.Context, field 
 	return fc, nil
 }
 
+func (ec *executionContext) _Story_summary(ctx context.Context, field graphql.CollectedField, obj *model.Story) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Story_summary(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Summary, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StorySummary) graphql.Marshaler {
+			return ec.marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStorySummary(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Story_summary(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Story",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StorySummary(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _StoryList_groupedAt(ctx context.Context, field graphql.CollectedField, obj *model.StoryList) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3345,6 +3858,116 @@ func (ec *executionContext) fieldContext_StoryList_stories(_ context.Context, fi
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _StorySummary_title(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _StorySummary_sentences(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_sentences(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Sentences, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_sentences(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StorySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Sentence(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StorySummary_contradictions(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_contradictions(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Contradictions, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_contradictions(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StorySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Sentence(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StorySummary_writtenAt(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_writtenAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.WrittenAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_writtenAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type Time does not have child fields"))
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -4677,6 +5300,55 @@ func (ec *executionContext) _ArticleVideo(ctx context.Context, sel ast.Selection
 	return out
 }
 
+var digestImplementors = []string{"Digest"}
+
+func (ec *executionContext) _Digest(ctx context.Context, sel ast.SelectionSet, obj *model.Digest) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, digestImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Digest")
+		case "title":
+			out.Values[i] = ec._Digest_title(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sentences":
+			out.Values[i] = ec._Digest_sentences(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "writtenAt":
+			out.Values[i] = ec._Digest_writtenAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var enrolledDeviceImplementors = []string{"EnrolledDevice", "EnrollDeviceResult"}
 
 func (ec *executionContext) _EnrolledDevice(ctx context.Context, sel ast.SelectionSet, obj *model.EnrolledDevice) graphql.Marshaler {
@@ -4796,6 +5468,49 @@ func (ec *executionContext) _EnrollmentRejected(ctx context.Context, sel ast.Sel
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var footnoteImplementors = []string{"Footnote"}
+
+func (ec *executionContext) _Footnote(ctx context.Context, sel ast.SelectionSet, obj *model.Footnote) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, footnoteImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Footnote")
+		case "url":
+			out.Values[i] = ec._Footnote_url(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sourceId":
+			out.Values[i] = ec._Footnote_sourceId(ctx, field, obj)
+		case "title":
+			out.Values[i] = ec._Footnote_title(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5126,6 +5841,25 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "digest":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_digest(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -5134,6 +5868,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___schema(ctx, field)
 			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var sentenceImplementors = []string{"Sentence"}
+
+func (ec *executionContext) _Sentence(ctx context.Context, sel ast.SelectionSet, obj *model.Sentence) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sentenceImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Sentence")
+		case "text":
+			out.Values[i] = ec._Sentence_text(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "footnotes":
+			out.Values[i] = ec._Sentence_footnotes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5241,6 +6019,11 @@ func (ec *executionContext) _ServerInfo(ctx context.Context, sel ast.SelectionSe
 			}
 		case "discovery":
 			out.Values[i] = ec._ServerInfo_discovery(ctx, field, obj)
+		case "summaries":
+			out.Values[i] = ec._ServerInfo_summaries(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5447,6 +6230,8 @@ func (ec *executionContext) _Story(ctx context.Context, sel ast.SelectionSet, ob
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "summary":
+			out.Values[i] = ec._Story_summary(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5485,6 +6270,60 @@ func (ec *executionContext) _StoryList(ctx context.Context, sel ast.SelectionSet
 			out.Values[i] = ec._StoryList_groupedAt(ctx, field, obj)
 		case "stories":
 			out.Values[i] = ec._StoryList_stories(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var storySummaryImplementors = []string{"StorySummary"}
+
+func (ec *executionContext) _StorySummary(ctx context.Context, sel ast.SelectionSet, obj *model.StorySummary) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, storySummaryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("StorySummary")
+		case "title":
+			out.Values[i] = ec._StorySummary_title(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sentences":
+			out.Values[i] = ec._StorySummary_sentences(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "contradictions":
+			out.Values[i] = ec._StorySummary_contradictions(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "writtenAt":
+			out.Values[i] = ec._StorySummary_writtenAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -5949,6 +6788,32 @@ func (ec *executionContext) marshalNEnrollmentRejectedReason2githubᚗcomᚋchen
 	return v
 }
 
+func (ec *executionContext) marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNFootnote2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnote(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNFootnote2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnote(ctx context.Context, sel ast.SelectionSet, v *model.Footnote) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Footnote(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -5999,6 +6864,32 @@ func (ec *executionContext) unmarshalNKeyProtection2githubᚗcomᚋchencohensolu
 
 func (ec *executionContext) marshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx context.Context, sel ast.SelectionSet, v model.KeyProtection) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSentence2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentence(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSentence2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentence(ctx context.Context, sel ast.SelectionSet, v *model.Sentence) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Sentence(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNServerInfo2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v model.ServerInfo) graphql.Marshaler {
@@ -6332,6 +7223,13 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return res
 }
 
+func (ec *executionContext) marshalODigest2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐDigest(ctx context.Context, sel ast.SelectionSet, v *model.Digest) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Digest(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
 	if v == nil {
 		return nil, nil
@@ -6355,6 +7253,13 @@ func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohens
 		return graphql.Null
 	}
 	return ec._ServerDiscovery(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStorySummary(ctx context.Context, sel ast.SelectionSet, v *model.StorySummary) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._StorySummary(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {

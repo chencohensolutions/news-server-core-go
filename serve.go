@@ -68,6 +68,7 @@ func serve(config auth.AppConfig) {
 	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones}
 	if job != nil {
 		api.Stories = job.Stories
+		api.Summaries = job.summaries
 	}
 
 	server := &http.Server{

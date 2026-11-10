@@ -53,6 +53,20 @@ CREATE TABLE IF NOT EXISTS story_vectors (
 	vector BLOB NOT NULL,        -- little-endian float32s
 	PRIMARY KEY (space, key)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS summaries (
+	key TEXT PRIMARY KEY,        -- the story's report URLs, hashed (summary.StoryKey)
+	summary TEXT NOT NULL,       -- what Gemini wrote, as JSON
+	written_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS digests (
+	id INTEGER PRIMARY KEY,      -- only 1: the latest
+	digest TEXT NOT NULL,
+	written_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS gemini_requests (
+	day TEXT PRIMARY KEY,        -- the free tier's day, in Pacific time
+	requests INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS site_settings (
 	source_id TEXT PRIMARY KEY,  -- what the app's Sources screen chose for one site
 	enabled INTEGER NOT NULL,
@@ -397,5 +411,97 @@ func (s *Store) SaveSiteSetting(ctx context.Context, sourceID string, set SiteSe
 	_, err := s.db.ExecContext(ctx, `INSERT INTO site_settings (source_id, enabled, feed, wait_ms) VALUES (?, ?, ?, ?)
 		ON CONFLICT(source_id) DO UPDATE SET enabled = excluded.enabled, feed = excluded.feed, wait_ms = excluded.wait_ms`,
 		sourceID, set.Enabled, set.Feed, set.WaitMs)
+	return err
+}
+
+// Summaries are the stored summaries of keys that have one, as JSON, by key.
+func (s *Store) Summaries(ctx context.Context) (map[string]json.RawMessage, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, summary FROM summaries`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]json.RawMessage{}
+	for rows.Next() {
+		var key, data string
+		if err := rows.Scan(&key, &data); err != nil {
+			return nil, err
+		}
+		out[key] = json.RawMessage(data)
+	}
+	return out, rows.Err()
+}
+
+// SaveSummary keeps key's summary, written at now.
+func (s *Store) SaveSummary(ctx context.Context, key string, summary json.RawMessage, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO summaries (key, summary, written_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET summary = excluded.summary, written_at = excluded.written_at`,
+		key, string(summary), millis(now))
+	return err
+}
+
+// PruneSummaries deletes the summaries written before before whose key isn't in keep.
+func (s *Store) PruneSummaries(ctx context.Context, keep map[string]bool, before time.Time) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT key FROM summaries WHERE written_at < ?`, millis(before))
+	if err != nil {
+		return err
+	}
+	var gone []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			rows.Close()
+			return err
+		}
+		if !keep[key] {
+			gone = append(gone, key)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, key := range gone {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM summaries WHERE key = ?`, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Digest is the latest digest as JSON, or nil.
+func (s *Store) Digest(ctx context.Context) (json.RawMessage, error) {
+	var data string
+	err := s.db.QueryRowContext(ctx, `SELECT digest FROM digests WHERE id = 1`).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+// SaveDigest keeps digest as the latest, written at now.
+func (s *Store) SaveDigest(ctx context.Context, digest json.RawMessage, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO digests (id, digest, written_at) VALUES (1, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET digest = excluded.digest, written_at = excluded.written_at`, string(digest), millis(now))
+	return err
+}
+
+// GeminiRequests is how many Gemini requests were sent on day.
+func (s *Store) GeminiRequests(ctx context.Context, day string) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT requests FROM gemini_requests WHERE day = ?`, day).Scan(&n)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return n, err
+}
+
+// CountGeminiRequest adds one request to day.
+func (s *Store) CountGeminiRequest(ctx context.Context, day string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO gemini_requests (day, requests) VALUES (?, 1)
+		ON CONFLICT(day) DO UPDATE SET requests = requests + 1`, day)
 	return err
 }

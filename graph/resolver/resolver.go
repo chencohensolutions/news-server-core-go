@@ -27,6 +27,8 @@ type Resolver struct {
 	Store *store.Store
 	// The stories last grouped and when; nil when stories are off.
 	Stories func() ([]stories.Story, time.Time)
+	// Summaries says the server writes summaries after each grouping.
+	Summaries bool
 	// Who the server is and where (serverInfo.discovery); nil, or nil from it, before that is known.
 	Discovery func() *model.ServerDiscovery
 }

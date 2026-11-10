@@ -26,6 +26,8 @@ type storyJob struct {
 	days      int
 	// enabled, when set, says whether a site's headlines are grouped: the sites switched off are left out.
 	enabled func(id string) bool
+	// summaries says the summary job runs after each grouping (serverInfo.summaries).
+	summaries bool
 
 	mu     sync.Mutex
 	latest []stories.Story

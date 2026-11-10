@@ -13,3 +13,6 @@ news.db-*
 # news-server models downloads these
 /onnxruntime/
 /models/
+
+# The Gemini API key (Google AI Studio, free tier)
+/gemini.key

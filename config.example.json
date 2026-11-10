@@ -18,6 +18,11 @@
   "story_text": "title_and_subtitle",
   "story_strictness": 60,
   "story_days": 7,
+  "gemini_key_file": "gemini.key",
+  "gemini_model": "gemini-3.5-flash-lite",
+  "summary_budget": 400,
+  "summary_hours": 12,
+  "summary_min_reports": 2,
   "port_mapping": true,
   "discovery": true
 }

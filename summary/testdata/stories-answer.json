@@ -1,0 +1,9 @@
+{
+  "candidates": [{
+    "content": {"role": "model", "parts": [
+      {"text": "{\"stories\": [{\"story\": \"s1\", \"title\": \"גשם כבד בצפון\", \"sentences\": [{\"text\": \"גשם כבד ירד הבוקר בצפון.\", \"sources\": [\"a1\", \"a2\"]}, {\"text\": \"שני כבישים נסגרו.\", \"sources\": [\"a2\"]}, {\"text\": \"משפט בלי מקור.\", \"sources\": [\"a99\"]}], \"contradictions\": [{\"text\": \"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.\", \"sources\": [\"a1\", \"a2\"]}]}, {\"story\": \"s2\", \"title\": \"הכנסת אישרה את התקציב\", \"sentences\": [{\"text\": \"הכנסת אישרה את התקציב בקריאה שלישית.\", \"sources\": [\"a3\", \"a4\"]}], \"contradictions\": []}, {\"story\": \"s9\", \"title\": \"סיפור שלא היה בבקשה\", \"sentences\": [{\"text\": \"x\", \"sources\": [\"a1\"]}], \"contradictions\": []}]}"}
+    ]},
+    "finishReason": "STOP"
+  }],
+  "usageMetadata": {"promptTokenCount": 1200, "candidatesTokenCount": 300, "thoughtsTokenCount": 40, "totalTokenCount": 1540}
+}

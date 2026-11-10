@@ -18,6 +18,13 @@ type EnrollmentPreviewResult interface {
 	IsEnrollmentPreviewResult()
 }
 
+// The front page: what is most covered in the last hour.
+type Digest struct {
+	Title     string      `json:"title"`
+	Sentences []*Sentence `json:"sentences"`
+	WrittenAt time.Time   `json:"writtenAt"`
+}
+
 type EnrollDeviceInput struct {
 	// As shown by `news-server enroll-code`; case, dashes and spaces are ignored.
 	Code string `json:"code"`
@@ -54,10 +61,25 @@ func (EnrollmentRejected) IsEnrollmentPreviewResult() {}
 
 func (EnrollmentRejected) IsEnrollDeviceResult() {}
 
+// One article a sentence comes from: tapping it opens the article.
+type Footnote struct {
+	URL string `json:"url"`
+	// The article's site; null when the server no longer has its headline.
+	SourceID *string `json:"sourceId,omitempty"`
+	// The article's title; null when the server no longer has its headline.
+	Title *string `json:"title,omitempty"`
+}
+
 type Mutation struct {
 }
 
 type Query struct {
+}
+
+type Sentence struct {
+	Text string `json:"text"`
+	// The articles the sentence comes from, at least one.
+	Footnotes []*Footnote `json:"footnotes"`
 }
 
 // Who this server is and where it is now. The app pins the fingerprint (checking the server's key instead of the host
@@ -86,6 +108,16 @@ type ServerInfo struct {
 	Stories bool `json:"stories"`
 	// Who this server is and where it is now; null until the server has worked out its addresses.
 	Discovery *ServerDiscovery `json:"discovery,omitempty"`
+	// The server writes summaries (stories are on and a Gemini key is set).
+	Summaries bool `json:"summaries"`
+}
+
+type StorySummary struct {
+	Title     string      `json:"title"`
+	Sentences []*Sentence `json:"sentences"`
+	// Where sites state different facts about the story, one sentence each saying which says what; usually none.
+	Contradictions []*Sentence `json:"contradictions"`
+	WrittenAt      time.Time   `json:"writtenAt"`
 }
 
 type EnrollmentRejectedReason string

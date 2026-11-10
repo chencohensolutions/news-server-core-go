@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
+	"github.com/chencohensolutions/news-server-core-go/store"
+	"github.com/chencohensolutions/news-server-core-go/summary"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
@@ -84,11 +86,20 @@ func (r *queryResolver) Stories(ctx context.Context) (*model.StoryList, error) {
 		return nil, err
 	}
 	seen := make(map[string][2]time.Time, len(stored))
+	byURL := make(map[string]store.Headline, len(stored))
 	for _, h := range stored {
 		seen[h.URL] = [2]time.Time{h.FirstSeen, h.LastSeen}
+		byURL[h.URL] = h
+	}
+	summaries, err := summary.Summaries(ctx, r.Store)
+	if err != nil {
+		return nil, err
 	}
 	for _, s := range found {
 		story := &model.Story{}
+		if sum, ok := summaries[summary.StoryKey(s)]; ok {
+			story.Summary = model.StorySummaryOf(sum, byURL)
+		}
 		for _, report := range s.Reports {
 			if !r.enabled(report.SourceID) {
 				continue

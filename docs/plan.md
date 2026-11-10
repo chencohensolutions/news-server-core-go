@@ -35,7 +35,10 @@ decisions and milestones next to the code.
 5. **API and app:** `headlines` (with `since`, which is the changes), `article`, `articles` and `stories` (server
    part done; `digest` comes with milestone 6); Apollo in the news app, the server as a setting with the phone's
    scraper as fallback.
-6. **Summaries:** the 10-minute job, tests with a fake Gemini, the eval; the summary in the app (UI lab mock first).
+6. **Summaries** (server part in progress): after each grouping, one Gemini request with the stories that changed in
+   the last 12 hours and one for the digest of the last hour (`summary/`, `gemini/`), every sentence with its footnotes,
+   under a daily budget; `story.summary` and `digest` in the API; `news-server summarize`; tests on recorded
+   answers. Still to do: the eval; the summary in the app (UI lab mock first).
 7. **Run it** on the PC as a service for a week before the phone stops scraping.
 
 ## Harness

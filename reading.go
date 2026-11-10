@@ -12,10 +12,12 @@ import (
 
 	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/fetch"
+	"github.com/chencohensolutions/news-server-core-go/gemini"
 	"github.com/chencohensolutions/news-server-core-go/refresh"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/store"
+	"github.com/chencohensolutions/news-server-core-go/summary"
 )
 
 // openRefresher sets up reading the sites: their configs, the engine on the fetch client, the database, and the
@@ -101,14 +103,30 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 	} else {
 		job.enabled = settings.Enabled
 		log.Printf("Grouping stories with %s by %s, strictness %d", config.StoryModel, config.StoryText, config.StoryStrictness)
+		writer, err := openSummaries(config, refresher.Store, found)
+		if err != nil {
+			log.Printf("Summaries are off: %v", err)
+		} else {
+			job.summaries = true
+			log.Printf("Summarizing stories with %s, at most %d requests a day", orDefault(config.GeminiModel, gemini.DefaultModel), orDefault(config.SummaryBudget, summary.DefaultBudget))
+		}
 		refresher.AfterRun = func(ctx context.Context) {
 			start := time.Now()
-			found, err := job.run(ctx)
+			grouped, err := job.run(ctx)
 			if err != nil {
 				log.Printf("stories: %v", err)
 				return
 			}
-			log.Printf("stories: %d, %d headlines embedded, in %s", len(found), job.finder.LastEmbedded, time.Since(start).Round(time.Millisecond))
+			log.Printf("stories: %d, %d headlines embedded, in %s", len(grouped), job.finder.LastEmbedded, time.Since(start).Round(time.Millisecond))
+			if writer == nil {
+				return
+			}
+			start = time.Now()
+			result, err := writer.Run(ctx, grouped)
+			if err != nil {
+				log.Printf("summaries: %v", err)
+			}
+			log.Printf("summaries: %d written, %d waiting, digest %v, in %s", result.Written, result.Waiting, result.Digest, time.Since(start).Round(time.Millisecond))
 		}
 	}
 	go refresher.Loop(context.Background(), time.Duration(config.RefreshMinutes)*time.Minute)
@@ -134,4 +152,12 @@ func refreshOnce(config auth.AppConfig, out io.Writer) error {
 		fmt.Fprintf(out, "FAIL %s: %s\n", id, why)
 	}
 	return nil
+}
+
+func orDefault[T comparable](v, d T) T {
+	var zero T
+	if v == zero {
+		return d
+	}
+	return v
 }

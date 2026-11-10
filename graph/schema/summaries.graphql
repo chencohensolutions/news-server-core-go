@@ -1,0 +1,49 @@
+# --- Summaries ------------------------------------------------------------------
+# The personal newspaper Gemini writes after each grouping (summary_* in config.json): a short article for each story
+# that changed in the last hours, and a digest of what is most covered in the last hour. Hebrew, facts only, each
+# fact once; every sentence has footnotes, the articles it comes from.
+
+extend type Query {
+  "The latest digest; null before the first, or when summaries are off."
+  digest: Digest
+}
+
+extend type ServerInfo {
+  "The server writes summaries (stories are on and a Gemini key is set)."
+  summaries: Boolean!
+}
+
+extend type Story {
+  "The story's generated article; null until it is written (a story that gains a report is written again)."
+  summary: StorySummary
+}
+
+type StorySummary {
+  title: String!
+  sentences: [Sentence!]!
+  "Where sites state different facts about the story, one sentence each saying which says what; usually none."
+  contradictions: [Sentence!]!
+  writtenAt: Time!
+}
+
+"The front page: what is most covered in the last hour."
+type Digest {
+  title: String!
+  sentences: [Sentence!]!
+  writtenAt: Time!
+}
+
+type Sentence {
+  text: String!
+  "The articles the sentence comes from, at least one."
+  footnotes: [Footnote!]!
+}
+
+"One article a sentence comes from: tapping it opens the article."
+type Footnote {
+  url: String!
+  "The article's site; null when the server no longer has its headline."
+  sourceId: String
+  "The article's title; null when the server no longer has its headline."
+  title: String
+}

@@ -26,6 +26,7 @@ const usage = `usage:
   news-server discovery            publish this server's addresses in the DHT and look them up again, to check it works
   news-server models               download ONNX Runtime and the story model (story_model) into models_dir
   news-server stories              group the stored headlines into stories now and print them
+  news-server summarize            group the stories and summarize what changed with Gemini now, and print them
   news-server eval-stories         score the story model on the app's 348 labeled headline pairs
 
 site tools (no config.json needed):
@@ -63,7 +64,7 @@ func main() {
 		serve(config)
 		return
 	}
-	local := map[string]func(auth.AppConfig, io.Writer) error{"refresh": refreshOnce, "discovery": func(c auth.AppConfig, _ io.Writer) error { return discoveryCommand(c) }, "models": downloadModels, "stories": printStories,
+	local := map[string]func(auth.AppConfig, io.Writer) error{"refresh": refreshOnce, "discovery": func(c auth.AppConfig, _ io.Writer) error { return discoveryCommand(c) }, "models": downloadModels, "stories": printStories, "summarize": summarizeCommand,
 		"eval-stories": evalStories}
 	if run, ok := local[os.Args[1]]; ok && len(os.Args) == 2 {
 		if err := run(config, os.Stdout); err != nil {
