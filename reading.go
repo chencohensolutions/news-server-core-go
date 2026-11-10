@@ -55,11 +55,16 @@ func openRefresher(config auth.AppConfig) (*refresh.Refresher, error) {
 }
 
 // startReading reads every site every refresh_minutes, in the background, and groups the stories after each read.
-// It returns the stories, nil when they are off or their model isn't there (the sites are read either way).
-func startReading(config auth.AppConfig) *storyJob {
+// It returns the database, and the stories: nil when they are off or their model isn't there (the sites are read
+// either way).
+func startReading(config auth.AppConfig) (*store.Store, *storyJob) {
 	if config.RefreshMinutes < 0 {
 		log.Printf("Reading the sites is off (refresh_minutes is %d)", config.RefreshMinutes)
-		return nil
+		db, err := store.Open(config.DatabaseFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return db, nil
 	}
 	refresher, err := openRefresher(config)
 	if err != nil {
@@ -85,7 +90,7 @@ func startReading(config auth.AppConfig) *storyJob {
 		}
 	}
 	go refresher.Loop(context.Background(), time.Duration(config.RefreshMinutes)*time.Minute)
-	return job
+	return refresher.Store, job
 }
 
 // refreshOnce is the refresh command: one read of every site, then what it found.

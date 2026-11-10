@@ -87,7 +87,7 @@ func (r *queryResolver) EnrollmentPreview(ctx context.Context, code string) (mod
 
 // ServerInfo is the resolver for the serverInfo field.
 func (r *queryResolver) ServerInfo(ctx context.Context) (*model.ServerInfo, error) {
-	return &model.ServerInfo{API: APIVersion, Version: r.Version, RenewCertificates: true}, nil
+	return &model.ServerInfo{API: APIVersion, Version: r.Version, RenewCertificates: true, Stories: r.Resolver.Stories != nil}, nil
 }
 
 // Mutation returns generated.MutationResolver implementation.

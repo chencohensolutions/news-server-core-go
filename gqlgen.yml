@@ -15,3 +15,15 @@ resolver:
 models:
   Source:
     model: github.com/chencohensolutions/news-server-core-go/sites.Source
+  Headline:
+    model: github.com/chencohensolutions/news-server-core-go/graph/model.Headline
+  Article:
+    model: github.com/chencohensolutions/news-server-core-go/graph/model.Article
+  ArticleBlock:
+    model: github.com/chencohensolutions/news-server-core-go/graph/model.ArticleBlock
+  ArticleVideo:
+    model: github.com/chencohensolutions/news-server-core-go/graph/model.ArticleVideo
+  StoryList:
+    model: github.com/chencohensolutions/news-server-core-go/graph/model.StoryList
+  Story:
+    model: github.com/chencohensolutions/news-server-core-go/graph/model.Story

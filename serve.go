@@ -45,11 +45,15 @@ func serve(config auth.AppConfig) {
 	}
 	log.Printf("Read %d sites from %s", len(found), config.SourcesDir)
 	go serveAdmin(config, enrollment)
-	startReading(config)
+	db, job := startReading(config)
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version, Store: db}
+	if job != nil {
+		api.Stories = job.Stories
+	}
 
 	server := &http.Server{
 		Addr:              ":" + config.Port,
-		Handler:           newMux(config, enrollment, found),
+		Handler:           newMux(config, api),
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
@@ -109,17 +113,17 @@ func openEnrollment(config auth.AppConfig) (*enroll.Service, error) {
 }
 
 // newMux is the routing table. /query lets anonymous clients in only for the @public enrollment fields.
-func newMux(config auth.AppConfig, enrollment *enroll.Service, found []sites.Source) *http.ServeMux {
+func newMux(config auth.AppConfig, api *resolver.Resolver) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/", playground.Handler("GraphQL playground", "/query"))
 	mux.Handle("/query", withDeadlines(queryReadTimeout, queryWriteTimeout,
-		gzipped(identify(config, enrollment.Registry, true, newGraphQLServer(enrollment, found)))))
+		gzipped(identify(config, api.Enrollment.Registry, true, newGraphQLServer(api)))))
 	return mux
 }
 
-func newGraphQLServer(enrollment *enroll.Service, found []sites.Source) *handler.Server {
+func newGraphQLServer(api *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
-		Resolvers:  &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version},
+		Resolvers:  api,
 		Directives: generated.DirectiveRoot{Public: auth.PassThroughDirective},
 	}))
 	srv.AddTransport(transport.Options{})

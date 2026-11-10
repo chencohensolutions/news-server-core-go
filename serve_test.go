@@ -21,7 +21,9 @@ import (
 
 	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/enroll"
+	"github.com/chencohensolutions/news-server-core-go/graph/resolver"
 	"github.com/chencohensolutions/news-server-core-go/sites"
+	"github.com/chencohensolutions/news-server-core-go/store"
 )
 
 // testEnv is a full mTLS server with a generated CA, as the journal server's tests have it: real certificates, a
@@ -30,6 +32,9 @@ type testEnv struct {
 	server     *httptest.Server
 	enrollment *enroll.Service
 	roots      *x509.CertPool
+	// The server's database, in the temporary folder, and its resolver, whose Stories a test may set.
+	db  *store.Store
+	api *resolver.Resolver
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -69,14 +74,20 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	enrollment := enroll.NewService(enroll.NewIssuer(caCert, caKey, time.Now), registry, time.Now)
 	found := []sites.Source{{ID: "siteh", Name: "siteh", BaseURL: "https://www.siteh.example", Language: "he"}}
+	db, err := store.Open(filepath.Join(dir, "news.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version, Store: db}
 
 	pool := x509.NewCertPool()
 	pool.AddCert(caCert)
-	server := httptest.NewUnstartedServer(newMux(config, enrollment, found))
+	server := httptest.NewUnstartedServer(newMux(config, api))
 	server.TLS = tlsConfigFor(tls.Certificate{Certificate: [][]byte{serverDER}, PrivateKey: serverKey}, pool)
 	server.StartTLS()
 	t.Cleanup(server.Close)
-	return &testEnv{server: server, enrollment: enrollment, roots: pool}
+	return &testEnv{server: server, enrollment: enrollment, roots: pool, db: db, api: api}
 }
 
 // client is an HTTPS client that trusts the test CA and, with cert, presents it.
@@ -148,14 +159,14 @@ func (e *testEnv) enrollDevice(t *testing.T, user string) (*tls.Certificate, str
 func TestAnEnrolledDeviceReadsTheSites(t *testing.T) {
 	env := newTestEnv(t)
 	cert, _ := env.enrollDevice(t, "hen")
-	status, resp := env.query(t, cert, `{ sources { id name baseUrl language } serverInfo { api renewCertificates } }`, nil)
+	status, resp := env.query(t, cert, `{ sources { id name baseUrl language } serverInfo { api renewCertificates stories } }`, nil)
 	if status != http.StatusOK || len(resp.Errors) > 0 {
 		t.Fatalf("%d %+v", status, resp.Errors)
 	}
 	if got := string(resp.Data["sources"]); got != `[{"id":"siteh","name":"siteh","baseUrl":"https://www.siteh.example","language":"he"}]` {
 		t.Fatalf("sources = %s", got)
 	}
-	if got := string(resp.Data["serverInfo"]); got != `{"api":1,"renewCertificates":true}` {
+	if got := string(resp.Data["serverInfo"]); got != `{"api":1,"renewCertificates":true,"stories":false}` {
 		t.Fatalf("serverInfo = %s", got)
 	}
 }

@@ -32,8 +32,9 @@ decisions and milestones next to the code.
    (`stories/`), with the app's unit tests; vectors kept in SQLite, stories grouped after every read; `news-server
    models`, `stories` and `eval-stories` (the app's 348 labeled pairs, scored as its `score.py` does, next to its
    numbers).
-5. **API and app:** `headlines`, `article`, `stories`, `digest`, `changes`; Apollo in the news app, the server as a
-   setting with the phone's scraper as fallback.
+5. **API and app:** `headlines` (with `since`, which is the changes), `article`, `articles` and `stories` (server
+   part done; `digest` comes with milestone 6); Apollo in the news app, the server as a setting with the phone's
+   scraper as fallback.
 6. **Summaries:** the 10-minute job, tests with a fake Gemini, the eval; the summary in the app (UI lab mock first).
 7. **Run it** on the PC as a service for a week before the phone stops scraping.
 

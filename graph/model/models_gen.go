@@ -67,6 +67,8 @@ type ServerInfo struct {
 	RenewCertificates bool `json:"renewCertificates"`
 	// The server's version and build.
 	Version string `json:"version"`
+	// The server groups stories (its story model is installed and story_strictness isn't -1).
+	Stories bool `json:"stories"`
 }
 
 type EnrollmentRejectedReason string
