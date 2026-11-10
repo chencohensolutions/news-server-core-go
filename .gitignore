@@ -9,3 +9,7 @@
 # The database of what the server read
 news.db
 news.db-*
+
+# news-server models downloads these
+/onnxruntime/
+/models/
