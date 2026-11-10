@@ -153,7 +153,7 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	}
 	rain := saved[StoryKey(found[0])]
 	want := StorySummary{Title: "גשם כבד בצפון", WrittenAt: now,
-		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}},
+		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}, {"כביש 90 נסגר.", []string{rainSiteh.URL}}},
 		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}}}
 	if got, _ := json.Marshal(rain); string(got) != mustJSON(want) {
 		t.Fatalf("rain\n got %s\nwant %s", got, mustJSON(want))
@@ -277,7 +277,7 @@ func TestOneRequestTakesAtMostTwelveStories(t *testing.T) {
 	}
 }
 
-func TestACutSentenceIsNotKept(t *testing.T) {
+func TestASentenceEndsLikeOne(t *testing.T) {
 	for text, want := range map[string]bool{"ירד גשם.": true, "האם ירד גשם?": true, `הוא אמר "די."`: true, "בעקבות הסערה הורה יו": false, "": false} {
 		if finished(text) != want {
 			t.Errorf("%q: %v", text, !want)

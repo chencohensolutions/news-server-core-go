@@ -31,9 +31,9 @@ const (
 	DefaultHours       = 12
 	DefaultMinReports  = 2
 	DefaultMaxRequests = 4
-	DefaultMaxChars    = 40_000 // of article text in one request
+	DefaultMaxChars    = 90_000 // of article text in one request: about 35,000 tokens
 	maxStories         = 12     // stories in one request: a long answer is where the model cuts sentences short
-	articleChars       = 800    // of each article's body
+	articleChars       = 600    // of each article's body
 	maxReports         = 8      // of a story's reports in the prompt, one per site first
 	maxFootnotes       = 5      // of one sentence: more can't all state it
 	digestStories      = 8
@@ -320,8 +320,12 @@ type sources struct {
 	ids  map[string]string // id → URL
 	urls map[string]string // URL → id
 	// What sentences were dropped, for the log.
-	cut, unsourced int
+	cut, unsourced, mended int
+	mendedEnd              string // the end of a mended sentence, for the log
 }
+
+// inlineRefs are footnotes the model wrote into the text too ("… נסגרו [a1, a3].").
+var inlineRefs = regexp.MustCompile(`\s*[\[(]\s*a\d+(\s*[,،;]\s*a\d+)*\s*[\])]`)
 
 // articleRef and storyRef find the ids in what the model wrote: it may write "[a3]" or "a3, a5" or "סיפור s2".
 var (
@@ -370,11 +374,18 @@ func (s *sources) id(url string) string {
 func (s *sources) sentences(in []answerSentence, allowed map[string]bool) []Sentence {
 	out := []Sentence{}
 	for _, a := range in {
-		text := strings.TrimSpace(a.Text)
-		if !finished(text) || arabic.MatchString(text) {
-			// Cut short, or a garbled word: an Arabic letter inside the Hebrew.
+		text := strings.TrimSpace(inlineRefs.ReplaceAllString(a.Text, ""))
+		if text == "" || arabic.MatchString(text) {
+			// Empty, or a garbled word: an Arabic letter inside the Hebrew.
 			s.cut++
 			continue
+		}
+		if !finished(text) {
+			// The model left out the period; the answer itself is whole (a cut one isn't valid JSON, or stops with
+			// MAX_TOKENS, and fails before this).
+			s.mended++
+			s.mendedEnd = string([]rune(text)[max(0, len([]rune(text))-20):])
+			text += "."
 		}
 		var urls []string
 		seen := map[string]bool{}
@@ -512,8 +523,8 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		delete(byID, storyID(a.Story))
 		written++
 	}
-	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d cut short, %d without a source of the story",
-		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced)
+	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d garbled, %d without a source of the story; %d without a period (one ended %q)",
+		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced, ids.mended, ids.mendedEnd)
 	if written == 0 {
 		w.logf("summaries: nothing written; the answer starts: %s", cut(string(raw), 600))
 	}
