@@ -22,7 +22,12 @@ Milestone 2, the engine port (`scrape/`): the news app's scraper translated file
 (CSS selectors, JSON paths, regex transforms, dates), downloads pages one at a time per site with a gap between them
 and a growing pause when a site pushes back, and gives the same output as the app on every saved page of every site
 (`news/sources/*/fixtures`). Jsoup's selector and text rules are reimplemented in `scrape/dom`, Java regex through
-`regexp2`. Not wired to a schedule yet: that is milestone 3.
+`regexp2`.
+
+Milestone 3, fetching (`fetch/`, `refresh/`, `store/`): every `refresh_minutes` (10) the server reads every site's
+headlines, then the article of each headline it doesn't have yet, newest first, and keeps them in `news.db` (SQLite)
+with when each headline was first and last seen; a headline gone from its site for `keep_days` (7) is forgotten. It
+reaches the sites with a plain HTTP client.
 
 ## Getting started
 
@@ -40,6 +45,7 @@ go run .                        # serves https://0.0.0.0:56399
 go run . enroll-code hen        # a one-time code and a QR code for the app, valid 10 minutes
 go run . devices                # enrolled devices
 go run . revoke <serial>        # lock a device out
+go run . refresh                # read every site once now (the server does it every refresh_minutes)
 ```
 
 The site tools need no config.json:
@@ -72,6 +78,9 @@ auth/  enroll/                     config, request identity and @public, enrollm
 sites/                             reads news/sources/<id>/config.json
 scrape/                            the engine: configs, extraction, dates, URLs, politeness, downloading
 scrape/dom, jsonpath, rx           jsoup-compatible selectors and text, JSON paths, Java-like regex
+fetch/                             the HTTP client the engine reads with
+refresh/  store/                   reading every site on a schedule; the SQLite database
+reading.go                         wires them into the server and the refresh command
 sitecli.go                         check, extract, fetch
 graph/                             public schema and resolvers; graph/admin/ for the admin API
 news/                              the news repo (submodule): sources/ configs and golden fixtures

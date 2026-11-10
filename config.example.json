@@ -6,5 +6,10 @@
   "public_url": "https://myhome.example.org:56399",
   "port": "56399",
   "sources_dir": "news/sources",
-  "users": [{ "username": "hen" }]
+  "users": [{ "username": "hen" }],
+  "database_file": "news.db",
+  "refresh_minutes": 10,
+  "keep_days": 7,
+  "feed_sources": [],
+  "site_waits_ms": {}
 }

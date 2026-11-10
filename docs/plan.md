@@ -27,8 +27,7 @@ decisions and milestones next to the code.
    server, `serverInfo` and `sources`.
 2. **Engine port** (done): configs, extraction and politeness in Go (`scrape/`), passing every golden fixture and the
    Kotlin unit tests; `news-server check`, `extract` and `fetch`.
-3. **Fetching:** a scheduler for every site, SQLite storage
-   (`modernc.org/sqlite`, no cgo).
+3. **Fetching** (done): every site every 10 minutes, SQLite storage (`modernc.org/sqlite`, no cgo); `news-server refresh`.
 4. **Stories:** embeddings and clustering, matching the Kotlin groups on a frozen feed.
 5. **API and app:** `headlines`, `article`, `stories`, `digest`, `changes`; Apollo in the news app, the server as a
    setting with the phone's scraper as fallback.
