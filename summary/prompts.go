@@ -28,10 +28,12 @@ For every story, write:
   then an empty list.
 - "title": a short factual Hebrew headline for the whole story.
 - "sentences": the story as 2 to 6 sentences.
-- "contradictions": only where the sources state different facts about the same thing (a number, a name, a time, a
-  place, who did what) between different sites. One sentence each, naming each site once, saying which site says
-  what, citing both sides. Two articles of one site are not a contradiction, nor different emphasis or a fact only
-  one source has. Usually there are none: then an empty list.
+- "contradictions": only where two sites give different values for the same fact: a number, a name, a date, a time
+  or a place. Two different facts are not a contradiction, nor two breakdowns that can both be true, nor a fact only
+  one site has, nor different emphasis. Each one has "sides": every site's version as its "value" and the ids of the
+  articles that say it ("sources"), each side other sites. Its "text" is one sentence naming each site once and what
+  it says ("לפי siteh ...  ולפי SiteE ..."); never an unnamed side ("the reports say 10 to 11"). Usually there are none:
+  then an empty list.
 
 ` + writingRules + `
 
@@ -48,6 +50,22 @@ Write:
   then write it once.
 
 ` + writingRules
+
+var contradictionSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"text": map[string]any{"type": "string"},
+		"sides": map[string]any{"type": "array", "items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"value":   map[string]any{"type": "string"},
+				"sources": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			},
+			"required": []string{"value", "sources"},
+		}},
+	},
+	"required": []string{"text", "sides"},
+}
 
 var sentenceSchema = map[string]any{
 	"type": "object",
@@ -69,7 +87,7 @@ var storiesSchema = map[string]any{
 					"story":          map[string]any{"type": "string"},
 					"title":          map[string]any{"type": "string"},
 					"sentences":      map[string]any{"type": "array", "items": sentenceSchema},
-					"contradictions": map[string]any{"type": "array", "items": sentenceSchema},
+					"contradictions": map[string]any{"type": "array", "items": contradictionSchema},
 					"unrelated": map[string]any{"type": "array", "items": map[string]any{
 						"type":       "object",
 						"properties": map[string]any{"id": map[string]any{"type": "string"}, "event": map[string]any{"type": "string"}},
