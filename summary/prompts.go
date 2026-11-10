@@ -20,8 +20,10 @@ story is a few articles from different sites about one event, each with an id in
 subtitle and the start of its body.
 
 For every story, write:
-- "unrelated": the ids of the story's articles that are about a different event than the rest (the grouping can be
-  wrong). Don't use them anywhere in the story. Usually none: then an empty list.
+- "unrelated": the ids of the story's articles that are clearly about a different event than the rest (the grouping
+  can be wrong): another person, place or incident. An article that teases the event without naming it ("this is who
+  will replace..."), covers another side of it, or a reaction to it belongs to the story. When unsure, it belongs.
+  Don't use unrelated ones anywhere in the story. Usually none: then an empty list.
 - "title": a short factual Hebrew headline for the whole story.
 - "sentences": the story as 2 to 6 sentences.
 - "contradictions": only where the sources state different facts about the same thing (a number, a name, a time, a
