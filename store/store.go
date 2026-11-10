@@ -7,9 +7,11 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/scrape"
@@ -45,6 +47,12 @@ CREATE TABLE IF NOT EXISTS site_runs (
 	error TEXT,
 	headlines INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS story_vectors (
+	space TEXT NOT NULL,         -- the model and the story text, e.g. "bge-m3/title_and_subtitle"
+	key TEXT NOT NULL,           -- the headline's URL and texts
+	vector BLOB NOT NULL,        -- little-endian float32s
+	PRIMARY KEY (space, key)
+) WITHOUT ROWID;
 `
 
 // Store is the database. Safe for concurrent use.
@@ -299,4 +307,54 @@ func (s *Store) Prune(ctx context.Context, before time.Time) (int64, error) {
 	}
 	n, _ := result.RowsAffected()
 	return n, tx.Commit()
+}
+
+// Vectors are the headline vectors saved in space (a model and a story text), by key.
+func (s *Store) Vectors(ctx context.Context, space string) (map[string][]float32, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, vector FROM story_vectors WHERE space = ?`, space)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]float32{}
+	for rows.Next() {
+		var key string
+		var blob []byte
+		if err := rows.Scan(&key, &blob); err != nil {
+			return nil, err
+		}
+		v := make([]float32, len(blob)/4)
+		for i := range v {
+			v[i] = math.Float32frombits(binary.LittleEndian.Uint32(blob[i*4:]))
+		}
+		out[key] = v
+	}
+	return out, rows.Err()
+}
+
+// SaveVectors saves added and deletes removed in space, in one transaction.
+func (s *Store) SaveVectors(ctx context.Context, space string, added map[string][]float32, removed []string) error {
+	if len(added) == 0 && len(removed) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for key, v := range added {
+		blob := make([]byte, len(v)*4)
+		for i, x := range v {
+			binary.LittleEndian.PutUint32(blob[i*4:], math.Float32bits(x))
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO story_vectors (space, key, vector) VALUES (?, ?, ?)`, space, key, blob); err != nil {
+			return err
+		}
+	}
+	for _, key := range removed {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM story_vectors WHERE space = ? AND key = ?`, space, key); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

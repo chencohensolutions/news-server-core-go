@@ -43,6 +43,16 @@ type AppConfig struct {
 	FeedSources []string `json:"feed_sources"`
 	// Each site's wait between its requests in milliseconds, by source id; the others wait 250 ms.
 	SiteWaitsMs map[string]int `json:"site_waits_ms"`
+	// Stories: the ONNX Runtime library ("" looks in ./onnxruntime and the usual places), the folder the models are
+	// in (news-server models downloads them), the model (bge-m3 or multilingual-e5-small), what headlines are
+	// compared by (title, subtitle, title_and_subtitle, title_times_subtitle), how strict the grouping is (10 to 90,
+	// the app's slider; 0 is DefaultStoryStrictness, -1 turns stories off), and the days of headlines grouped.
+	ONNXRuntime     string `json:"onnxruntime"`
+	ModelsDir       string `json:"models_dir"`
+	StoryModel      string `json:"story_model"`
+	StoryText       string `json:"story_text"`
+	StoryStrictness int    `json:"story_strictness"`
+	StoryDays       int    `json:"story_days"`
 }
 
 const (
@@ -55,6 +65,12 @@ const (
 	DefaultDatabaseFile   = "news.db"
 	DefaultRefreshMinutes = 10
 	DefaultKeepDays       = 7
+	DefaultModelsDir      = "models"
+	// bge-m3 is the more accurate model, too big for the phone; the text and strictness are the app's defaults.
+	DefaultStoryModel      = "bge-m3"
+	DefaultStoryText       = "title_and_subtitle"
+	DefaultStoryStrictness = 60
+	DefaultStoryDays       = 7
 )
 
 // LoadConfig reads config.json, fills in the defaults and checks the users.
@@ -105,6 +121,21 @@ func (c AppConfig) WithDefaults() AppConfig {
 	}
 	if c.KeepDays == 0 {
 		c.KeepDays = DefaultKeepDays
+	}
+	if c.ModelsDir == "" {
+		c.ModelsDir = DefaultModelsDir
+	}
+	if c.StoryModel == "" {
+		c.StoryModel = DefaultStoryModel
+	}
+	if c.StoryText == "" {
+		c.StoryText = DefaultStoryText
+	}
+	if c.StoryStrictness == 0 {
+		c.StoryStrictness = DefaultStoryStrictness
+	}
+	if c.StoryDays == 0 {
+		c.StoryDays = DefaultStoryDays
 	}
 	return c
 }
