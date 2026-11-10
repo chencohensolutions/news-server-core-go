@@ -153,7 +153,7 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	}
 	rain := saved[StoryKey(found[0])]
 	want := StorySummary{Title: "גשם כבד בצפון", WrittenAt: now,
-		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}, {"כביש 90 נסגר.", []string{rainSiteh.URL}}},
+		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}},
 		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}}}
 	if got, _ := json.Marshal(rain); string(got) != mustJSON(want) {
 		t.Fatalf("rain\n got %s\nwant %s", got, mustJSON(want))
@@ -349,5 +349,11 @@ func TestARunSendsMoreRequestsWhileTheBudgetHasRoom(t *testing.T) {
 	w2.Budget = 146
 	if _, err := w2.Run(ctx, thirty(w2)); err != nil || fake2.count() != 2 {
 		t.Fatalf("%v, %d requests", err, fake2.count())
+	}
+}
+
+func TestAbbreviationsUseHebrewMarks(t *testing.T) {
+	if got := oneLine(`דובר צה"ל ויו”ר הכנסת   אמרו לג'ו "שלום"`); got != `דובר צה״ל ויו״ר הכנסת אמרו לג׳ו "שלום"` {
+		t.Fatal(got)
 	}
 }

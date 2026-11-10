@@ -11,7 +11,9 @@ const writingRules = `Writing rules, all of them strict:
   most directly. Cite only ids from the input. A fact no article states is not written.
 - A claim, an accusation, a concern or an assessment is not a fact: write it only attributed to who says it ("לפי
   ...", "X אמר ש..."), or leave it out.
-- Short sentences, newest and most important facts first. Every sentence is complete and ends with a period.`
+- Short sentences, newest and most important facts first. Every sentence is complete and ends with a period.
+- Write Hebrew abbreviations with the Hebrew marks, as the input does: צה״ל, יו״ר, ג׳ (U+05F4 and U+05F3), never
+  with " or '. Write quotes with „ and ”.`
 
 const storiesSystem = `You write a personal newspaper from Israeli news sites. The input is several stories; each
 story is a few articles from different sites about one event, each with an id in brackets, its site, time, title,

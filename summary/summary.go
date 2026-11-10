@@ -321,7 +321,7 @@ type sources struct {
 	urls map[string]string // URL → id
 	// What sentences were dropped, for the log.
 	cut, unsourced, mended int
-	mendedEnd              string // the end of a mended sentence, for the log
+	mendedEnd              string // the end of a sentence cut short, for the log
 }
 
 // inlineRefs are footnotes the model wrote into the text too ("… נסגרו [a1, a3].").
@@ -381,11 +381,10 @@ func (s *sources) sentences(in []answerSentence, allowed map[string]bool) []Sent
 			continue
 		}
 		if !finished(text) {
-			// The model left out the period; the answer itself is whole (a cut one isn't valid JSON, or stops with
-			// MAX_TOKENS, and fails before this).
+			// Cut short: the model wrote an ASCII quote mark (צה"ל) that ended its JSON string. Dropped, not mended.
 			s.mended++
 			s.mendedEnd = string([]rune(text)[max(0, len([]rune(text))-20):])
-			text += "."
+			continue
 		}
 		var urls []string
 		seen := map[string]bool{}
@@ -445,7 +444,20 @@ func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSumma
 	return b.String()
 }
 
-func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+// oneLine is s on one line, with Hebrew abbreviations' quote marks as the Hebrew ones: 'צה"ל' becomes 'צה״ל' and
+// "ג'" becomes "ג׳". The model copies how the input writes them, and an ASCII " in its JSON answer ends the string:
+// the sentence is cut at the abbreviation ("…פעילי ג").
+func oneLine(s string) string { return hebrewMarks(strings.Join(strings.Fields(s), " ")) }
+
+var (
+	gershayim = regexp.MustCompile(`(\p{Hebrew})["״“”](\p{Hebrew})`)
+	geresh    = regexp.MustCompile(`(\p{Hebrew})['׳‘’]`)
+)
+
+func hebrewMarks(s string) string {
+	s = gershayim.ReplaceAllString(s, "$1״$2")
+	return geresh.ReplaceAllString(s, "$1׳")
+}
 
 // cut is s's first n characters, at a word's end.
 func cut(s string, n int) string {
@@ -523,7 +535,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		delete(byID, storyID(a.Story))
 		written++
 	}
-	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d garbled, %d without a source of the story; %d without a period (one ended %q)",
+	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d garbled, %d without a source of the story, %d cut short (one ended %q)",
 		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced, ids.mended, ids.mendedEnd)
 	if written == 0 {
 		w.logf("summaries: nothing written; the answer starts: %s", cut(string(raw), 600))
