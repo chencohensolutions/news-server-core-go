@@ -18,5 +18,6 @@
   "story_text": "title_and_subtitle",
   "story_strictness": 60,
   "story_days": 7,
-  "port_mapping": true
+  "port_mapping": true,
+  "discovery": true
 }

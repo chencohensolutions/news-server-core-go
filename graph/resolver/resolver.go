@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/enroll"
+	"github.com/chencohensolutions/news-server-core-go/graph/model"
 	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/stories"
@@ -24,6 +25,8 @@ type Resolver struct {
 	Store *store.Store
 	// The stories last grouped and when; nil when stories are off.
 	Stories func() ([]stories.Story, time.Time)
+	// Who the server is and where (serverInfo.discovery); nil, or nil from it, before that is known.
+	Discovery func() *model.ServerDiscovery
 }
 
 // Codes in extensions.code that a device acts on.

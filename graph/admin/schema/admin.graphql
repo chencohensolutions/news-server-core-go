@@ -19,8 +19,14 @@ type EnrollmentCode {
   code: String!
   user: String!
   expiresAt: Time!
-  "public_url from config.json, if set."
+  "public_url from config.json, else the router's outside address when the server maps its port; null without either."
   serverUrl: String
+  "The server certificate key's sha256, 64 hex digits: the app pins it."
+  fingerprint: String
+  "The server's ed25519 key in the DHT, 64 hex digits; null when discovery is off."
+  dhtKey: String
+  "Where the running server can be reached now, the most likely first: the app tries them and keeps them."
+  addresses: [String!]!
 }
 
 type Device {

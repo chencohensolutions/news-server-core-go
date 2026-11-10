@@ -205,10 +205,14 @@ func TestARevokedDeviceIsRefused(t *testing.T) {
 
 func TestEnrollmentLinkOpensTheNewsApp(t *testing.T) {
 	server := "https://news.example:56399"
-	if got := enrollmentLink("K7QM4XPD", &server, "ab12"); got != "news://enroll?code=K7QM4XPD&fingerprint=ab12&server=https%3A%2F%2Fnews.example%3A56399" {
+	found := enrollDiscovery{Fingerprint: "ab12", Key: "cd34", Addresses: []string{"https://203.0.113.7:56399", "https://192.168.1.20:56399"}}
+	if got := enrollmentLink("K7QM4XPD", &server, found); got != "news://enroll?address=https%3A%2F%2F203.0.113.7%3A56399&address=https%3A%2F%2F192.168.1.20%3A56399&code=K7QM4XPD&fingerprint=ab12&key=cd34&server=https%3A%2F%2Fnews.example%3A56399" {
 		t.Fatal(got)
 	}
-	if got := enrollmentLink("K7QM4XPD", nil, ""); got != "news://enroll?code=K7QM4XPD" {
+	if got := enrollmentLink("K7QM4XPD", &server, enrollDiscovery{Fingerprint: "ab12"}); got != "news://enroll?code=K7QM4XPD&fingerprint=ab12&server=https%3A%2F%2Fnews.example%3A56399" {
+		t.Fatal(got)
+	}
+	if got := enrollmentLink("K7QM4XPD", nil, enrollDiscovery{}); got != "news://enroll?code=K7QM4XPD" {
 		t.Fatal(got)
 	}
 }

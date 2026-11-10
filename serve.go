@@ -52,6 +52,9 @@ func serve(config auth.AppConfig) {
 	defer stop()
 	unmapped := make(chan struct{})
 	mapPort(stopping, config, unmapped)
+	if err := startDiscovery(stopping, config); err != nil {
+		log.Printf("Discovery is off: %v", err)
+	}
 	go func() {
 		<-stopping.Done()
 		select {
@@ -62,7 +65,7 @@ func serve(config auth.AppConfig) {
 	}()
 	go serveAdmin(config, enrollment)
 	db, job := startReading(config)
-	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version, Store: db}
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version, Store: db, Discovery: forPhones}
 	if job != nil {
 		api.Stories = job.Stories
 	}

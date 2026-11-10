@@ -49,10 +49,13 @@ type ComplexityRoot struct {
 	}
 
 	EnrollmentCode struct {
-		Code      func(childComplexity int) int
-		ExpiresAt func(childComplexity int) int
-		ServerURL func(childComplexity int) int
-		User      func(childComplexity int) int
+		Addresses   func(childComplexity int) int
+		Code        func(childComplexity int) int
+		DhtKey      func(childComplexity int) int
+		ExpiresAt   func(childComplexity int) int
+		Fingerprint func(childComplexity int) int
+		ServerURL   func(childComplexity int) int
+		User        func(childComplexity int) int
 	}
 
 	Mutation struct {
@@ -130,18 +133,36 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Device.User(childComplexity), true
 
+	case "EnrollmentCode.addresses":
+		if e.ComplexityRoot.EnrollmentCode.Addresses == nil {
+			break
+		}
+
+		return e.ComplexityRoot.EnrollmentCode.Addresses(childComplexity), true
 	case "EnrollmentCode.code":
 		if e.ComplexityRoot.EnrollmentCode.Code == nil {
 			break
 		}
 
 		return e.ComplexityRoot.EnrollmentCode.Code(childComplexity), true
+	case "EnrollmentCode.dhtKey":
+		if e.ComplexityRoot.EnrollmentCode.DhtKey == nil {
+			break
+		}
+
+		return e.ComplexityRoot.EnrollmentCode.DhtKey(childComplexity), true
 	case "EnrollmentCode.expiresAt":
 		if e.ComplexityRoot.EnrollmentCode.ExpiresAt == nil {
 			break
 		}
 
 		return e.ComplexityRoot.EnrollmentCode.ExpiresAt(childComplexity), true
+	case "EnrollmentCode.fingerprint":
+		if e.ComplexityRoot.EnrollmentCode.Fingerprint == nil {
+			break
+		}
+
+		return e.ComplexityRoot.EnrollmentCode.Fingerprint(childComplexity), true
 	case "EnrollmentCode.serverUrl":
 		if e.ComplexityRoot.EnrollmentCode.ServerURL == nil {
 			break
@@ -293,8 +314,14 @@ type EnrollmentCode {
   code: String!
   user: String!
   expiresAt: Time!
-  "public_url from config.json, if set."
+  "public_url from config.json, else the router's outside address when the server maps its port; null without either."
   serverUrl: String
+  "The server certificate key's sha256, 64 hex digits: the app pins it."
+  fingerprint: String
+  "The server's ed25519 key in the DHT, 64 hex digits; null when discovery is off."
+  dhtKey: String
+  "Where the running server can be reached now, the most likely first: the app tries them and keeps them."
+  addresses: [String!]!
 }
 
 type Device {
@@ -344,6 +371,12 @@ func (ec *executionContext) childFields_EnrollmentCode(ctx context.Context, fiel
 		return ec.fieldContext_EnrollmentCode_expiresAt(ctx, field)
 	case "serverUrl":
 		return ec.fieldContext_EnrollmentCode_serverUrl(ctx, field)
+	case "fingerprint":
+		return ec.fieldContext_EnrollmentCode_fingerprint(ctx, field)
+	case "dhtKey":
+		return ec.fieldContext_EnrollmentCode_dhtKey(ctx, field)
+	case "addresses":
+		return ec.fieldContext_EnrollmentCode_addresses(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type EnrollmentCode", field.Name)
 }
@@ -834,6 +867,75 @@ func (ec *executionContext) _EnrollmentCode_serverUrl(ctx context.Context, field
 	)
 }
 func (ec *executionContext) fieldContext_EnrollmentCode_serverUrl(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("EnrollmentCode", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _EnrollmentCode_fingerprint(ctx context.Context, field graphql.CollectedField, obj *model.EnrollmentCode) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_EnrollmentCode_fingerprint(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Fingerprint, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_EnrollmentCode_fingerprint(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("EnrollmentCode", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _EnrollmentCode_dhtKey(ctx context.Context, field graphql.CollectedField, obj *model.EnrollmentCode) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_EnrollmentCode_dhtKey(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.DhtKey, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_EnrollmentCode_dhtKey(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("EnrollmentCode", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _EnrollmentCode_addresses(ctx context.Context, field graphql.CollectedField, obj *model.EnrollmentCode) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_EnrollmentCode_addresses(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Addresses, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_EnrollmentCode_addresses(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("EnrollmentCode", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
@@ -2206,6 +2308,15 @@ func (ec *executionContext) _EnrollmentCode(ctx context.Context, sel ast.Selecti
 			}
 		case "serverUrl":
 			out.Values[i] = ec._EnrollmentCode_serverUrl(ctx, field, obj)
+		case "fingerprint":
+			out.Values[i] = ec._EnrollmentCode_fingerprint(ctx, field, obj)
+		case "dhtKey":
+			out.Values[i] = ec._EnrollmentCode_dhtKey(ctx, field, obj)
+		case "addresses":
+			out.Values[i] = ec._EnrollmentCode_addresses(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2766,6 +2877,36 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v any) (time.Time, error) {

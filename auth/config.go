@@ -56,7 +56,13 @@ type AppConfig struct {
 	// Whether the server asks the home router (UPnP or NAT-PMP) to forward its port, so the phone reaches it away
 	// from home; on unless false. With public_url empty, the router's outside address goes in the enrollment link.
 	PortMapping *bool `json:"port_mapping"`
+	// Whether the server publishes its addresses in the BitTorrent DHT, so the app finds it when its address
+	// changes (a home IP); on unless false.
+	Discovery *bool `json:"discovery"`
 }
+
+// DiscoveryOn says whether the server uses the DHT: on unless "discovery": false.
+func (c AppConfig) DiscoveryOn() bool { return c.Discovery == nil || *c.Discovery }
 
 // PortMappingOn says whether the server asks the router to forward its port: on unless "port_mapping": false.
 func (c AppConfig) PortMappingOn() bool { return c.PortMapping == nil || *c.PortMapping }

@@ -113,8 +113,16 @@ type ComplexityRoot struct {
 		Stories           func(childComplexity int) int
 	}
 
+	ServerDiscovery struct {
+		Addresses   func(childComplexity int) int
+		Fingerprint func(childComplexity int) int
+		ID          func(childComplexity int) int
+		Key         func(childComplexity int) int
+	}
+
 	ServerInfo struct {
 		API               func(childComplexity int) int
+		Discovery         func(childComplexity int) int
 		RenewCertificates func(childComplexity int) int
 		Stories           func(childComplexity int) int
 		Version           func(childComplexity int) int
@@ -487,12 +495,43 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Query.Stories(childComplexity), true
 
+	case "ServerDiscovery.addresses":
+		if e.ComplexityRoot.ServerDiscovery.Addresses == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.Addresses(childComplexity), true
+	case "ServerDiscovery.fingerprint":
+		if e.ComplexityRoot.ServerDiscovery.Fingerprint == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.Fingerprint(childComplexity), true
+	case "ServerDiscovery.id":
+		if e.ComplexityRoot.ServerDiscovery.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.ID(childComplexity), true
+	case "ServerDiscovery.key":
+		if e.ComplexityRoot.ServerDiscovery.Key == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.Key(childComplexity), true
+
 	case "ServerInfo.api":
 		if e.ComplexityRoot.ServerInfo.API == nil {
 			break
 		}
 
 		return e.ComplexityRoot.ServerInfo.API(childComplexity), true
+	case "ServerInfo.discovery":
+		if e.ComplexityRoot.ServerInfo.Discovery == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerInfo.Discovery(childComplexity), true
 	case "ServerInfo.renewCertificates":
 		if e.ComplexityRoot.ServerInfo.RenewCertificates == nil {
 			break
@@ -641,6 +680,31 @@ func newExecutionContext(
 }
 
 var sources = []*ast.Source{
+	{Name: "../schema/discovery.graphql", Input: `# --- Finding the server ------------------------------------------------------------
+# As journal-server-go: how the app finds this server when its address changes (package discovery).
+
+extend type ServerInfo {
+  "Who this server is and where it is now; null until the server has worked out its addresses."
+  discovery: ServerDiscovery
+}
+
+"""
+Who this server is and where it is now. The app pins the fingerprint (checking the server's key instead of the host
+name, so any address works), keeps the addresses to try when the one it uses stops answering, and looks the server up
+in the BitTorrent DHT under key when none answers. The DHT record is a BEP 44 mutable item under key with salt
+"news-server/v1", whose value is the sealed record (discovery/record.go: the journal's, with "news" in its labels).
+"""
+type ServerDiscovery {
+  "The sha256 of the server certificate's public key (SubjectPublicKeyInfo), 64 hex digits."
+  fingerprint: String!
+  "The same as a server id, as people type it: base32 in 8 groups of 7 with check letters (MFZWI3D-BONSGYC-…)."
+  id: String!
+  "The server's ed25519 key in the DHT, 64 hex digits; null when it doesn't publish there (discovery is off)."
+  key: String
+  "Where the server can be reached now, https://host:port, the most likely first (public, IPv6, then LAN)."
+  addresses: [String!]!
+}
+`, BuiltIn: false},
 	{Name: "../schema/news.graphql", Input: `# --- Headlines, articles and stories ----------------------------------------------
 # What the server read from the sites (refresh_minutes) and the stories it grouped from them. The fields are the
 # news app's ArticleSummary and Article, so the app shows them as it shows what the phone scraped itself.
@@ -930,6 +994,20 @@ func (ec *executionContext) childFields_Headline(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Headline", field.Name)
 }
 
+func (ec *executionContext) childFields_ServerDiscovery(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "fingerprint":
+		return ec.fieldContext_ServerDiscovery_fingerprint(ctx, field)
+	case "id":
+		return ec.fieldContext_ServerDiscovery_id(ctx, field)
+	case "key":
+		return ec.fieldContext_ServerDiscovery_key(ctx, field)
+	case "addresses":
+		return ec.fieldContext_ServerDiscovery_addresses(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ServerDiscovery", field.Name)
+}
+
 func (ec *executionContext) childFields_ServerInfo(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "api":
@@ -940,6 +1018,8 @@ func (ec *executionContext) childFields_ServerInfo(ctx context.Context, field gr
 		return ec.fieldContext_ServerInfo_version(ctx, field)
 	case "stories":
 		return ec.fieldContext_ServerInfo_stories(ctx, field)
+	case "discovery":
+		return ec.fieldContext_ServerInfo_discovery(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ServerInfo", field.Name)
 }
@@ -2624,6 +2704,98 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _ServerDiscovery_fingerprint(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_fingerprint(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Fingerprint, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_fingerprint(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ServerDiscovery_id(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ServerDiscovery_key(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_key(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Key, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_key(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ServerDiscovery_addresses(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_addresses(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Addresses, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_addresses(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _ServerInfo_api(ctx context.Context, field graphql.CollectedField, obj *model.ServerInfo) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2714,6 +2886,38 @@ func (ec *executionContext) _ServerInfo_stories(ctx context.Context, field graph
 }
 func (ec *executionContext) fieldContext_ServerInfo_stories(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("ServerInfo", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _ServerInfo_discovery(ctx context.Context, field graphql.CollectedField, obj *model.ServerInfo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerInfo_discovery(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Discovery, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {
+			return ec.marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ServerInfo_discovery(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ServerInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ServerDiscovery(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _Source_id(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
@@ -4698,6 +4902,57 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 	return out
 }
 
+var serverDiscoveryImplementors = []string{"ServerDiscovery"}
+
+func (ec *executionContext) _ServerDiscovery(ctx context.Context, sel ast.SelectionSet, obj *model.ServerDiscovery) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, serverDiscoveryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ServerDiscovery")
+		case "fingerprint":
+			out.Values[i] = ec._ServerDiscovery_fingerprint(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "id":
+			out.Values[i] = ec._ServerDiscovery_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "key":
+			out.Values[i] = ec._ServerDiscovery_key(ctx, field, obj)
+		case "addresses":
+			out.Values[i] = ec._ServerDiscovery_addresses(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var serverInfoImplementors = []string{"ServerInfo"}
 
 func (ec *executionContext) _ServerInfo(ctx context.Context, sel ast.SelectionSet, obj *model.ServerInfo) graphql.Marshaler {
@@ -4729,6 +4984,8 @@ func (ec *executionContext) _ServerInfo(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "discovery":
+			out.Values[i] = ec._ServerInfo_discovery(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5701,6 +5958,13 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	_ = ctx
 	res := graphql.MarshalBoolean(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx context.Context, sel ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ServerDiscovery(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {

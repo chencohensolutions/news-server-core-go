@@ -29,6 +29,19 @@ func (r *mutationResolver) CreateEnrollmentCode(ctx context.Context, user string
 			result.ServerURL = &mapped
 		}
 	}
+	result.Addresses = []string{}
+	if r.Discovery != nil {
+		fingerprint, key, addresses := r.Discovery()
+		if fingerprint != "" {
+			result.Fingerprint = &fingerprint
+		}
+		if key != "" {
+			result.DhtKey = &key
+		}
+		if addresses != nil {
+			result.Addresses = addresses
+		}
+	}
 	return result, nil
 }
 
