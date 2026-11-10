@@ -94,6 +94,23 @@ type GeminiStats struct {
 	LastRun *SummaryRun `json:"lastRun,omitempty"`
 }
 
+// One round of the server's loop. A round starts every everyMinutes, or a minute after the last one ends if it ran longer.
+type LoopStats struct {
+	StartedAt    time.Time `json:"startedAt"`
+	EveryMinutes int       `json:"everyMinutes"`
+	// Reading the sites: their headlines and the new articles.
+	ReadSeconds float64 `json:"readSeconds"`
+	Headlines   int     `json:"headlines"`
+	NewArticles int     `json:"newArticles"`
+	FailedSites int     `json:"failedSites"`
+	// Grouping the stories; null when stories are off or still running.
+	GroupSeconds *float64 `json:"groupSeconds,omitempty"`
+	// Writing the summaries with Gemini; null when summaries are off or still running.
+	SummarySeconds *float64 `json:"summarySeconds,omitempty"`
+	// The whole round so far.
+	TotalSeconds float64 `json:"totalSeconds"`
+}
+
 type Mutation struct {
 }
 
@@ -149,6 +166,8 @@ type ServerStats struct {
 	Gemini *GeminiStats `json:"gemini,omitempty"`
 	// Every site's last read, sorted by id.
 	Sites []*SiteStats `json:"sites"`
+	// The latest round of the loop (read the sites, group stories, write summaries); null before the first, or when reading is off.
+	LastLoop *LoopStats `json:"lastLoop,omitempty"`
 }
 
 type SiteStats struct {

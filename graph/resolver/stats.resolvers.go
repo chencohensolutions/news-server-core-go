@@ -45,6 +45,9 @@ func (r *queryResolver) Stats(ctx context.Context) (*model.ServerStats, error) {
 		}
 		stats.Sites = append(stats.Sites, site)
 	}
+	if r.Loop != nil {
+		stats.LastLoop = r.Loop()
+	}
 	if r.Gemini == nil {
 		return stats, nil
 	}

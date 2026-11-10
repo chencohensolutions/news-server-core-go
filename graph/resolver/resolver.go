@@ -32,6 +32,8 @@ type Resolver struct {
 	Summaries bool
 	// Gemini is the summary job's model, budget and latest run, for stats; nil when summaries are off.
 	Gemini *GeminiInfo
+	// Loop is the latest round of reading, grouping and summarizing; nil, or nil from it, before one.
+	Loop func() *model.LoopStats
 	// Who the server is and where (serverInfo.discovery); nil, or nil from it, before that is known.
 	Discovery func() *model.ServerDiscovery
 }

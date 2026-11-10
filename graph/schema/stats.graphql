@@ -18,6 +18,25 @@ type ServerStats {
   gemini: GeminiStats
   "Every site's last read, sorted by id."
   sites: [SiteStats!]!
+  "The latest round of the loop (read the sites, group stories, write summaries); null before the first, or when reading is off."
+  lastLoop: LoopStats
+}
+
+"One round of the server's loop. A round starts every everyMinutes, or a minute after the last one ends if it ran longer."
+type LoopStats {
+  startedAt: Time!
+  everyMinutes: Int!
+  "Reading the sites: their headlines and the new articles."
+  readSeconds: Float!
+  headlines: Int!
+  newArticles: Int!
+  failedSites: Int!
+  "Grouping the stories; null when stories are off or still running."
+  groupSeconds: Float
+  "Writing the summaries with Gemini; null when summaries are off or still running."
+  summarySeconds: Float
+  "The whole round so far."
+  totalSeconds: Float!
 }
 
 type GeminiStats {

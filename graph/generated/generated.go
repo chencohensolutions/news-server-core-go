@@ -128,6 +128,18 @@ type ComplexityRoot struct {
 		Video       func(childComplexity int) int
 	}
 
+	LoopStats struct {
+		EveryMinutes   func(childComplexity int) int
+		FailedSites    func(childComplexity int) int
+		GroupSeconds   func(childComplexity int) int
+		Headlines      func(childComplexity int) int
+		NewArticles    func(childComplexity int) int
+		ReadSeconds    func(childComplexity int) int
+		StartedAt      func(childComplexity int) int
+		SummarySeconds func(childComplexity int) int
+		TotalSeconds   func(childComplexity int) int
+	}
+
 	Mutation struct {
 		EnrollDevice     func(childComplexity int, input model.EnrollDeviceInput) int
 		RenewCertificate func(childComplexity int, csr string, keyProtection model.KeyProtection) int
@@ -172,6 +184,7 @@ type ComplexityRoot struct {
 		Gemini    func(childComplexity int) int
 		GroupedAt func(childComplexity int) int
 		Headlines func(childComplexity int) int
+		LastLoop  func(childComplexity int) int
 		Sites     func(childComplexity int) int
 		Stories   func(childComplexity int) int
 		Summaries func(childComplexity int) int
@@ -601,6 +614,61 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Headline.Video(childComplexity), true
 
+	case "LoopStats.everyMinutes":
+		if e.ComplexityRoot.LoopStats.EveryMinutes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.EveryMinutes(childComplexity), true
+	case "LoopStats.failedSites":
+		if e.ComplexityRoot.LoopStats.FailedSites == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.FailedSites(childComplexity), true
+	case "LoopStats.groupSeconds":
+		if e.ComplexityRoot.LoopStats.GroupSeconds == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.GroupSeconds(childComplexity), true
+	case "LoopStats.headlines":
+		if e.ComplexityRoot.LoopStats.Headlines == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.Headlines(childComplexity), true
+	case "LoopStats.newArticles":
+		if e.ComplexityRoot.LoopStats.NewArticles == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.NewArticles(childComplexity), true
+	case "LoopStats.readSeconds":
+		if e.ComplexityRoot.LoopStats.ReadSeconds == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.ReadSeconds(childComplexity), true
+	case "LoopStats.startedAt":
+		if e.ComplexityRoot.LoopStats.StartedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.StartedAt(childComplexity), true
+	case "LoopStats.summarySeconds":
+		if e.ComplexityRoot.LoopStats.SummarySeconds == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.SummarySeconds(childComplexity), true
+	case "LoopStats.totalSeconds":
+		if e.ComplexityRoot.LoopStats.TotalSeconds == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoopStats.TotalSeconds(childComplexity), true
+
 	case "Mutation.enrollDevice":
 		if e.ComplexityRoot.Mutation.EnrollDevice == nil {
 			break
@@ -810,6 +878,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ServerStats.Headlines(childComplexity), true
+	case "ServerStats.lastLoop":
+		if e.ComplexityRoot.ServerStats.LastLoop == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.LastLoop(childComplexity), true
 	case "ServerStats.sites":
 		if e.ComplexityRoot.ServerStats.Sites == nil {
 			break
@@ -1342,6 +1416,25 @@ type ServerStats {
   gemini: GeminiStats
   "Every site's last read, sorted by id."
   sites: [SiteStats!]!
+  "The latest round of the loop (read the sites, group stories, write summaries); null before the first, or when reading is off."
+  lastLoop: LoopStats
+}
+
+"One round of the server's loop. A round starts every everyMinutes, or a minute after the last one ends if it ran longer."
+type LoopStats {
+  startedAt: Time!
+  everyMinutes: Int!
+  "Reading the sites: their headlines and the new articles."
+  readSeconds: Float!
+  headlines: Int!
+  newArticles: Int!
+  failedSites: Int!
+  "Grouping the stories; null when stories are off or still running."
+  groupSeconds: Float
+  "Writing the summaries with Gemini; null when summaries are off or still running."
+  summarySeconds: Float
+  "The whole round so far."
+  totalSeconds: Float!
 }
 
 type GeminiStats {
@@ -1590,6 +1683,30 @@ func (ec *executionContext) childFields_Headline(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Headline", field.Name)
 }
 
+func (ec *executionContext) childFields_LoopStats(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "startedAt":
+		return ec.fieldContext_LoopStats_startedAt(ctx, field)
+	case "everyMinutes":
+		return ec.fieldContext_LoopStats_everyMinutes(ctx, field)
+	case "readSeconds":
+		return ec.fieldContext_LoopStats_readSeconds(ctx, field)
+	case "headlines":
+		return ec.fieldContext_LoopStats_headlines(ctx, field)
+	case "newArticles":
+		return ec.fieldContext_LoopStats_newArticles(ctx, field)
+	case "failedSites":
+		return ec.fieldContext_LoopStats_failedSites(ctx, field)
+	case "groupSeconds":
+		return ec.fieldContext_LoopStats_groupSeconds(ctx, field)
+	case "summarySeconds":
+		return ec.fieldContext_LoopStats_summarySeconds(ctx, field)
+	case "totalSeconds":
+		return ec.fieldContext_LoopStats_totalSeconds(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type LoopStats", field.Name)
+}
+
 func (ec *executionContext) childFields_Sentence(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "text":
@@ -1648,6 +1765,8 @@ func (ec *executionContext) childFields_ServerStats(ctx context.Context, field g
 		return ec.fieldContext_ServerStats_gemini(ctx, field)
 	case "sites":
 		return ec.fieldContext_ServerStats_sites(ctx, field)
+	case "lastLoop":
+		return ec.fieldContext_ServerStats_lastLoop(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ServerStats", field.Name)
 }
@@ -3384,6 +3503,213 @@ func (ec *executionContext) fieldContext_Headline_lastSeen(_ context.Context, fi
 	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type Time does not have child fields"))
 }
 
+func (ec *executionContext) _LoopStats_startedAt(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_startedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.StartedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_startedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_everyMinutes(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_everyMinutes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.EveryMinutes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_everyMinutes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_readSeconds(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_readSeconds(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ReadSeconds, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v float64) graphql.Marshaler {
+			return ec.marshalNFloat2float64(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_readSeconds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Float does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_headlines(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_headlines(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Headlines, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_headlines(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_newArticles(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_newArticles(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.NewArticles, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_newArticles(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_failedSites(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_failedSites(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FailedSites, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_failedSites(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_groupSeconds(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_groupSeconds(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.GroupSeconds, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *float64) graphql.Marshaler {
+			return ec.marshalOFloat2ᚖfloat64(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_groupSeconds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Float does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_summarySeconds(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_summarySeconds(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SummarySeconds, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *float64) graphql.Marshaler {
+			return ec.marshalOFloat2ᚖfloat64(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_summarySeconds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Float does not have child fields"))
+}
+
+func (ec *executionContext) _LoopStats_totalSeconds(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoopStats_totalSeconds(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalSeconds, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v float64) graphql.Marshaler {
+			return ec.marshalNFloat2float64(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoopStats_totalSeconds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Float does not have child fields"))
+}
+
 func (ec *executionContext) _Mutation_enrollDevice(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4422,6 +4748,38 @@ func (ec *executionContext) fieldContext_ServerStats_sites(_ context.Context, fi
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_SiteStats(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ServerStats_lastLoop(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_lastLoop(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.LastLoop, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.LoopStats) graphql.Marshaler {
+			return ec.marshalOLoopStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐLoopStats(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_lastLoop(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ServerStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_LoopStats(ctx, field)
 		},
 	}
 	return fc, nil
@@ -6851,6 +7209,79 @@ func (ec *executionContext) _Headline(ctx context.Context, sel ast.SelectionSet,
 	return out
 }
 
+var loopStatsImplementors = []string{"LoopStats"}
+
+func (ec *executionContext) _LoopStats(ctx context.Context, sel ast.SelectionSet, obj *model.LoopStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, loopStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LoopStats")
+		case "startedAt":
+			out.Values[i] = ec._LoopStats_startedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "everyMinutes":
+			out.Values[i] = ec._LoopStats_everyMinutes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "readSeconds":
+			out.Values[i] = ec._LoopStats_readSeconds(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "headlines":
+			out.Values[i] = ec._LoopStats_headlines(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "newArticles":
+			out.Values[i] = ec._LoopStats_newArticles(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "failedSites":
+			out.Values[i] = ec._LoopStats_failedSites(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "groupSeconds":
+			out.Values[i] = ec._LoopStats_groupSeconds(ctx, field, obj)
+		case "summarySeconds":
+			out.Values[i] = ec._LoopStats_summarySeconds(ctx, field, obj)
+		case "totalSeconds":
+			out.Values[i] = ec._LoopStats_totalSeconds(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -7352,6 +7783,8 @@ func (ec *executionContext) _ServerStats(ctx context.Context, sel ast.SelectionS
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "lastLoop":
+			out.Values[i] = ec._ServerStats_lastLoop(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8227,6 +8660,22 @@ func (ec *executionContext) marshalNEnrollmentRejectedReason2githubᚗcomᚋchen
 	return v
 }
 
+func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v any) (float64, error) {
+	res, err := graphql.UnmarshalFloatContext(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.SelectionSet, v float64) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalFloatContext(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return graphql.WrapContextMarshaler(ctx, res)
+}
+
 func (ec *executionContext) marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -8735,6 +9184,23 @@ func (ec *executionContext) marshalODigest2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Digest(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalOFloat2ᚖfloat64(ctx context.Context, v any) (*float64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalFloatContext(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel ast.SelectionSet, v *float64) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	res := graphql.MarshalFloatContext(*v)
+	return graphql.WrapContextMarshaler(ctx, res)
+}
+
 func (ec *executionContext) marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiStats(ctx context.Context, sel ast.SelectionSet, v *model.GeminiStats) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -8758,6 +9224,13 @@ func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.Sele
 	_ = ctx
 	res := graphql.MarshalInt(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOLoopStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐLoopStats(ctx context.Context, sel ast.SelectionSet, v *model.LoopStats) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._LoopStats(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx context.Context, sel ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {

@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/fetch"
 	"github.com/chencohensolutions/news-server-core-go/gemini"
+	"github.com/chencohensolutions/news-server-core-go/graph/model"
 	"github.com/chencohensolutions/news-server-core-go/refresh"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/sites"
@@ -115,6 +117,7 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 		refresher.AfterRun = func(ctx context.Context) {
 			start := time.Now()
 			grouped, err := job.run(ctx)
+			loop.set(refresher.Last().Start, time.Since(start), 0)
 			if err != nil {
 				log.Printf("stories: %v", err)
 				return
@@ -123,14 +126,17 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 			if writer == nil {
 				return
 			}
+			grouping := time.Since(start)
 			start = time.Now()
 			result, err := writer.Run(ctx, grouped)
+			loop.set(refresher.Last().Start, grouping, time.Since(start))
 			if err != nil {
 				log.Printf("summaries: %v", err)
 			}
 			log.Printf("summaries: %d written, %d waiting, digest %v, in %s", result.Written, result.Waiting, result.Digest, time.Since(start).Round(time.Millisecond))
 		}
 	}
+	loop.refresher, loop.every = refresher, config.RefreshMinutes
 	go refresher.Loop(context.Background(), time.Duration(config.RefreshMinutes)*time.Minute)
 	return refresher.Store, settings, job, summaries
 }
@@ -162,4 +168,52 @@ func orDefault[T comparable](v, d T) T {
 		return d
 	}
 	return v
+}
+
+// loop times the server's rounds for the statistics: the refresher's read, then the grouping and the summaries.
+var loop loopTimes
+
+type loopTimes struct {
+	refresher *refresh.Refresher
+	every     int
+
+	mu                  sync.Mutex
+	round               time.Time // the read these belong to
+	grouping, summaries time.Duration
+}
+
+func (l *loopTimes) set(round time.Time, grouping, summaries time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.round, l.grouping, l.summaries = round, grouping, summaries
+}
+
+// stats is the latest round, or nil before one or with reading off.
+func (l *loopTimes) stats() *model.LoopStats {
+	if l.refresher == nil {
+		return nil
+	}
+	last := l.refresher.Last()
+	if last.Start.IsZero() {
+		return nil
+	}
+	out := &model.LoopStats{StartedAt: last.Start, EveryMinutes: l.every, ReadSeconds: last.Took.Seconds(),
+		Headlines: last.Headlines, NewArticles: last.Articles, FailedSites: len(last.Failures)}
+	total := last.Took
+	l.mu.Lock()
+	if l.round.Equal(last.Start) {
+		if l.grouping > 0 {
+			g := l.grouping.Seconds()
+			out.GroupSeconds = &g
+			total += l.grouping
+		}
+		if l.summaries > 0 {
+			s := l.summaries.Seconds()
+			out.SummarySeconds = &s
+			total += l.summaries
+		}
+	}
+	l.mu.Unlock()
+	out.TotalSeconds = total.Seconds()
+	return out
 }

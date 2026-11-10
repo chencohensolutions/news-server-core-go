@@ -29,6 +29,23 @@ type Refresher struct {
 	Log  func(format string, args ...any)
 	// AfterRun, when set, runs after each of Loop's runs: the stories, grouped from what the run stored.
 	AfterRun func(ctx context.Context)
+
+	mu   sync.Mutex
+	last LastRun
+}
+
+// LastRun is Loop's latest read of the sites, for the statistics.
+type LastRun struct {
+	Start time.Time // zero before the first
+	Took  time.Duration
+	Result
+}
+
+// Last is Loop's latest read of the sites.
+func (r *Refresher) Last() LastRun {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.last
 }
 
 func (r *Refresher) now() time.Time {
@@ -193,6 +210,9 @@ func (r *Refresher) Loop(ctx context.Context, interval time.Duration) {
 	for {
 		start := time.Now()
 		result := r.Run(ctx)
+		r.mu.Lock()
+		r.last = LastRun{Start: start, Took: time.Since(start), Result: result}
+		r.mu.Unlock()
 		r.logf("refresh: %d headlines, %d new articles in %s; %d sites failed",
 			result.Headlines, result.Articles, time.Since(start).Round(time.Second), len(result.Failures))
 		for id, why := range result.Failures {
