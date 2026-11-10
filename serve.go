@@ -45,6 +45,7 @@ func serve(config auth.AppConfig) {
 	}
 	log.Printf("Read %d sites from %s", len(found), config.SourcesDir)
 	go serveAdmin(config, enrollment)
+	startReading(config)
 
 	server := &http.Server{
 		Addr:              ":" + config.Port,

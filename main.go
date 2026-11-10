@@ -21,6 +21,7 @@ const usage = `usage:
   news-server enroll-code <user>   create a one-time enrollment code (and its QR code) for a phone
   news-server devices [user]       list enrolled devices
   news-server revoke <serial>      revoke an enrolled device
+  news-server refresh              read every site once now (the server does it every refresh_minutes)
 
 site tools (no config.json needed):
   news-server check <folder>...                              run the golden fixtures of a source folder, or of every source in a folder
@@ -55,6 +56,13 @@ func main() {
 	}
 	if len(os.Args) < 2 {
 		serve(config)
+		return
+	}
+	if os.Args[1] == "refresh" {
+		if err := refreshOnce(config, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 		return
 	}
 	if err := runAdminCommand(config, os.Args[1], os.Args[2:]); err != nil {

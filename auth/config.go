@@ -33,6 +33,16 @@ type AppConfig struct {
 	// The site configs: the news repo's sources/ folder (a git submodule at news/).
 	SourcesDir string       `json:"sources_dir"`
 	Users      []UserConfig `json:"users"`
+	// What the server read from the sites: one SQLite file.
+	DatabaseFile string `json:"database_file"`
+	// Minutes between reads of every site; 0 is DefaultRefreshMinutes, -1 turns reading off.
+	RefreshMinutes int `json:"refresh_minutes"`
+	// Days a headline no longer on its site is kept; 0 is DefaultKeepDays.
+	KeepDays int `json:"keep_days"`
+	// Sources read from their RSS feed instead of their pages (the app's per-site setting).
+	FeedSources []string `json:"feed_sources"`
+	// Each site's wait between its requests in milliseconds, by source id; the others wait 250 ms.
+	SiteWaitsMs map[string]int `json:"site_waits_ms"`
 }
 
 const (
@@ -42,6 +52,9 @@ const (
 	DefaultAdminAddr      = "127.0.0.1:8082"
 	DefaultAdminTokenFile = "admin.token"
 	DefaultSourcesDir     = "news/sources"
+	DefaultDatabaseFile   = "news.db"
+	DefaultRefreshMinutes = 10
+	DefaultKeepDays       = 7
 )
 
 // LoadConfig reads config.json, fills in the defaults and checks the users.
@@ -83,6 +96,15 @@ func (c AppConfig) WithDefaults() AppConfig {
 	}
 	if c.SourcesDir == "" {
 		c.SourcesDir = DefaultSourcesDir
+	}
+	if c.DatabaseFile == "" {
+		c.DatabaseFile = DefaultDatabaseFile
+	}
+	if c.RefreshMinutes == 0 {
+		c.RefreshMinutes = DefaultRefreshMinutes
+	}
+	if c.KeepDays == 0 {
+		c.KeepDays = DefaultKeepDays
 	}
 	return c
 }
