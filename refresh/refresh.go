@@ -26,6 +26,8 @@ type Refresher struct {
 	Keep time.Duration
 	Now  func() time.Time
 	Log  func(format string, args ...any)
+	// AfterRun, when set, runs after each of Loop's runs: the stories, grouped from what the run stored.
+	AfterRun func(ctx context.Context)
 }
 
 func (r *Refresher) now() time.Time {
@@ -191,6 +193,9 @@ func (r *Refresher) Loop(ctx context.Context, interval time.Duration) {
 			result.Headlines, result.Articles, time.Since(start).Round(time.Second), len(result.Failures))
 		for id, why := range result.Failures {
 			r.logf("refresh: %s: %s", id, why)
+		}
+		if r.AfterRun != nil {
+			r.AfterRun(ctx)
 		}
 		wait := interval - time.Since(start)
 		if wait < time.Minute {

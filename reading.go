@@ -54,18 +54,38 @@ func openRefresher(config auth.AppConfig) (*refresh.Refresher, error) {
 		Keep: time.Duration(config.KeepDays) * 24 * time.Hour}, nil
 }
 
-// startReading reads every site every refresh_minutes, in the background.
-func startReading(config auth.AppConfig) {
+// startReading reads every site every refresh_minutes, in the background, and groups the stories after each read.
+// It returns the stories, nil when they are off or their model isn't there (the sites are read either way).
+func startReading(config auth.AppConfig) *storyJob {
 	if config.RefreshMinutes < 0 {
 		log.Printf("Reading the sites is off (refresh_minutes is %d)", config.RefreshMinutes)
-		return
+		return nil
 	}
 	refresher, err := openRefresher(config)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Reading %d sites every %d minutes into %s", len(refresher.Sources), config.RefreshMinutes, config.DatabaseFile)
+	var job *storyJob
+	if config.StoryStrictness < 0 {
+		log.Printf("Stories are off (story_strictness is %d)", config.StoryStrictness)
+	} else if job, err = openStoryJob(config, refresher.Store); err != nil {
+		log.Printf("Stories are off: %v", err)
+		job = nil
+	} else {
+		log.Printf("Grouping stories with %s by %s, strictness %d", config.StoryModel, config.StoryText, config.StoryStrictness)
+		refresher.AfterRun = func(ctx context.Context) {
+			start := time.Now()
+			found, err := job.run(ctx)
+			if err != nil {
+				log.Printf("stories: %v", err)
+				return
+			}
+			log.Printf("stories: %d, %d headlines embedded, in %s", len(found), job.finder.LastEmbedded, time.Since(start).Round(time.Millisecond))
+		}
+	}
 	go refresher.Loop(context.Background(), time.Duration(config.RefreshMinutes)*time.Minute)
+	return job
 }
 
 // refreshOnce is the refresh command: one read of every site, then what it found.

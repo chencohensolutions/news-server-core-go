@@ -29,6 +29,15 @@ headlines, then the article of each headline it doesn't have yet, newest first, 
 with when each headline was first and last seen; a headline gone from its site for `keep_days` (7) is forgotten. It
 reaches the sites with a plain HTTP client.
 
+Milestone 4, stories (`stories/`, `onnx/`): after each read the server groups the stored headlines of the last
+`story_days` (7) into stories, as the app does: each headline embedded with `story_model` (bge-m3 by default; the app's
+other choice, multilingual-e5-small, works too) by `story_text` (title + ". " + subtitle), the close pairs kept in a
+similarity graph, average-link clustering at `story_strictness` (60, the app's slider), and only groups with two sites
+or more. The tokenizer, embedder, graph, clustering and ordering are the app's Kotlin translated file by file, with its
+tests. Vectors are kept in `news.db`, so only new headlines (or ones whose subtitle arrived) are embedded. The model
+runs on ONNX Runtime through purego, as in journal-server-go; `news-server models` downloads both (587 MB for bge-m3).
+Without them the server still reads the sites and says why stories are off.
+
 ## Getting started
 
 Requirements: Go 1.26 or newer (gqlgen runs as a `go tool` of the module) and OpenSSL for the certificate scripts.
@@ -46,6 +55,9 @@ go run . enroll-code hen        # a one-time code and a QR code for the app, val
 go run . devices                # enrolled devices
 go run . revoke <serial>        # lock a device out
 go run . refresh                # read every site once now (the server does it every refresh_minutes)
+go run . models                 # download ONNX Runtime and the story model (once)
+go run . stories                # group the stored headlines now and print the stories
+go run . eval-stories           # the story model on the app's 348 labeled pairs, against the app's numbers
 ```
 
 The site tools need no config.json:
@@ -81,6 +93,9 @@ scrape/dom, jsonpath, rx           jsoup-compatible selectors and text, JSON pat
 fetch/                             the HTTP client the engine reads with
 refresh/  store/                   reading every site on a schedule; the SQLite database
 reading.go                         wires them into the server and the refresh command
+stories/  onnx/                    tokenizer, embedder, similarity graph, clustering; ONNX Runtime through purego
+bundle/                            downloads ONNX Runtime and the models, checked by sha256
+storyjob.go                        groups stories after each read; the models, stories and eval-stories commands
 sitecli.go                         check, extract, fetch
 graph/                             public schema and resolvers; graph/admin/ for the admin API
 news/                              the news repo (submodule): sources/ configs and golden fixtures

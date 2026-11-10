@@ -11,5 +11,11 @@
   "refresh_minutes": 10,
   "keep_days": 7,
   "feed_sources": [],
-  "site_waits_ms": {}
+  "site_waits_ms": {},
+  "onnxruntime": "",
+  "models_dir": "models",
+  "story_model": "bge-m3",
+  "story_text": "title_and_subtitle",
+  "story_strictness": 60,
+  "story_days": 7
 }

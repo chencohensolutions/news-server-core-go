@@ -129,9 +129,15 @@ func TestARunReadsHeadlinesThenTheArticlesItLacks(t *testing.T) {
 	if one.Title != "One, the whole title" || one.Subtitle != "The subtitle" || got["http://a.example/2"].Subtitle != "First paragraph." {
 		t.Fatalf("%+v %+v", one, got["http://a.example/2"])
 	}
-	// Newest first within a site.
+	// Newest first within a site (the sites are read at once, so only a.example's requests).
 	s.mu.Lock()
-	order := strings.Join(s.requests, " ")
+	var mine []string
+	for _, req := range s.requests {
+		if strings.HasPrefix(req, "a.example/") {
+			mine = append(mine, req)
+		}
+	}
+	order := strings.Join(mine, " ")
 	s.mu.Unlock()
 	if !strings.Contains(order, "a.example/2 a.example/1") {
 		t.Fatal(order)

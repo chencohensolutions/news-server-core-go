@@ -28,7 +28,10 @@ decisions and milestones next to the code.
 2. **Engine port** (done): configs, extraction and politeness in Go (`scrape/`), passing every golden fixture and the
    Kotlin unit tests; `news-server check`, `extract` and `fetch`.
 3. **Fetching** (done): every site every 10 minutes, SQLite storage (`modernc.org/sqlite`, no cgo); `news-server refresh`.
-4. **Stories:** embeddings and clustering, matching the Kotlin groups on a frozen feed.
+4. **Stories** (done): the app's tokenizer, embedder, similarity graph, average-link clustering and story order in Go
+   (`stories/`), with the app's unit tests; vectors kept in SQLite, stories grouped after every read; `news-server
+   models`, `stories` and `eval-stories` (the app's 348 labeled pairs, scored as its `score.py` does, next to its
+   numbers).
 5. **API and app:** `headlines`, `article`, `stories`, `digest`, `changes`; Apollo in the news app, the server as a
    setting with the phone's scraper as fallback.
 6. **Summaries:** the 10-minute job, tests with a fake Gemini, the eval; the summary in the app (UI lab mock first).
@@ -36,8 +39,11 @@ decisions and milestones next to the code.
 
 ## Harness
 
-1. **Port parity:** `go test` runs every `news/sources/*/fixtures` page against its `expected/*.json`. A Kotlin JVM
-   test exports a frozen feed (token ids, vectors, groups); Go must match it (vectors within 1e-4).
+1. **Port parity:** `go test` runs every `news/sources/*/fixtures` page against its `expected/*.json`. Stories: the
+   app's clustering and graph tests run on the Go port (the chain against the plain method, close pairs against the
+   full table, components against clustering everything); the embedder is checked on real ONNX Runtime with a
+   hand-written model, and end to end by `news-server eval-stories` on the app's labeled test set
+   (`news/tools/story-model-eval`), whose AUC and best F1 must match the app's (bge-m3: 0.950 and 0.83).
 2. **Server behavior:** a fake clock for the scheduler (10-minute runs, the 12-hour edge, overlapping runs skipped,
    only changed stories re-summarized); a local test site with 403, 429 and 304; a fake Gemini with recorded answers;
    an end-to-end mTLS test (`newTestEnv`).
