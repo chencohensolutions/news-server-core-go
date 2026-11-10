@@ -20,15 +20,18 @@ story is a few articles from different sites about one event, each with an id in
 subtitle and the start of its body.
 
 For every story, write:
-- "unrelated": the ids of the story's articles that are clearly about a different event than the rest (the grouping
-  can be wrong): another person, place or incident. An article that teases the event without naming it ("this is who
-  will replace..."), covers another side of it, or a reaction to it belongs to the story. When unsure, it belongs.
-  Don't use unrelated ones anywhere in the story. Usually none: then an empty list.
+- "unrelated": the story's articles that are clearly about a different event than the rest (the grouping can be
+  wrong), each as its "id" and the "event" it is about instead, in a few Hebrew words. That event must be another
+  incident: another person, place or happening. An article about the same finding, decision or incident in other
+  words, one that teases it without naming it ("this is who will replace..."), covers another side of it, or reacts
+  to it belongs to the story. When unsure, it belongs. Don't use unrelated ones anywhere in the story. Usually none:
+  then an empty list.
 - "title": a short factual Hebrew headline for the whole story.
 - "sentences": the story as 2 to 6 sentences.
 - "contradictions": only where the sources state different facts about the same thing (a number, a name, a time, a
-  place, who did what). One sentence each, saying which source says what, citing both. Different emphasis or a fact
-  only one source has is not a contradiction. Usually there are none: then an empty list.
+  place, who did what) between different sites. One sentence each, naming each site once, saying which site says
+  what, citing both sides. Two articles of one site are not a contradiction, nor different emphasis or a fact only
+  one source has. Usually there are none: then an empty list.
 
 ` + writingRules + `
 
@@ -67,7 +70,11 @@ var storiesSchema = map[string]any{
 					"title":          map[string]any{"type": "string"},
 					"sentences":      map[string]any{"type": "array", "items": sentenceSchema},
 					"contradictions": map[string]any{"type": "array", "items": sentenceSchema},
-					"unrelated":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"unrelated": map[string]any{"type": "array", "items": map[string]any{
+						"type":       "object",
+						"properties": map[string]any{"id": map[string]any{"type": "string"}, "event": map[string]any{"type": "string"}},
+						"required":   []string{"id", "event"},
+					}},
 				},
 				"required": []string{"story", "unrelated", "title", "sentences", "contradictions"},
 			},

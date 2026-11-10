@@ -323,8 +323,8 @@ type sources struct {
 	ids  map[string]string // id → URL
 	urls map[string]string // URL → id
 	// What sentences were dropped, for the log.
-	cut, unsourced, mended int
-	mendedEnd              string // the end of a sentence cut short, for the log
+	cut, unsourced, mended, oneSided int
+	mendedEnd                        string // the end of a sentence cut short, for the log
 }
 
 // inlineRefs are footnotes the model wrote into the text too ("… נסגרו [a1, a3].").
@@ -412,6 +412,34 @@ func (s *sources) sentences(in []answerSentence, allowed map[string]bool) []Sent
 func finished(text string) bool {
 	text = strings.TrimRight(text, "\"'״׳)”’ ")
 	return strings.HasSuffix(text, ".") || strings.HasSuffix(text, "!") || strings.HasSuffix(text, "?") || strings.HasSuffix(text, "…")
+}
+
+// twoSided is those of contradictions that cite two sites or more: one site's two articles are no contradiction
+// between sources.
+func (s *sources) twoSided(contradictions []Sentence, story stories.Story) []Sentence {
+	siteOf := map[string]string{}
+	for _, r := range story.Reports {
+		siteOf[r.URL] = r.SourceID
+	}
+	out := []Sentence{}
+	for _, c := range contradictions {
+		sites := map[string]bool{}
+		for _, url := range c.Sources {
+			sites[siteOf[url]] = true
+		}
+		if len(sites) > 1 {
+			out = append(out, c)
+		} else {
+			s.oneSided++
+		}
+	}
+	return out
+}
+
+// answerUnrelated is an article Gemini found to be about another event, and that event.
+type answerUnrelated struct {
+	ID    string `json:"id"`
+	Event string `json:"event"`
 }
 
 type answerSentence struct {
@@ -503,11 +531,11 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 	}
 	var answer struct {
 		Stories []struct {
-			Story          string           `json:"story"`
-			Title          string           `json:"title"`
-			Sentences      []answerSentence `json:"sentences"`
-			Contradictions []answerSentence `json:"contradictions"`
-			Unrelated      []string         `json:"unrelated"`
+			Story          string            `json:"story"`
+			Title          string            `json:"title"`
+			Sentences      []answerSentence  `json:"sentences"`
+			Contradictions []answerSentence  `json:"contradictions"`
+			Unrelated      []answerUnrelated `json:"unrelated"`
 		} `json:"stories"`
 	}
 	if err := json.Unmarshal(raw, &answer); err != nil {
@@ -526,8 +554,12 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		}
 		// An article Gemini found to be about something else is no source of this story.
 		var unrelated []string
-		for _, ref := range a.Unrelated {
-			for _, id := range articleRef.FindAllString(ref, -1) {
+		for _, u := range a.Unrelated {
+			if strings.TrimSpace(u.Event) == "" {
+				// No other event named: not shown to be about another one.
+				continue
+			}
+			for _, id := range articleRef.FindAllString(u.ID, -1) {
 				if url := ids.ids[id]; own[url] {
 					own[url] = false
 					unrelated = append(unrelated, url)
@@ -535,7 +567,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			}
 		}
 		summary := StorySummary{Title: strings.TrimSpace(a.Title), Sentences: ids.sentences(a.Sentences, own),
-			Contradictions: ids.sentences(a.Contradictions, own), Unrelated: unrelated, WrittenAt: now}
+			Contradictions: ids.twoSided(ids.sentences(a.Contradictions, own), s), Unrelated: unrelated, WrittenAt: now}
 		if len(summary.Sentences) == 0 {
 			continue
 		}
@@ -565,8 +597,8 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 	if ids.mended > 0 {
 		cutShort += fmt.Sprintf(" (one ended %q)", ids.mendedEnd)
 	}
-	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d garbled, %d without a source of the story, %s cut short",
-		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced, cutShort)
+	w.logf("summaries: Gemini answered for %d of %d stories (%d not asked); %d written; sentences dropped: %d garbled, %d without a source of the story, %s cut short, %d contradictions within one site",
+		len(answer.Stories), asked, unknown, written, ids.cut, ids.unsourced, cutShort, ids.oneSided)
 	if written == 0 {
 		w.logf("summaries: nothing written; the answer starts: %s", cut(string(raw), 600))
 	}
