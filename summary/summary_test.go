@@ -291,3 +291,26 @@ func TestABusyGeminiIsTriedAgain(t *testing.T) {
 		t.Fatalf("%v, %d requests", err, fake2.count())
 	}
 }
+
+func TestABigStoryShowsEightReportsOnePerSiteFirst(t *testing.T) {
+	var s stories.Story
+	for i := range 12 {
+		s.Reports = append(s.Reports, scrape.ArticleSummary{SourceID: fmt.Sprintf("site%d", i%3), URL: fmt.Sprintf("https://x/%d", i)})
+	}
+	got := shown(s)
+	if len(got) != 8 || got[0].SourceID != "site0" || got[1].SourceID != "site1" || got[2].SourceID != "site2" || got[3].URL != "https://x/3" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestFootnotesAreCappedAndGarbledSentencesDropped(t *testing.T) {
+	ids := newSources()
+	var refs []string
+	for i := range 7 {
+		refs = append(refs, ids.id(fmt.Sprintf("https://x/%d", i)))
+	}
+	got := ids.sentences([]answerSentence{{Text: "עובדה.", Sources: refs}, {Text: "מסوוג.", Sources: refs}}, nil)
+	if len(got) != 1 || len(got[0].Sources) != maxFootnotes || ids.cut != 1 {
+		t.Fatalf("%+v, %d cut", got, ids.cut)
+	}
+}

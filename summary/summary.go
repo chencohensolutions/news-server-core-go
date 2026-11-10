@@ -31,7 +31,9 @@ const (
 	DefaultMinReports = 2
 	DefaultMaxChars   = 40_000 // of article text in one request
 	maxStories        = 12     // stories in one request: a long answer is where the model cuts sentences short
-	articleChars      = 1_500  // of each article's body
+	articleChars      = 800    // of each article's body
+	maxReports        = 8      // of a story's reports in the prompt, one per site first
+	maxFootnotes      = 5      // of one sentence: more can't all state it
 	digestStories     = 8
 )
 
@@ -261,6 +263,26 @@ var (
 	storyRef   = regexp.MustCompile(`\bs\d+\b`)
 )
 
+// arabic is a letter of the Arabic script: the model sometimes slips one into a Hebrew word.
+var arabic = regexp.MustCompile(`\p{Arabic}`)
+
+// shown are the reports of s the prompt shows: one per site first, in the story's order, then the rest, up to
+// maxReports. A story of 20 reports would otherwise fill the request alone.
+func shown(s stories.Story) []scrape.ArticleSummary {
+	var first, rest []scrape.ArticleSummary
+	sites := map[string]bool{}
+	for _, r := range s.Reports {
+		if sites[r.SourceID] {
+			rest = append(rest, r)
+		} else {
+			sites[r.SourceID] = true
+			first = append(first, r)
+		}
+	}
+	out := append(first, rest...)
+	return out[:min(len(out), maxReports)]
+}
+
 // storyID is the story id in what the model wrote for one, or "".
 func storyID(s string) string { return storyRef.FindString(s) }
 
@@ -283,7 +305,8 @@ func (s *sources) sentences(in []answerSentence, allowed map[string]bool) []Sent
 	out := []Sentence{}
 	for _, a := range in {
 		text := strings.TrimSpace(a.Text)
-		if !finished(text) {
+		if !finished(text) || arabic.MatchString(text) {
+			// Cut short, or a garbled word: an Arabic letter inside the Hebrew.
 			s.cut++
 			continue
 		}
@@ -291,7 +314,7 @@ func (s *sources) sentences(in []answerSentence, allowed map[string]bool) []Sent
 		seen := map[string]bool{}
 		for _, ref := range a.Sources {
 			for _, id := range articleRef.FindAllString(ref, -1) {
-				if url, ok := s.ids[id]; ok && !seen[url] && (allowed == nil || allowed[url]) {
+				if url, ok := s.ids[id]; ok && !seen[url] && (allowed == nil || allowed[url]) && len(urls) < maxFootnotes {
 					seen[url] = true
 					urls = append(urls, url)
 				}
@@ -370,7 +393,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		var b strings.Builder
 		id := fmt.Sprintf("s%d", i+1)
 		fmt.Fprintf(&b, "=== סיפור %s ===\n", id)
-		for _, r := range s.Reports {
+		for _, r := range shown(s) {
 			b.WriteString(w.report(ctx, ids, r))
 			b.WriteString("\n")
 		}
