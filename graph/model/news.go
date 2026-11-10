@@ -150,5 +150,5 @@ func SentencesOf(sentences []summary.Sentence, headlines map[string]store.Headli
 // StorySummaryOf is s for the API.
 func StorySummaryOf(s summary.StorySummary, headlines map[string]store.Headline) *StorySummary {
 	return &StorySummary{Title: s.Title, Sentences: SentencesOf(s.Sentences, headlines),
-		Contradictions: SentencesOf(s.Contradictions, headlines), WrittenAt: s.WrittenAt}
+		Contradictions: SentencesOf(s.Contradictions, headlines), Unrelated: append([]string{}, s.Unrelated...), WrittenAt: s.WrittenAt}
 }

@@ -20,6 +20,8 @@ story is a few articles from different sites about one event, each with an id in
 subtitle and the start of its body.
 
 For every story, write:
+- "unrelated": the ids of the story's articles that are about a different event than the rest (the grouping can be
+  wrong). Don't use them anywhere in the story. Usually none: then an empty list.
 - "title": a short factual Hebrew headline for the whole story.
 - "sentences": the story as 2 to 6 sentences.
 - "contradictions": only where the sources state different facts about the same thing (a number, a name, a time, a
@@ -63,8 +65,9 @@ var storiesSchema = map[string]any{
 					"title":          map[string]any{"type": "string"},
 					"sentences":      map[string]any{"type": "array", "items": sentenceSchema},
 					"contradictions": map[string]any{"type": "array", "items": sentenceSchema},
+					"unrelated":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
-				"required": []string{"story", "title", "sentences", "contradictions"},
+				"required": []string{"story", "unrelated", "title", "sentences", "contradictions"},
 			},
 		},
 	},

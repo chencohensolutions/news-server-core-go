@@ -50,7 +50,10 @@ type StorySummary struct {
 	Title          string     `json:"title"`
 	Sentences      []Sentence `json:"sentences"`
 	Contradictions []Sentence `json:"contradictions"`
-	WrittenAt      time.Time  `json:"writtenAt"`
+	// Unrelated are the URLs of the story's articles Gemini found to be about something else: not used, and not
+	// footnotes. The grouping put them in the story by mistake.
+	Unrelated []string  `json:"unrelated,omitempty"`
+	WrittenAt time.Time `json:"writtenAt"`
 }
 
 // Digest is the front page: what is most covered in the last hour.
@@ -504,6 +507,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			Title          string           `json:"title"`
 			Sentences      []answerSentence `json:"sentences"`
 			Contradictions []answerSentence `json:"contradictions"`
+			Unrelated      []string         `json:"unrelated"`
 		} `json:"stories"`
 	}
 	if err := json.Unmarshal(raw, &answer); err != nil {
@@ -520,8 +524,18 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		for _, r := range s.Reports {
 			own[r.URL] = true
 		}
+		// An article Gemini found to be about something else is no source of this story.
+		var unrelated []string
+		for _, ref := range a.Unrelated {
+			for _, id := range articleRef.FindAllString(ref, -1) {
+				if url := ids.ids[id]; own[url] {
+					own[url] = false
+					unrelated = append(unrelated, url)
+				}
+			}
+		}
 		summary := StorySummary{Title: strings.TrimSpace(a.Title), Sentences: ids.sentences(a.Sentences, own),
-			Contradictions: ids.sentences(a.Contradictions, own), WrittenAt: now}
+			Contradictions: ids.sentences(a.Contradictions, own), Unrelated: unrelated, WrittenAt: now}
 		if len(summary.Sentences) == 0 {
 			continue
 		}

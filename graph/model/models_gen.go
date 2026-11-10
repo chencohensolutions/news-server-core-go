@@ -187,7 +187,9 @@ type StorySummary struct {
 	Sentences []*Sentence `json:"sentences"`
 	// Where sites state different facts about the story, one sentence each saying which says what; usually none.
 	Contradictions []*Sentence `json:"contradictions"`
-	WrittenAt      time.Time   `json:"writtenAt"`
+	// URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article.
+	Unrelated []string  `json:"unrelated"`
+	WrittenAt time.Time `json:"writtenAt"`
 }
 
 type SummaryRun struct {

@@ -224,6 +224,7 @@ type ComplexityRoot struct {
 		Contradictions func(childComplexity int) int
 		Sentences      func(childComplexity int) int
 		Title          func(childComplexity int) int
+		Unrelated      func(childComplexity int) int
 		WrittenAt      func(childComplexity int) int
 	}
 
@@ -1033,6 +1034,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StorySummary.Title(childComplexity), true
+	case "StorySummary.unrelated":
+		if e.ComplexityRoot.StorySummary.Unrelated == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Unrelated(childComplexity), true
 	case "StorySummary.writtenAt":
 		if e.ComplexityRoot.StorySummary.WrittenAt == nil {
 			break
@@ -1509,6 +1516,8 @@ type StorySummary {
   sentences: [Sentence!]!
   "Where sites state different facts about the story, one sentence each saying which says what; usually none."
   contradictions: [Sentence!]!
+  "URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article."
+  unrelated: [String!]!
   writtenAt: Time!
 }
 
@@ -1839,6 +1848,8 @@ func (ec *executionContext) childFields_StorySummary(ctx context.Context, field 
 		return ec.fieldContext_StorySummary_sentences(ctx, field)
 	case "contradictions":
 		return ec.fieldContext_StorySummary_contradictions(ctx, field)
+	case "unrelated":
+		return ec.fieldContext_StorySummary_unrelated(ctx, field)
 	case "writtenAt":
 		return ec.fieldContext_StorySummary_writtenAt(ctx, field)
 	}
@@ -5313,6 +5324,29 @@ func (ec *executionContext) fieldContext_StorySummary_contradictions(_ context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _StorySummary_unrelated(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_unrelated(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Unrelated, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_unrelated(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _StorySummary_writtenAt(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -8135,6 +8169,11 @@ func (ec *executionContext) _StorySummary(ctx context.Context, sel ast.Selection
 			}
 		case "contradictions":
 			out.Values[i] = ec._StorySummary_contradictions(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "unrelated":
+			out.Values[i] = ec._StorySummary_unrelated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

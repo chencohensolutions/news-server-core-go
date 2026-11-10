@@ -162,7 +162,9 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 		t.Fatalf("%d summaries", len(saved))
 	}
 	// A story's sentences cite only its own articles: the rain article's id in the budget story is dropped.
-	if got := saved[StoryKey(found[1])].Sentences; len(got) != 1 || strings.Join(got[0].Sources, " ") != budgetSited.URL+" "+budgetSiteg.URL {
+	// And not an article Gemini found unrelated: siteg's is listed, and gone from the footnotes.
+	if got := saved[StoryKey(found[1])]; len(got.Sentences) != 1 || strings.Join(got.Sentences[0].Sources, " ") != budgetSited.URL ||
+		strings.Join(got.Unrelated, " ") != budgetSiteg.URL {
 		t.Fatalf("budget %+v", got)
 	}
 	// The digest: the stories with reports in the last hour, from their summaries; its thoughts are not the answer.
