@@ -2,7 +2,7 @@
 # Every root field requires a client certificate unless it is marked @public.
 # See docs/authentication.md.
 #
-# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED.
+# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED, BAD_REQUEST (more than a field allows).
 
 scalar Time
 
@@ -23,6 +23,8 @@ type ServerInfo {
   renewCertificates: Boolean!
   "The server's version and build."
   version: String!
+  "The server groups stories (its story model is installed and story_strictness isn't -1)."
+  stories: Boolean!
 }
 
 type Mutation {

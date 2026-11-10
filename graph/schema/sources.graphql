@@ -1,9 +1,19 @@
 # --- News sites -----------------------------------------------------------------
-# The sites the server reads, from the news repo's sources/<id>/config.json.
+# The sites the server reads, from the news repo's sources/<id>/config.json, and the app's Sources screen's
+# settings for each, kept on the server.
 
 extend type Query {
-  "Every site the server reads, sorted by id."
+  "Every site the server knows, sorted by id, with its settings; switched-off sites too."
   sources: [Source!]!
+}
+
+extend type Mutation {
+  """
+  Changes one site's settings; the fields left out keep their value. They count from the server's next read of the
+  sites. A site switched off is not read, and its headlines leave headlines and stories at once. An unknown id or a
+  waitMs out of range fails with BAD_REQUEST in extensions.code.
+  """
+  setSource(id: String!, enabled: Boolean, feed: Boolean, waitMs: Int): Source!
 }
 
 type Source {
@@ -14,4 +24,12 @@ type Source {
   baseUrl: String!
   "BCP-47 tag of the content (\"he\")."
   language: String!
+  "Whether the server reads the site."
+  enabled: Boolean!
+  "Whether the site has an RSS feed, so feed can be set."
+  hasFeed: Boolean!
+  "Whether the server reads the site's headlines from its RSS feed instead of its pages."
+  feed: Boolean!
+  "The site's wait between two of its requests, in milliseconds (0 to 60000; 250 unless set)."
+  waitMs: Int!
 }

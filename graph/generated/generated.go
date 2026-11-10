@@ -32,6 +32,7 @@ type Config = graphql.Config[ResolverRoot, DirectiveRoot, ComplexityRoot]
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Source() SourceResolver
 }
 
 type DirectiveRoot struct {
@@ -39,6 +40,34 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	Article struct {
+		Author      func(childComplexity int) int
+		Blocks      func(childComplexity int) int
+		Body        func(childComplexity int) int
+		Category    func(childComplexity int) int
+		ImageURL    func(childComplexity int) int
+		PublishedAt func(childComplexity int) int
+		SourceID    func(childComplexity int) int
+		Subtitle    func(childComplexity int) int
+		Title       func(childComplexity int) int
+		URL         func(childComplexity int) int
+		Video       func(childComplexity int) int
+	}
+
+	ArticleBlock struct {
+		Caption func(childComplexity int) int
+		Text    func(childComplexity int) int
+		Type    func(childComplexity int) int
+		URL     func(childComplexity int) int
+	}
+
+	ArticleVideo struct {
+		Duration func(childComplexity int) int
+		Embed    func(childComplexity int) int
+		Poster   func(childComplexity int) int
+		Stream   func(childComplexity int) int
+	}
+
 	EnrolledDevice struct {
 		Certificate func(childComplexity int) int
 		DeviceName  func(childComplexity int) int
@@ -56,39 +85,91 @@ type ComplexityRoot struct {
 		Reason func(childComplexity int) int
 	}
 
+	Headline struct {
+		Category    func(childComplexity int) int
+		FirstSeen   func(childComplexity int) int
+		ImageURL    func(childComplexity int) int
+		LastSeen    func(childComplexity int) int
+		PublishedAt func(childComplexity int) int
+		SourceID    func(childComplexity int) int
+		Subtitle    func(childComplexity int) int
+		Summary     func(childComplexity int) int
+		Title       func(childComplexity int) int
+		URL         func(childComplexity int) int
+		Video       func(childComplexity int) int
+	}
+
 	Mutation struct {
 		EnrollDevice     func(childComplexity int, input model.EnrollDeviceInput) int
 		RenewCertificate func(childComplexity int, csr string, keyProtection model.KeyProtection) int
+		SetSource        func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
 	}
 
 	Query struct {
+		Article           func(childComplexity int, url string) int
+		Articles          func(childComplexity int, urls []string) int
 		EnrollmentPreview func(childComplexity int, code string) int
+		Headlines         func(childComplexity int, since *time.Time, sourceIds []string) int
 		ServerInfo        func(childComplexity int) int
 		Sources           func(childComplexity int) int
+		Stories           func(childComplexity int) int
+	}
+
+	ServerDiscovery struct {
+		Addresses   func(childComplexity int) int
+		Fingerprint func(childComplexity int) int
+		ID          func(childComplexity int) int
+		Key         func(childComplexity int) int
 	}
 
 	ServerInfo struct {
 		API               func(childComplexity int) int
+		Discovery         func(childComplexity int) int
 		RenewCertificates func(childComplexity int) int
+		Stories           func(childComplexity int) int
 		Version           func(childComplexity int) int
 	}
 
 	Source struct {
 		BaseURL  func(childComplexity int) int
+		Enabled  func(childComplexity int) int
+		Feed     func(childComplexity int) int
+		HasFeed  func(childComplexity int) int
 		ID       func(childComplexity int) int
 		Language func(childComplexity int) int
 		Name     func(childComplexity int) int
+		WaitMs   func(childComplexity int) int
+	}
+
+	Story struct {
+		Reports func(childComplexity int) int
+	}
+
+	StoryList struct {
+		GroupedAt func(childComplexity int) int
+		Stories   func(childComplexity int) int
 	}
 }
 
 type MutationResolver interface {
 	EnrollDevice(ctx context.Context, input model.EnrollDeviceInput) (model.EnrollDeviceResult, error)
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
+	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
 }
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
 	ServerInfo(ctx context.Context) (*model.ServerInfo, error)
+	Headlines(ctx context.Context, since *time.Time, sourceIds []string) ([]*model.Headline, error)
+	Article(ctx context.Context, url string) (*model.Article, error)
+	Articles(ctx context.Context, urls []string) ([]*model.Article, error)
+	Stories(ctx context.Context) (*model.StoryList, error)
 	Sources(ctx context.Context) ([]*sites.Source, error)
+}
+type SourceResolver interface {
+	Enabled(ctx context.Context, obj *sites.Source) (bool, error)
+
+	Feed(ctx context.Context, obj *sites.Source) (bool, error)
+	WaitMs(ctx context.Context, obj *sites.Source) (int, error)
 }
 
 type executableSchema graphql.ExecutableSchemaState[ResolverRoot, DirectiveRoot, ComplexityRoot]
@@ -104,6 +185,123 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := newExecutionContext(nil, e, nil)
 	_ = ec
 	switch typeName + "." + field {
+
+	case "Article.author":
+		if e.ComplexityRoot.Article.Author == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.Author(childComplexity), true
+	case "Article.blocks":
+		if e.ComplexityRoot.Article.Blocks == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.Blocks(childComplexity), true
+	case "Article.body":
+		if e.ComplexityRoot.Article.Body == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.Body(childComplexity), true
+	case "Article.category":
+		if e.ComplexityRoot.Article.Category == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.Category(childComplexity), true
+	case "Article.imageUrl":
+		if e.ComplexityRoot.Article.ImageURL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.ImageURL(childComplexity), true
+	case "Article.publishedAt":
+		if e.ComplexityRoot.Article.PublishedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.PublishedAt(childComplexity), true
+	case "Article.sourceId":
+		if e.ComplexityRoot.Article.SourceID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.SourceID(childComplexity), true
+	case "Article.subtitle":
+		if e.ComplexityRoot.Article.Subtitle == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.Subtitle(childComplexity), true
+	case "Article.title":
+		if e.ComplexityRoot.Article.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.Title(childComplexity), true
+	case "Article.url":
+		if e.ComplexityRoot.Article.URL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.URL(childComplexity), true
+	case "Article.video":
+		if e.ComplexityRoot.Article.Video == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Article.Video(childComplexity), true
+
+	case "ArticleBlock.caption":
+		if e.ComplexityRoot.ArticleBlock.Caption == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleBlock.Caption(childComplexity), true
+	case "ArticleBlock.text":
+		if e.ComplexityRoot.ArticleBlock.Text == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleBlock.Text(childComplexity), true
+	case "ArticleBlock.type":
+		if e.ComplexityRoot.ArticleBlock.Type == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleBlock.Type(childComplexity), true
+	case "ArticleBlock.url":
+		if e.ComplexityRoot.ArticleBlock.URL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleBlock.URL(childComplexity), true
+
+	case "ArticleVideo.duration":
+		if e.ComplexityRoot.ArticleVideo.Duration == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleVideo.Duration(childComplexity), true
+	case "ArticleVideo.embed":
+		if e.ComplexityRoot.ArticleVideo.Embed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleVideo.Embed(childComplexity), true
+	case "ArticleVideo.poster":
+		if e.ComplexityRoot.ArticleVideo.Poster == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleVideo.Poster(childComplexity), true
+	case "ArticleVideo.stream":
+		if e.ComplexityRoot.ArticleVideo.Stream == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArticleVideo.Stream(childComplexity), true
 
 	case "EnrolledDevice.certificate":
 		if e.ComplexityRoot.EnrolledDevice.Certificate == nil {
@@ -156,6 +354,73 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.EnrollmentRejected.Reason(childComplexity), true
 
+	case "Headline.category":
+		if e.ComplexityRoot.Headline.Category == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.Category(childComplexity), true
+	case "Headline.firstSeen":
+		if e.ComplexityRoot.Headline.FirstSeen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.FirstSeen(childComplexity), true
+	case "Headline.imageUrl":
+		if e.ComplexityRoot.Headline.ImageURL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.ImageURL(childComplexity), true
+	case "Headline.lastSeen":
+		if e.ComplexityRoot.Headline.LastSeen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.LastSeen(childComplexity), true
+	case "Headline.publishedAt":
+		if e.ComplexityRoot.Headline.PublishedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.PublishedAt(childComplexity), true
+	case "Headline.sourceId":
+		if e.ComplexityRoot.Headline.SourceID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.SourceID(childComplexity), true
+	case "Headline.subtitle":
+		if e.ComplexityRoot.Headline.Subtitle == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.Subtitle(childComplexity), true
+	case "Headline.summary":
+		if e.ComplexityRoot.Headline.Summary == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.Summary(childComplexity), true
+	case "Headline.title":
+		if e.ComplexityRoot.Headline.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.Title(childComplexity), true
+	case "Headline.url":
+		if e.ComplexityRoot.Headline.URL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.URL(childComplexity), true
+	case "Headline.video":
+		if e.ComplexityRoot.Headline.Video == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Headline.Video(childComplexity), true
+
 	case "Mutation.enrollDevice":
 		if e.ComplexityRoot.Mutation.EnrollDevice == nil {
 			break
@@ -178,7 +443,40 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RenewCertificate(childComplexity, args["csr"].(string), args["keyProtection"].(model.KeyProtection)), true
+	case "Mutation.setSource":
+		if e.ComplexityRoot.Mutation.SetSource == nil {
+			break
+		}
 
+		args, err := ec.field_Mutation_setSource_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SetSource(childComplexity, args["id"].(string), args["enabled"].(*bool), args["feed"].(*bool), args["waitMs"].(*int)), true
+
+	case "Query.article":
+		if e.ComplexityRoot.Query.Article == nil {
+			break
+		}
+
+		args, err := ec.field_Query_article_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.Article(childComplexity, args["url"].(string)), true
+	case "Query.articles":
+		if e.ComplexityRoot.Query.Articles == nil {
+			break
+		}
+
+		args, err := ec.field_Query_articles_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.Articles(childComplexity, args["urls"].([]string)), true
 	case "Query.enrollmentPreview":
 		if e.ComplexityRoot.Query.EnrollmentPreview == nil {
 			break
@@ -190,6 +488,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.EnrollmentPreview(childComplexity, args["code"].(string)), true
+	case "Query.headlines":
+		if e.ComplexityRoot.Query.Headlines == nil {
+			break
+		}
+
+		args, err := ec.field_Query_headlines_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.Headlines(childComplexity, args["since"].(*time.Time), args["sourceIds"].([]string)), true
 
 	case "Query.serverInfo":
 		if e.ComplexityRoot.Query.ServerInfo == nil {
@@ -203,6 +512,37 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Sources(childComplexity), true
+	case "Query.stories":
+		if e.ComplexityRoot.Query.Stories == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.Stories(childComplexity), true
+
+	case "ServerDiscovery.addresses":
+		if e.ComplexityRoot.ServerDiscovery.Addresses == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.Addresses(childComplexity), true
+	case "ServerDiscovery.fingerprint":
+		if e.ComplexityRoot.ServerDiscovery.Fingerprint == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.Fingerprint(childComplexity), true
+	case "ServerDiscovery.id":
+		if e.ComplexityRoot.ServerDiscovery.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.ID(childComplexity), true
+	case "ServerDiscovery.key":
+		if e.ComplexityRoot.ServerDiscovery.Key == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerDiscovery.Key(childComplexity), true
 
 	case "ServerInfo.api":
 		if e.ComplexityRoot.ServerInfo.API == nil {
@@ -210,12 +550,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ServerInfo.API(childComplexity), true
+	case "ServerInfo.discovery":
+		if e.ComplexityRoot.ServerInfo.Discovery == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerInfo.Discovery(childComplexity), true
 	case "ServerInfo.renewCertificates":
 		if e.ComplexityRoot.ServerInfo.RenewCertificates == nil {
 			break
 		}
 
 		return e.ComplexityRoot.ServerInfo.RenewCertificates(childComplexity), true
+	case "ServerInfo.stories":
+		if e.ComplexityRoot.ServerInfo.Stories == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerInfo.Stories(childComplexity), true
 	case "ServerInfo.version":
 		if e.ComplexityRoot.ServerInfo.Version == nil {
 			break
@@ -229,6 +581,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Source.BaseURL(childComplexity), true
+	case "Source.enabled":
+		if e.ComplexityRoot.Source.Enabled == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.Enabled(childComplexity), true
+	case "Source.feed":
+		if e.ComplexityRoot.Source.Feed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.Feed(childComplexity), true
+	case "Source.hasFeed":
+		if e.ComplexityRoot.Source.HasFeed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.HasFeed(childComplexity), true
 	case "Source.id":
 		if e.ComplexityRoot.Source.ID == nil {
 			break
@@ -247,6 +617,32 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Source.Name(childComplexity), true
+	case "Source.waitMs":
+		if e.ComplexityRoot.Source.WaitMs == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.WaitMs(childComplexity), true
+
+	case "Story.reports":
+		if e.ComplexityRoot.Story.Reports == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Story.Reports(childComplexity), true
+
+	case "StoryList.groupedAt":
+		if e.ComplexityRoot.StoryList.GroupedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StoryList.GroupedAt(childComplexity), true
+	case "StoryList.stories":
+		if e.ComplexityRoot.StoryList.Stories == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StoryList.Stories(childComplexity), true
 
 	}
 	return 0, false
@@ -332,11 +728,120 @@ func newExecutionContext(
 }
 
 var sources = []*ast.Source{
+	{Name: "../schema/discovery.graphql", Input: `# --- Finding the server ------------------------------------------------------------
+# As journal-server-go: how the app finds this server when its address changes (package discovery).
+
+extend type ServerInfo {
+  "Who this server is and where it is now; null until the server has worked out its addresses."
+  discovery: ServerDiscovery
+}
+
+"""
+Who this server is and where it is now. The app pins the fingerprint (checking the server's key instead of the host
+name, so any address works), keeps the addresses to try when the one it uses stops answering, and looks the server up
+in the BitTorrent DHT under key when none answers. The DHT record is a BEP 44 mutable item under key with salt
+"news-server/v1", whose value is the sealed record (discovery/record.go: the journal's, with "news" in its labels).
+"""
+type ServerDiscovery {
+  "The sha256 of the server certificate's public key (SubjectPublicKeyInfo), 64 hex digits."
+  fingerprint: String!
+  "The same as a server id, as people type it: base32 in 8 groups of 7 with check letters (MFZWI3D-BONSGYC-…)."
+  id: String!
+  "The server's ed25519 key in the DHT, 64 hex digits; null when it doesn't publish there (discovery is off)."
+  key: String
+  "Where the server can be reached now, https://host:port, the most likely first (public, IPv6, then LAN)."
+  addresses: [String!]!
+}
+`, BuiltIn: false},
+	{Name: "../schema/news.graphql", Input: `# --- Headlines, articles and stories ----------------------------------------------
+# What the server read from the sites (refresh_minutes) and the stories it grouped from them. The fields are the
+# news app's ArticleSummary and Article, so the app shows them as it shows what the phone scraped itself.
+
+extend type Query {
+  """
+  The headlines seen on their site at or after since (every kept one when left out), newest sighting first; only
+  sourceIds' sites when given. Asking again with since set to the last answer's newest lastSeen gets what changed:
+  new headlines, and known ones seen again or filled in from their article.
+  """
+  headlines(since: Time, sourceIds: [String!]): [Headline!]!
+  "url's article as the server read it; null when it isn't downloaded (not yet, or it failed)."
+  article(url: String!): Article
+  "The articles of urls the server has, in the order asked; the others are left out. At most 200 urls."
+  articles(urls: [String!]!): [Article!]!
+  "The stories the server grouped after its last read of the sites; none until the first grouping, or when stories are off."
+  stories: StoryList!
+}
+
+type Headline {
+  "The site's id (Source.id)."
+  sourceId: String!
+  url: String!
+  title: String!
+  "The list page's summary."
+  summary: String
+  imageUrl: String
+  "When the site says it was published; null when it doesn't say."
+  publishedAt: Time
+  category: String
+  "The article's subtitle, else its first paragraph, once the server has read the article."
+  subtitle: String
+  "The list page marks it as a video."
+  video: Boolean!
+  "When the server first saw it on its site."
+  firstSeen: Time!
+  "When the server last saw it on its site."
+  lastSeen: Time!
+}
+
+type Article {
+  sourceId: String!
+  url: String!
+  title: String!
+  subtitle: String
+  author: String
+  publishedAt: Time
+  "The main picture's URL. The server never downloads media: the app fetches it."
+  imageUrl: String
+  category: String
+  "The paragraphs."
+  body: [String!]!
+  "The body in order, with pictures and embeds between the paragraphs; empty when the config reads paragraphs only."
+  blocks: [ArticleBlock!]!
+  video: ArticleVideo
+}
+
+type ArticleBlock {
+  "text (a paragraph: text) or image (url, and caption when it has one)."
+  type: String!
+  text: String
+  url: String
+  caption: String
+}
+
+type ArticleVideo {
+  poster: String
+  stream: String
+  embed: String
+  duration: String
+}
+
+type StoryList {
+  "When the stories were grouped; null before the first grouping."
+  groupedAt: Time
+  "Newest first: by each story's newest report, untimed ones last."
+  stories: [Story!]!
+}
+
+"Several sites' reports of one event: the first, the newest, is the story's main headline."
+type Story {
+  reports: [Headline!]!
+}
+`, BuiltIn: false},
 	{Name: "../schema/schema.graphql", Input: `# --- Authentication -----------------------------------------------------------
 # Every root field requires a client certificate unless it is marked @public.
 # See docs/authentication.md.
 #
-# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED.
+# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED, BAD_REQUEST (more than a field allows).
 
 scalar Time
 
@@ -357,6 +862,8 @@ type ServerInfo {
   renewCertificates: Boolean!
   "The server's version and build."
   version: String!
+  "The server groups stories (its story model is installed and story_strictness isn't -1)."
+  stories: Boolean!
 }
 
 type Mutation {
@@ -427,11 +934,21 @@ enum EnrollmentRejectedReason {
 }
 `, BuiltIn: false},
 	{Name: "../schema/sources.graphql", Input: `# --- News sites -----------------------------------------------------------------
-# The sites the server reads, from the news repo's sources/<id>/config.json.
+# The sites the server reads, from the news repo's sources/<id>/config.json, and the app's Sources screen's
+# settings for each, kept on the server.
 
 extend type Query {
-  "Every site the server reads, sorted by id."
+  "Every site the server knows, sorted by id, with its settings; switched-off sites too."
   sources: [Source!]!
+}
+
+extend type Mutation {
+  """
+  Changes one site's settings; the fields left out keep their value. They count from the server's next read of the
+  sites. A site switched off is not read, and its headlines leave headlines and stories at once. An unknown id or a
+  waitMs out of range fails with BAD_REQUEST in extensions.code.
+  """
+  setSource(id: String!, enabled: Boolean, feed: Boolean, waitMs: Int): Source!
 }
 
 type Source {
@@ -442,6 +959,14 @@ type Source {
   baseUrl: String!
   "BCP-47 tag of the content (\"he\")."
   language: String!
+  "Whether the server reads the site."
+  enabled: Boolean!
+  "Whether the site has an RSS feed, so feed can be set."
+  hasFeed: Boolean!
+  "Whether the server reads the site's headlines from its RSS feed instead of its pages."
+  feed: Boolean!
+  "The site's wait between two of its requests, in milliseconds (0 to 60000; 250 unless set)."
+  waitMs: Int!
 }
 `, BuiltIn: false},
 }
@@ -451,6 +976,104 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // Each function is generated once per unique object type, deduplicating the
 // switch statements that were previously inlined in every fieldContext_* function.
 
+func (ec *executionContext) childFields_Article(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "sourceId":
+		return ec.fieldContext_Article_sourceId(ctx, field)
+	case "url":
+		return ec.fieldContext_Article_url(ctx, field)
+	case "title":
+		return ec.fieldContext_Article_title(ctx, field)
+	case "subtitle":
+		return ec.fieldContext_Article_subtitle(ctx, field)
+	case "author":
+		return ec.fieldContext_Article_author(ctx, field)
+	case "publishedAt":
+		return ec.fieldContext_Article_publishedAt(ctx, field)
+	case "imageUrl":
+		return ec.fieldContext_Article_imageUrl(ctx, field)
+	case "category":
+		return ec.fieldContext_Article_category(ctx, field)
+	case "body":
+		return ec.fieldContext_Article_body(ctx, field)
+	case "blocks":
+		return ec.fieldContext_Article_blocks(ctx, field)
+	case "video":
+		return ec.fieldContext_Article_video(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Article", field.Name)
+}
+
+func (ec *executionContext) childFields_ArticleBlock(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "type":
+		return ec.fieldContext_ArticleBlock_type(ctx, field)
+	case "text":
+		return ec.fieldContext_ArticleBlock_text(ctx, field)
+	case "url":
+		return ec.fieldContext_ArticleBlock_url(ctx, field)
+	case "caption":
+		return ec.fieldContext_ArticleBlock_caption(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ArticleBlock", field.Name)
+}
+
+func (ec *executionContext) childFields_ArticleVideo(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "poster":
+		return ec.fieldContext_ArticleVideo_poster(ctx, field)
+	case "stream":
+		return ec.fieldContext_ArticleVideo_stream(ctx, field)
+	case "embed":
+		return ec.fieldContext_ArticleVideo_embed(ctx, field)
+	case "duration":
+		return ec.fieldContext_ArticleVideo_duration(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ArticleVideo", field.Name)
+}
+
+func (ec *executionContext) childFields_Headline(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "sourceId":
+		return ec.fieldContext_Headline_sourceId(ctx, field)
+	case "url":
+		return ec.fieldContext_Headline_url(ctx, field)
+	case "title":
+		return ec.fieldContext_Headline_title(ctx, field)
+	case "summary":
+		return ec.fieldContext_Headline_summary(ctx, field)
+	case "imageUrl":
+		return ec.fieldContext_Headline_imageUrl(ctx, field)
+	case "publishedAt":
+		return ec.fieldContext_Headline_publishedAt(ctx, field)
+	case "category":
+		return ec.fieldContext_Headline_category(ctx, field)
+	case "subtitle":
+		return ec.fieldContext_Headline_subtitle(ctx, field)
+	case "video":
+		return ec.fieldContext_Headline_video(ctx, field)
+	case "firstSeen":
+		return ec.fieldContext_Headline_firstSeen(ctx, field)
+	case "lastSeen":
+		return ec.fieldContext_Headline_lastSeen(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Headline", field.Name)
+}
+
+func (ec *executionContext) childFields_ServerDiscovery(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "fingerprint":
+		return ec.fieldContext_ServerDiscovery_fingerprint(ctx, field)
+	case "id":
+		return ec.fieldContext_ServerDiscovery_id(ctx, field)
+	case "key":
+		return ec.fieldContext_ServerDiscovery_key(ctx, field)
+	case "addresses":
+		return ec.fieldContext_ServerDiscovery_addresses(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ServerDiscovery", field.Name)
+}
+
 func (ec *executionContext) childFields_ServerInfo(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "api":
@@ -459,6 +1082,10 @@ func (ec *executionContext) childFields_ServerInfo(ctx context.Context, field gr
 		return ec.fieldContext_ServerInfo_renewCertificates(ctx, field)
 	case "version":
 		return ec.fieldContext_ServerInfo_version(ctx, field)
+	case "stories":
+		return ec.fieldContext_ServerInfo_stories(ctx, field)
+	case "discovery":
+		return ec.fieldContext_ServerInfo_discovery(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ServerInfo", field.Name)
 }
@@ -473,8 +1100,34 @@ func (ec *executionContext) childFields_Source(ctx context.Context, field graphq
 		return ec.fieldContext_Source_baseUrl(ctx, field)
 	case "language":
 		return ec.fieldContext_Source_language(ctx, field)
+	case "enabled":
+		return ec.fieldContext_Source_enabled(ctx, field)
+	case "hasFeed":
+		return ec.fieldContext_Source_hasFeed(ctx, field)
+	case "feed":
+		return ec.fieldContext_Source_feed(ctx, field)
+	case "waitMs":
+		return ec.fieldContext_Source_waitMs(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Source", field.Name)
+}
+
+func (ec *executionContext) childFields_Story(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "reports":
+		return ec.fieldContext_Story_reports(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Story", field.Name)
+}
+
+func (ec *executionContext) childFields_StoryList(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "groupedAt":
+		return ec.fieldContext_StoryList_groupedAt(ctx, field)
+	case "stories":
+		return ec.fieldContext_StoryList_stories(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type StoryList", field.Name)
 }
 
 func (ec *executionContext) childFields___Directive(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -629,6 +1282,44 @@ func (ec *executionContext) field_Mutation_renewCertificate_args(ctx context.Con
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_setSource_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "enabled",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["enabled"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "feed",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["feed"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "waitMs",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["waitMs"] = arg3
+	return args, nil
+}
+
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -643,6 +1334,34 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_article_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "url",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["url"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_articles_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "urls",
+		func(ctx context.Context, v any) ([]string, error) {
+			return ec.unmarshalNString2ᚕstringᚄ(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["urls"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Query_enrollmentPreview_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -654,6 +1373,28 @@ func (ec *executionContext) field_Query_enrollmentPreview_args(ctx context.Conte
 		return nil, err
 	}
 	args["code"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_headlines_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "since",
+		func(ctx context.Context, v any) (*time.Time, error) {
+			return ec.unmarshalOTime2ᚖtimeᚐTime(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["since"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "sourceIds",
+		func(ctx context.Context, v any) ([]string, error) {
+			return ec.unmarshalOString2ᚕstringᚄ(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["sourceIds"] = arg1
 	return args, nil
 }
 
@@ -720,6 +1461,461 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _Article_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_sourceId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Article_sourceId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_url(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_url(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.URL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Article_url(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_title(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Article_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_subtitle(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_subtitle(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Subtitle, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Article_subtitle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_author(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_author(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Author, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Article_author(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_publishedAt(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_publishedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PublishedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Article_publishedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Article_imageUrl(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_imageUrl(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ImageURL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Article_imageUrl(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_category(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_category(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Category, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Article_category(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_body(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_body(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Body, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Article_body(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Article", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Article_blocks(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_blocks(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Blocks, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.ArticleBlock) graphql.Marshaler {
+			return ec.marshalNArticleBlock2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlockᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Article_blocks(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Article",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ArticleBlock(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Article_video(ctx context.Context, field graphql.CollectedField, obj *model.Article) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Article_video(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Video, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.ArticleVideo) graphql.Marshaler {
+			return ec.marshalOArticleVideo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleVideo(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Article_video(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Article",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ArticleVideo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ArticleBlock_type(ctx context.Context, field graphql.CollectedField, obj *model.ArticleBlock) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleBlock_type(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Type, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleBlock_type(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleBlock", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ArticleBlock_text(ctx context.Context, field graphql.CollectedField, obj *model.ArticleBlock) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleBlock_text(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Text, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleBlock_text(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleBlock", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ArticleBlock_url(ctx context.Context, field graphql.CollectedField, obj *model.ArticleBlock) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleBlock_url(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.URL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleBlock_url(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleBlock", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ArticleBlock_caption(ctx context.Context, field graphql.CollectedField, obj *model.ArticleBlock) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleBlock_caption(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Caption, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleBlock_caption(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleBlock", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ArticleVideo_poster(ctx context.Context, field graphql.CollectedField, obj *model.ArticleVideo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleVideo_poster(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Poster, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleVideo_poster(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleVideo", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ArticleVideo_stream(ctx context.Context, field graphql.CollectedField, obj *model.ArticleVideo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleVideo_stream(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Stream, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleVideo_stream(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleVideo", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ArticleVideo_embed(ctx context.Context, field graphql.CollectedField, obj *model.ArticleVideo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleVideo_embed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Embed, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleVideo_embed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleVideo", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ArticleVideo_duration(ctx context.Context, field graphql.CollectedField, obj *model.ArticleVideo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArticleVideo_duration(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Duration, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ArticleVideo_duration(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArticleVideo", field, false, false, errors.New("field of type String does not have child fields"))
+}
 
 func (ec *executionContext) _EnrolledDevice_user(ctx context.Context, field graphql.CollectedField, obj *model.EnrolledDevice) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
@@ -905,6 +2101,259 @@ func (ec *executionContext) fieldContext_EnrollmentRejected_reason(_ context.Con
 	return graphql.NewScalarFieldContext("EnrollmentRejected", field, false, false, errors.New("field of type EnrollmentRejectedReason does not have child fields"))
 }
 
+func (ec *executionContext) _Headline_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_sourceId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_sourceId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_url(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_url(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.URL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_url(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_title(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_summary(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_summary(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Summary, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_summary(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_imageUrl(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_imageUrl(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ImageURL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_imageUrl(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_publishedAt(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_publishedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PublishedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_publishedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_category(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_category(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Category, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_category(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_subtitle(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_subtitle(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Subtitle, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_subtitle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_video(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_video(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Video, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_video(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_firstSeen(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_firstSeen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FirstSeen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_firstSeen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Headline_lastSeen(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Headline_lastSeen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.LastSeen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Headline_lastSeen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
 func (ec *executionContext) _Mutation_enrollDevice(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1006,6 +2455,50 @@ func (ec *executionContext) fieldContext_Mutation_renewCertificate(ctx context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_setSource(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setSource(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetSource(ctx, fc.Args["id"].(string), fc.Args["enabled"].(*bool), fc.Args["feed"].(*bool), fc.Args["waitMs"].(*int))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *sites.Source) graphql.Marshaler {
+			return ec.marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setSource(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Source(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setSource_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_enrollmentPreview(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1090,6 +2583,170 @@ func (ec *executionContext) fieldContext_Query_serverInfo(_ context.Context, fie
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_ServerInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_headlines(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_headlines(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().Headlines(ctx, fc.Args["since"].(*time.Time), fc.Args["sourceIds"].([]string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
+			return ec.marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_headlines(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Headline(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_headlines_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_article(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_article(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().Article(ctx, fc.Args["url"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Article) graphql.Marshaler {
+			return ec.marshalOArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_article(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Article(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_article_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_articles(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_articles(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().Articles(ctx, fc.Args["urls"].([]string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Article) graphql.Marshaler {
+			return ec.marshalNArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_articles(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Article(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_articles_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_stories(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_stories(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().Stories(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StoryList) graphql.Marshaler {
+			return ec.marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryList(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_stories(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StoryList(ctx, field)
 		},
 	}
 	return fc, nil
@@ -1203,6 +2860,98 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _ServerDiscovery_fingerprint(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_fingerprint(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Fingerprint, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_fingerprint(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ServerDiscovery_id(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ServerDiscovery_key(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_key(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Key, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_key(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ServerDiscovery_addresses(ctx context.Context, field graphql.CollectedField, obj *model.ServerDiscovery) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerDiscovery_addresses(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Addresses, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerDiscovery_addresses(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerDiscovery", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _ServerInfo_api(ctx context.Context, field graphql.CollectedField, obj *model.ServerInfo) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1270,6 +3019,61 @@ func (ec *executionContext) _ServerInfo_version(ctx context.Context, field graph
 }
 func (ec *executionContext) fieldContext_ServerInfo_version(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("ServerInfo", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ServerInfo_stories(ctx context.Context, field graphql.CollectedField, obj *model.ServerInfo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerInfo_stories(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Stories, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerInfo_stories(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerInfo", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _ServerInfo_discovery(ctx context.Context, field graphql.CollectedField, obj *model.ServerInfo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerInfo_discovery(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Discovery, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {
+			return ec.marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ServerInfo_discovery(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ServerInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ServerDiscovery(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _Source_id(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
@@ -1362,6 +3166,185 @@ func (ec *executionContext) _Source_language(ctx context.Context, field graphql.
 }
 func (ec *executionContext) fieldContext_Source_language(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Source", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Source_enabled(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_enabled(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Source().Enabled(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_enabled(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Source_hasFeed(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_hasFeed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.HasFeed, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_hasFeed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Source_feed(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_feed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Source().Feed(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_feed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Source_waitMs(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_waitMs(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Source().WaitMs(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_waitMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _Story_reports(ctx context.Context, field graphql.CollectedField, obj *model.Story) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Story_reports(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Reports, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
+			return ec.marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Story_reports(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Story",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Headline(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StoryList_groupedAt(ctx context.Context, field graphql.CollectedField, obj *model.StoryList) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StoryList_groupedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.GroupedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_StoryList_groupedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StoryList", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _StoryList_stories(ctx context.Context, field graphql.CollectedField, obj *model.StoryList) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StoryList_stories(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Stories, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Story) graphql.Marshaler {
+			return ec.marshalNStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StoryList_stories(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StoryList",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Story(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -2536,6 +4519,164 @@ func (ec *executionContext) _EnrollmentPreviewResult(ctx context.Context, sel as
 
 // region    **************************** object.gotpl ****************************
 
+var articleImplementors = []string{"Article"}
+
+func (ec *executionContext) _Article(ctx context.Context, sel ast.SelectionSet, obj *model.Article) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, articleImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Article")
+		case "sourceId":
+			out.Values[i] = ec._Article_sourceId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "url":
+			out.Values[i] = ec._Article_url(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "title":
+			out.Values[i] = ec._Article_title(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "subtitle":
+			out.Values[i] = ec._Article_subtitle(ctx, field, obj)
+		case "author":
+			out.Values[i] = ec._Article_author(ctx, field, obj)
+		case "publishedAt":
+			out.Values[i] = ec._Article_publishedAt(ctx, field, obj)
+		case "imageUrl":
+			out.Values[i] = ec._Article_imageUrl(ctx, field, obj)
+		case "category":
+			out.Values[i] = ec._Article_category(ctx, field, obj)
+		case "body":
+			out.Values[i] = ec._Article_body(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "blocks":
+			out.Values[i] = ec._Article_blocks(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "video":
+			out.Values[i] = ec._Article_video(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var articleBlockImplementors = []string{"ArticleBlock"}
+
+func (ec *executionContext) _ArticleBlock(ctx context.Context, sel ast.SelectionSet, obj *model.ArticleBlock) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, articleBlockImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ArticleBlock")
+		case "type":
+			out.Values[i] = ec._ArticleBlock_type(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "text":
+			out.Values[i] = ec._ArticleBlock_text(ctx, field, obj)
+		case "url":
+			out.Values[i] = ec._ArticleBlock_url(ctx, field, obj)
+		case "caption":
+			out.Values[i] = ec._ArticleBlock_caption(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var articleVideoImplementors = []string{"ArticleVideo"}
+
+func (ec *executionContext) _ArticleVideo(ctx context.Context, sel ast.SelectionSet, obj *model.ArticleVideo) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, articleVideoImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ArticleVideo")
+		case "poster":
+			out.Values[i] = ec._ArticleVideo_poster(ctx, field, obj)
+		case "stream":
+			out.Values[i] = ec._ArticleVideo_stream(ctx, field, obj)
+		case "embed":
+			out.Values[i] = ec._ArticleVideo_embed(ctx, field, obj)
+		case "duration":
+			out.Values[i] = ec._ArticleVideo_duration(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var enrolledDeviceImplementors = []string{"EnrolledDevice", "EnrollDeviceResult"}
 
 func (ec *executionContext) _EnrolledDevice(ctx context.Context, sel ast.SelectionSet, obj *model.EnrolledDevice) graphql.Marshaler {
@@ -2678,6 +4819,80 @@ func (ec *executionContext) _EnrollmentRejected(ctx context.Context, sel ast.Sel
 	return out
 }
 
+var headlineImplementors = []string{"Headline"}
+
+func (ec *executionContext) _Headline(ctx context.Context, sel ast.SelectionSet, obj *model.Headline) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, headlineImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Headline")
+		case "sourceId":
+			out.Values[i] = ec._Headline_sourceId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "url":
+			out.Values[i] = ec._Headline_url(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "title":
+			out.Values[i] = ec._Headline_title(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "summary":
+			out.Values[i] = ec._Headline_summary(ctx, field, obj)
+		case "imageUrl":
+			out.Values[i] = ec._Headline_imageUrl(ctx, field, obj)
+		case "publishedAt":
+			out.Values[i] = ec._Headline_publishedAt(ctx, field, obj)
+		case "category":
+			out.Values[i] = ec._Headline_category(ctx, field, obj)
+		case "subtitle":
+			out.Values[i] = ec._Headline_subtitle(ctx, field, obj)
+		case "video":
+			out.Values[i] = ec._Headline_video(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "firstSeen":
+			out.Values[i] = ec._Headline_firstSeen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "lastSeen":
+			out.Values[i] = ec._Headline_lastSeen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -2707,6 +4922,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "renewCertificate":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_renewCertificate(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "setSource":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setSource(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -2797,6 +5019,91 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "headlines":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_headlines(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "article":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_article(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "articles":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_articles(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "stories":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_stories(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "sources":
 			field := field
 
@@ -2850,6 +5157,57 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 	return out
 }
 
+var serverDiscoveryImplementors = []string{"ServerDiscovery"}
+
+func (ec *executionContext) _ServerDiscovery(ctx context.Context, sel ast.SelectionSet, obj *model.ServerDiscovery) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, serverDiscoveryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ServerDiscovery")
+		case "fingerprint":
+			out.Values[i] = ec._ServerDiscovery_fingerprint(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "id":
+			out.Values[i] = ec._ServerDiscovery_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "key":
+			out.Values[i] = ec._ServerDiscovery_key(ctx, field, obj)
+		case "addresses":
+			out.Values[i] = ec._ServerDiscovery_addresses(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var serverInfoImplementors = []string{"ServerInfo"}
 
 func (ec *executionContext) _ServerInfo(ctx context.Context, sel ast.SelectionSet, obj *model.ServerInfo) graphql.Marshaler {
@@ -2876,6 +5234,13 @@ func (ec *executionContext) _ServerInfo(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "stories":
+			out.Values[i] = ec._ServerInfo_stories(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "discovery":
+			out.Values[i] = ec._ServerInfo_discovery(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2913,20 +5278,213 @@ func (ec *executionContext) _Source(ctx context.Context, sel ast.SelectionSet, o
 		case "id":
 			out.Values[i] = ec._Source_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._Source_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "baseUrl":
 			out.Values[i] = ec._Source_baseUrl(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "language":
 			out.Values[i] = ec._Source_language(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "enabled":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Source_enabled(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "hasFeed":
+			out.Values[i] = ec._Source_hasFeed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "feed":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Source_feed(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "waitMs":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Source_waitMs(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var storyImplementors = []string{"Story"}
+
+func (ec *executionContext) _Story(ctx context.Context, sel ast.SelectionSet, obj *model.Story) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, storyImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Story")
+		case "reports":
+			out.Values[i] = ec._Story_reports(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var storyListImplementors = []string{"StoryList"}
+
+func (ec *executionContext) _StoryList(ctx context.Context, sel ast.SelectionSet, obj *model.StoryList) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, storyListImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("StoryList")
+		case "groupedAt":
+			out.Values[i] = ec._StoryList_groupedAt(ctx, field, obj)
+		case "stories":
+			out.Values[i] = ec._StoryList_stories(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -3288,6 +5846,58 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
+func (ec *executionContext) marshalNArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Article) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx context.Context, sel ast.SelectionSet, v *model.Article) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Article(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNArticleBlock2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlockᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ArticleBlock) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNArticleBlock2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlock(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNArticleBlock2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlock(ctx context.Context, sel ast.SelectionSet, v *model.ArticleBlock) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ArticleBlock(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v any) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -3339,6 +5949,32 @@ func (ec *executionContext) marshalNEnrollmentRejectedReason2githubᚗcomᚋchen
 	return v
 }
 
+func (ec *executionContext) marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNHeadline2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadline(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNHeadline2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadline(ctx context.Context, sel ast.SelectionSet, v *model.Headline) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Headline(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v any) (int, error) {
 	res, err := graphql.UnmarshalInt(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -3379,6 +6015,10 @@ func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋchencohensoluti
 	return ec._ServerInfo(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNSource2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx context.Context, sel ast.SelectionSet, v sites.Source) graphql.Marshaler {
+	return ec._Source(ctx, sel, &v)
+}
+
 func (ec *executionContext) marshalNSource2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSourceᚄ(ctx context.Context, sel ast.SelectionSet, v []*sites.Source) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -3405,6 +6045,46 @@ func (ec *executionContext) marshalNSource2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Source(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Story) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStory(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStory(ctx context.Context, sel ast.SelectionSet, v *model.Story) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Story(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNStoryList2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryList(ctx context.Context, sel ast.SelectionSet, v model.StoryList) graphql.Marshaler {
+	return ec._StoryList(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryList(ctx context.Context, sel ast.SelectionSet, v *model.StoryList) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._StoryList(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalString(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -3419,6 +6099,36 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v any) (time.Time, error) {
@@ -3578,6 +6288,20 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 	return res
 }
 
+func (ec *executionContext) marshalOArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx context.Context, sel ast.SelectionSet, v *model.Article) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Article(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOArticleVideo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleVideo(ctx context.Context, sel ast.SelectionSet, v *model.ArticleVideo) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ArticleVideo(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalOBoolean2bool(ctx context.Context, v any) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -3608,6 +6332,67 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return res
 }
 
+func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalInt(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.SelectionSet, v *int) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalInt(*v)
+	return res
+}
+
+func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx context.Context, sel ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ServerDiscovery(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalOString2ᚖstring(ctx context.Context, v any) (*string, error) {
 	if v == nil {
 		return nil, nil
@@ -3623,6 +6408,24 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	_ = sel
 	_ = ctx
 	res := graphql.MarshalString(*v)
+	return res
+}
+
+func (ec *executionContext) unmarshalOTime2ᚖtimeᚐTime(ctx context.Context, v any) (*time.Time, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalTime(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOTime2ᚖtimeᚐTime(ctx context.Context, sel ast.SelectionSet, v *time.Time) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalTime(*v)
 	return res
 }
 

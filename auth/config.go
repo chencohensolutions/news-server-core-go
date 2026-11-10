@@ -39,9 +39,10 @@ type AppConfig struct {
 	RefreshMinutes int `json:"refresh_minutes"`
 	// Days a headline no longer on its site is kept; 0 is DefaultKeepDays.
 	KeepDays int `json:"keep_days"`
-	// Sources read from their RSS feed instead of their pages (the app's per-site setting).
-	FeedSources []string `json:"feed_sources"`
-	// Each site's wait between its requests in milliseconds, by source id; the others wait 250 ms.
+	// Sources read from their RSS feed instead of their pages, and each site's wait between its requests in
+	// milliseconds (the others wait 250 ms): the starting values; the app's Sources screen changes them (setSource),
+	// and its choices, kept in the database, win.
+	FeedSources []string       `json:"feed_sources"`
 	SiteWaitsMs map[string]int `json:"site_waits_ms"`
 	// Stories: the ONNX Runtime library ("" looks in ./onnxruntime and the usual places), the folder the models are
 	// in (news-server models downloads them), the model (bge-m3 or multilingual-e5-small), what headlines are
@@ -53,7 +54,19 @@ type AppConfig struct {
 	StoryText       string `json:"story_text"`
 	StoryStrictness int    `json:"story_strictness"`
 	StoryDays       int    `json:"story_days"`
+	// Whether the server asks the home router (UPnP or NAT-PMP) to forward its port, so the phone reaches it away
+	// from home; on unless false. With public_url empty, the router's outside address goes in the enrollment link.
+	PortMapping *bool `json:"port_mapping"`
+	// Whether the server publishes its addresses in the BitTorrent DHT, so the app finds it when its address
+	// changes (a home IP); on unless false.
+	Discovery *bool `json:"discovery"`
 }
+
+// DiscoveryOn says whether the server uses the DHT: on unless "discovery": false.
+func (c AppConfig) DiscoveryOn() bool { return c.Discovery == nil || *c.Discovery }
+
+// PortMappingOn says whether the server asks the router to forward its port: on unless "port_mapping": false.
+func (c AppConfig) PortMappingOn() bool { return c.PortMapping == nil || *c.PortMapping }
 
 const (
 	// DefaultPort is one above the journal server's 56398, so both can run on one PC.

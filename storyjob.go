@@ -24,6 +24,8 @@ type storyJob struct {
 	embedder  *stories.Embedder
 	threshold float32
 	days      int
+	// enabled, when set, says whether a site's headlines are grouped: the sites switched off are left out.
+	enabled func(id string) bool
 
 	mu     sync.Mutex
 	latest []stories.Story
@@ -87,9 +89,11 @@ func (j *storyJob) run(ctx context.Context) ([]stories.Story, error) {
 	if err != nil {
 		return nil, err
 	}
-	items := make([]scrape.ArticleSummary, len(headlines))
-	for i, h := range headlines {
-		items[i] = h.ArticleSummary
+	items := make([]scrape.ArticleSummary, 0, len(headlines))
+	for _, h := range headlines {
+		if j.enabled == nil || j.enabled(h.SourceID) {
+			items = append(items, h.ArticleSummary)
+		}
 	}
 	now := time.Now()
 	found, err := j.finder.Find(ctx, stories.WithinDays(items, j.days, now), j.threshold)

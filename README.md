@@ -38,6 +38,11 @@ tests. Vectors are kept in `news.db`, so only new headlines (or ones whose subti
 runs on ONNX Runtime through purego, as in journal-server-go; `news-server models` downloads both (587 MB for bge-m3).
 Without them the server still reads the sites and says why stories are off.
 
+Milestone 5, the API (`graph/schema/news.graphql`): enrolled devices read `headlines` (all kept, or since a time, for
+what changed; optionally some sites only), `article` and `articles` (up to 200 at once), and `stories` (the last
+grouping, newest first). The fields are the app's `ArticleSummary` and `Article`; `serverInfo.stories` says whether
+stories are on.
+
 ## Getting started
 
 Requirements: Go 1.26 or newer (gqlgen runs as a `go tool` of the module) and OpenSSL for the certificate scripts.

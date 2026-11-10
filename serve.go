@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -44,12 +47,32 @@ func serve(config auth.AppConfig) {
 		log.Fatal(err)
 	}
 	log.Printf("Read %d sites from %s", len(found), config.SourcesDir)
+	// Ctrl+C or a service stop removes the router's mapping before the process ends.
+	stopping, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	unmapped := make(chan struct{})
+	mapPort(stopping, config, unmapped)
+	if err := startDiscovery(stopping, config); err != nil {
+		log.Printf("Discovery is off: %v", err)
+	}
+	go func() {
+		<-stopping.Done()
+		select {
+		case <-unmapped:
+		case <-time.After(5 * time.Second):
+		}
+		os.Exit(0)
+	}()
 	go serveAdmin(config, enrollment)
-	startReading(config)
+	db, settings, job := startReading(config, found)
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones}
+	if job != nil {
+		api.Stories = job.Stories
+	}
 
 	server := &http.Server{
 		Addr:              ":" + config.Port,
-		Handler:           newMux(config, enrollment, found),
+		Handler:           newMux(config, api),
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
@@ -109,17 +132,17 @@ func openEnrollment(config auth.AppConfig) (*enroll.Service, error) {
 }
 
 // newMux is the routing table. /query lets anonymous clients in only for the @public enrollment fields.
-func newMux(config auth.AppConfig, enrollment *enroll.Service, found []sites.Source) *http.ServeMux {
+func newMux(config auth.AppConfig, api *resolver.Resolver) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/", playground.Handler("GraphQL playground", "/query"))
 	mux.Handle("/query", withDeadlines(queryReadTimeout, queryWriteTimeout,
-		gzipped(identify(config, enrollment.Registry, true, newGraphQLServer(enrollment, found)))))
+		gzipped(identify(config, api.Enrollment.Registry, true, newGraphQLServer(api)))))
 	return mux
 }
 
-func newGraphQLServer(enrollment *enroll.Service, found []sites.Source) *handler.Server {
+func newGraphQLServer(api *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
-		Resolvers:  &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version},
+		Resolvers:  api,
 		Directives: generated.DirectiveRoot{Public: auth.PassThroughDirective},
 	}))
 	srv.AddTransport(transport.Options{})

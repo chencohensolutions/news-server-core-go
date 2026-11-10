@@ -10,8 +10,14 @@ type EnrollmentCode struct {
 	Code      string    `json:"code"`
 	User      string    `json:"user"`
 	ExpiresAt time.Time `json:"expiresAt"`
-	// public_url from config.json, if set.
+	// public_url from config.json, else the router's outside address when the server maps its port; null without either.
 	ServerURL *string `json:"serverUrl,omitempty"`
+	// The server certificate key's sha256, 64 hex digits: the app pins it.
+	Fingerprint *string `json:"fingerprint,omitempty"`
+	// The server's ed25519 key in the DHT, 64 hex digits; null when discovery is off.
+	DhtKey *string `json:"dhtKey,omitempty"`
+	// Where the running server can be reached now, the most likely first: the app tries them and keeps them.
+	Addresses []string `json:"addresses"`
 }
 
 type Mutation struct {

@@ -1,0 +1,83 @@
+# --- Headlines, articles and stories ----------------------------------------------
+# What the server read from the sites (refresh_minutes) and the stories it grouped from them. The fields are the
+# news app's ArticleSummary and Article, so the app shows them as it shows what the phone scraped itself.
+
+extend type Query {
+  """
+  The headlines seen on their site at or after since (every kept one when left out), newest sighting first; only
+  sourceIds' sites when given. Asking again with since set to the last answer's newest lastSeen gets what changed:
+  new headlines, and known ones seen again or filled in from their article.
+  """
+  headlines(since: Time, sourceIds: [String!]): [Headline!]!
+  "url's article as the server read it; null when it isn't downloaded (not yet, or it failed)."
+  article(url: String!): Article
+  "The articles of urls the server has, in the order asked; the others are left out. At most 200 urls."
+  articles(urls: [String!]!): [Article!]!
+  "The stories the server grouped after its last read of the sites; none until the first grouping, or when stories are off."
+  stories: StoryList!
+}
+
+type Headline {
+  "The site's id (Source.id)."
+  sourceId: String!
+  url: String!
+  title: String!
+  "The list page's summary."
+  summary: String
+  imageUrl: String
+  "When the site says it was published; null when it doesn't say."
+  publishedAt: Time
+  category: String
+  "The article's subtitle, else its first paragraph, once the server has read the article."
+  subtitle: String
+  "The list page marks it as a video."
+  video: Boolean!
+  "When the server first saw it on its site."
+  firstSeen: Time!
+  "When the server last saw it on its site."
+  lastSeen: Time!
+}
+
+type Article {
+  sourceId: String!
+  url: String!
+  title: String!
+  subtitle: String
+  author: String
+  publishedAt: Time
+  "The main picture's URL. The server never downloads media: the app fetches it."
+  imageUrl: String
+  category: String
+  "The paragraphs."
+  body: [String!]!
+  "The body in order, with pictures and embeds between the paragraphs; empty when the config reads paragraphs only."
+  blocks: [ArticleBlock!]!
+  video: ArticleVideo
+}
+
+type ArticleBlock {
+  "text (a paragraph: text) or image (url, and caption when it has one)."
+  type: String!
+  text: String
+  url: String
+  caption: String
+}
+
+type ArticleVideo {
+  poster: String
+  stream: String
+  embed: String
+  duration: String
+}
+
+type StoryList {
+  "When the stories were grouped; null before the first grouping."
+  groupedAt: Time
+  "Newest first: by each story's newest report, untimed ones last."
+  stories: [Story!]!
+}
+
+"Several sites' reports of one event: the first, the newest, is the story's main headline."
+type Story {
+  reports: [Headline!]!
+}

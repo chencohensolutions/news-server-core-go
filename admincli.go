@@ -2,7 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -46,19 +50,25 @@ const deviceFields = "serial user name keyProtection registeredAt expiresAt revo
 func enrollCodeCommand(config auth.AppConfig, user string) error {
 	var data struct {
 		CreateEnrollmentCode struct {
-			Code      string    `json:"code"`
-			User      string    `json:"user"`
-			ExpiresAt time.Time `json:"expiresAt"`
-			ServerURL *string   `json:"serverUrl"`
+			Code        string    `json:"code"`
+			User        string    `json:"user"`
+			ExpiresAt   time.Time `json:"expiresAt"`
+			ServerURL   *string   `json:"serverUrl"`
+			Fingerprint *string   `json:"fingerprint"`
+			DHTKey      *string   `json:"dhtKey"`
+			Addresses   []string  `json:"addresses"`
 		} `json:"createEnrollmentCode"`
 	}
 	err := adminQuery(config, `mutation($user: String!) {
-		createEnrollmentCode(user: $user) { code user expiresAt serverUrl }
+		createEnrollmentCode(user: $user) { code user expiresAt serverUrl fingerprint dhtKey addresses }
 	}`, map[string]any{"user": user}, &data)
 	if err != nil {
 		return err
 	}
 	code := data.CreateEnrollmentCode
+	if code.ServerURL == nil && len(code.Addresses) > 0 {
+		code.ServerURL = &code.Addresses[0]
+	}
 	fmt.Printf("Enrollment code for user %q\n\n", code.User)
 	if code.ServerURL != nil {
 		fmt.Printf("  Server   %s\n", *code.ServerURL)
@@ -67,7 +77,23 @@ func enrollCodeCommand(config auth.AppConfig, user string) error {
 	}
 	fmt.Printf("  Code     %s\n", code.Code)
 	fmt.Printf("  Expires  %s (in %d min), single use\n", code.ExpiresAt.Local().Format("15:04"), int(time.Until(code.ExpiresAt).Round(time.Minute).Minutes()))
-	link := enrollmentLink(code.Code, code.ServerURL)
+	found := enrollDiscovery{Addresses: code.Addresses}
+	if code.DHTKey != nil {
+		found.Key = *code.DHTKey
+	}
+	if code.Fingerprint != nil {
+		found.Fingerprint = *code.Fingerprint
+	} else if found.Fingerprint, err = serverFingerprint(config.TLSCert); err != nil {
+		// The link still works; the app then shows the key it sees for you to confirm.
+		fmt.Fprintf(os.Stderr, "warning: no server key in the link: %v\n", err)
+	}
+	if found.Fingerprint != "" {
+		fmt.Printf("  Key      %s (the app shows it when the code is typed)\n", shortFingerprint(found.Fingerprint))
+	}
+	if found.Key == "" {
+		fmt.Printf("  DHT      off: the app has only these addresses to find the server by\n")
+	}
+	link := enrollmentLink(code.Code, code.ServerURL, found)
 	qr, err := qrcode.New(link, qrcode.Medium)
 	if err != nil {
 		return err
@@ -88,14 +114,66 @@ func terminalQR(qr *qrcode.QRCode) string {
 	return b.String()
 }
 
-// enrollmentLink is what the enrollment QR code holds: news://enroll?code=…&server=…, which opens the app's
-// enrollment on that code. Without a server the app keeps the address it has.
-func enrollmentLink(code string, serverURL *string) string {
+// enrollDiscovery is who the server is and where, for the enrollment link.
+type enrollDiscovery struct {
+	Fingerprint string   // Fingerprint of the server certificate; "" when unknown
+	Key         string   // the DHT key, hex; "" with discovery off
+	Addresses   []string // https://host:port, the most likely first
+}
+
+// enrollmentLink is what the enrollment QR code holds, as journal-server-go's: news://enroll?code=…&server=…, which
+// opens the app's enrollment on that code (without a server the app keeps the address it has), and from found:
+// fingerprint=… (the server certificate's key: the app checks it instead of a CA and the host name, from the first
+// connection, so a self-made CA and an IP address both work), key=… (to look the server up in the DHT when no
+// address answers) and address=… for up to six of the server's addresses.
+func enrollmentLink(code string, serverURL *string, found enrollDiscovery) string {
 	query := url.Values{"code": {code}}
 	if serverURL != nil {
 		query.Set("server", *serverURL)
 	}
+	if found.Fingerprint != "" {
+		query.Set("fingerprint", found.Fingerprint)
+	}
+	if found.Key != "" {
+		query.Set("key", found.Key)
+	}
+	for _, a := range found.Addresses[:min(len(found.Addresses), 6)] {
+		query.Add("address", a)
+	}
 	return "news://enroll?" + query.Encode()
+}
+
+// Fingerprint is the SHA-256 of cert's public key (its SubjectPublicKeyInfo), in hex: what the app pins. The key,
+// not the certificate, so a renewed certificate for the same key keeps working.
+func Fingerprint(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return hex.EncodeToString(sum[:])
+}
+
+// serverFingerprint is the Fingerprint of the server certificate in the PEM file path (tls_cert).
+func serverFingerprint(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return "", fmt.Errorf("%s: no certificate", path)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", err
+	}
+	return Fingerprint(cert), nil
+}
+
+// shortFingerprint is the first 16 hex digits of fingerprint in groups of four, for a person to compare.
+func shortFingerprint(fingerprint string) string {
+	var groups []string
+	for i := 0; i+4 <= min(len(fingerprint), 16); i += 4 {
+		groups = append(groups, fingerprint[i:i+4])
+	}
+	return strings.Join(groups, " ")
 }
 
 func devicesCommand(config auth.AppConfig, args []string) error {

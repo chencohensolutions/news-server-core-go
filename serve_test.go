@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -10,10 +11,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,7 +24,9 @@ import (
 
 	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/enroll"
+	"github.com/chencohensolutions/news-server-core-go/graph/resolver"
 	"github.com/chencohensolutions/news-server-core-go/sites"
+	"github.com/chencohensolutions/news-server-core-go/store"
 )
 
 // testEnv is a full mTLS server with a generated CA, as the journal server's tests have it: real certificates, a
@@ -30,6 +35,9 @@ type testEnv struct {
 	server     *httptest.Server
 	enrollment *enroll.Service
 	roots      *x509.CertPool
+	// The server's database, in the temporary folder, and its resolver, whose Stories a test may set.
+	db  *store.Store
+	api *resolver.Resolver
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -69,14 +77,24 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	enrollment := enroll.NewService(enroll.NewIssuer(caCert, caKey, time.Now), registry, time.Now)
 	found := []sites.Source{{ID: "siteh", Name: "siteh", BaseURL: "https://www.siteh.example", Language: "he"}}
+	db, err := store.Open(filepath.Join(dir, "news.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	settings, err := sites.NewSettings(context.Background(), db, found, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db}
 
 	pool := x509.NewCertPool()
 	pool.AddCert(caCert)
-	server := httptest.NewUnstartedServer(newMux(config, enrollment, found))
+	server := httptest.NewUnstartedServer(newMux(config, api))
 	server.TLS = tlsConfigFor(tls.Certificate{Certificate: [][]byte{serverDER}, PrivateKey: serverKey}, pool)
 	server.StartTLS()
 	t.Cleanup(server.Close)
-	return &testEnv{server: server, enrollment: enrollment, roots: pool}
+	return &testEnv{server: server, enrollment: enrollment, roots: pool, db: db, api: api}
 }
 
 // client is an HTTPS client that trusts the test CA and, with cert, presents it.
@@ -148,14 +166,14 @@ func (e *testEnv) enrollDevice(t *testing.T, user string) (*tls.Certificate, str
 func TestAnEnrolledDeviceReadsTheSites(t *testing.T) {
 	env := newTestEnv(t)
 	cert, _ := env.enrollDevice(t, "hen")
-	status, resp := env.query(t, cert, `{ sources { id name baseUrl language } serverInfo { api renewCertificates } }`, nil)
+	status, resp := env.query(t, cert, `{ sources { id name baseUrl language } serverInfo { api renewCertificates stories } }`, nil)
 	if status != http.StatusOK || len(resp.Errors) > 0 {
 		t.Fatalf("%d %+v", status, resp.Errors)
 	}
 	if got := string(resp.Data["sources"]); got != `[{"id":"siteh","name":"siteh","baseUrl":"https://www.siteh.example","language":"he"}]` {
 		t.Fatalf("sources = %s", got)
 	}
-	if got := string(resp.Data["serverInfo"]); got != `{"api":1,"renewCertificates":true}` {
+	if got := string(resp.Data["serverInfo"]); got != `{"api":1,"renewCertificates":true,"stories":false}` {
 		t.Fatalf("serverInfo = %s", got)
 	}
 }
@@ -192,11 +210,34 @@ func TestARevokedDeviceIsRefused(t *testing.T) {
 
 func TestEnrollmentLinkOpensTheNewsApp(t *testing.T) {
 	server := "https://news.example:56399"
-	if got := enrollmentLink("K7QM4XPD", &server); got != "news://enroll?code=K7QM4XPD&server=https%3A%2F%2Fnews.example%3A56399" {
+	found := enrollDiscovery{Fingerprint: "ab12", Key: "cd34", Addresses: []string{"https://203.0.113.7:56399", "https://192.168.1.20:56399"}}
+	if got := enrollmentLink("K7QM4XPD", &server, found); got != "news://enroll?address=https%3A%2F%2F203.0.113.7%3A56399&address=https%3A%2F%2F192.168.1.20%3A56399&code=K7QM4XPD&fingerprint=ab12&key=cd34&server=https%3A%2F%2Fnews.example%3A56399" {
 		t.Fatal(got)
 	}
-	if got := enrollmentLink("K7QM4XPD", nil); got != "news://enroll?code=K7QM4XPD" {
+	if got := enrollmentLink("K7QM4XPD", &server, enrollDiscovery{Fingerprint: "ab12"}); got != "news://enroll?code=K7QM4XPD&fingerprint=ab12&server=https%3A%2F%2Fnews.example%3A56399" {
 		t.Fatal(got)
+	}
+	if got := enrollmentLink("K7QM4XPD", nil, enrollDiscovery{}); got != "news://enroll?code=K7QM4XPD" {
+		t.Fatal(got)
+	}
+}
+
+// The link's fingerprint is the key the phone sees in the TLS handshake.
+func TestTheLinksFingerprintIsTheKeyTheServerPresents(t *testing.T) {
+	env := newTestEnv(t)
+	resp, err := env.client(nil).Get(env.server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	seen := Fingerprint(resp.TLS.PeerCertificates[0])
+	path := filepath.Join(t.TempDir(), "server.pem")
+	os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: resp.TLS.PeerCertificates[0].Raw}), 0o644)
+	if got, err := serverFingerprint(path); err != nil || got != seen || len(got) != 64 {
+		t.Fatalf("%q, %v; the handshake has %q", got, err, seen)
+	}
+	if got := shortFingerprint(seen); len(got) != 19 || got[:4] != seen[:4] {
+		t.Fatalf("short %q", got)
 	}
 }
 

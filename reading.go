@@ -14,54 +14,80 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/fetch"
 	"github.com/chencohensolutions/news-server-core-go/refresh"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
+	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/store"
 )
 
-// openRefresher sets up reading the sites: their configs, the engine on the fetch client, and the database.
-func openRefresher(config auth.AppConfig) (*refresh.Refresher, error) {
+// openRefresher sets up reading the sites: their configs, the engine on the fetch client, the database, and the
+// sites' settings (found are the sites as the API lists them).
+func openRefresher(config auth.AppConfig, found []sites.Source) (*refresh.Refresher, *sites.Settings, error) {
 	dirs, err := scrape.SourceDirs(config.SourcesDir)
 	if err != nil {
-		return nil, fmt.Errorf("sites: %w", err)
+		return nil, nil, fmt.Errorf("sites: %w", err)
 	}
 	var sources []*scrape.SourceConfig
-	gaps := map[string]time.Duration{}
 	for _, dir := range dirs {
 		if strings.HasPrefix(filepath.Base(dir), "_") {
 			continue
 		}
 		c, err := scrape.LoadConfig(dir)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", dir, err)
+			return nil, nil, fmt.Errorf("%s: %w", dir, err)
 		}
 		sources = append(sources, c)
-		host := fetch.HostOf(c.BaseURL)
-		if ms, ok := config.SiteWaitsMs[c.ID]; ok {
-			gaps[host] = time.Duration(ms) * time.Millisecond
-		}
 	}
-	db, err := store.Open(config.DatabaseFile)
+	db, settings, err := openSettings(config, found)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	client := fetch.NewClient(fetch.Options{EngineDefault: scrape.DefaultUserAgent})
 	engine := scrape.NewEngine(client, nil)
-	engine.Politeness.SetGaps(gaps)
-	feeds := map[string]bool{}
-	for _, id := range config.FeedSources {
-		feeds[id] = true
+	setWaits := func(all map[string]sites.Setting) {
+		gaps := map[string]time.Duration{}
+		for _, c := range sources {
+			if set, ok := all[c.ID]; ok {
+				gaps[fetch.HostOf(c.BaseURL)] = time.Duration(set.WaitMs) * time.Millisecond
+			}
+		}
+		engine.Politeness.SetGaps(gaps)
 	}
-	return &refresh.Refresher{Engine: engine, Store: db, Sources: sources, Feeds: feeds,
-		Keep: time.Duration(config.KeepDays) * 24 * time.Hour}, nil
+	all := map[string]sites.Setting{}
+	for _, c := range sources {
+		all[c.ID] = settings.Get(c.ID)
+	}
+	setWaits(all)
+	settings.OnChange = setWaits
+	return &refresh.Refresher{Engine: engine, Store: db, Sources: sources, Settings: settings.Get,
+		Keep: time.Duration(config.KeepDays) * 24 * time.Hour}, settings, nil
+}
+
+// openSettings opens the database and the sites' settings in it.
+func openSettings(config auth.AppConfig, found []sites.Source) (*store.Store, *sites.Settings, error) {
+	db, err := store.Open(config.DatabaseFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	settings, err := sites.NewSettings(context.Background(), db, found, config.FeedSources, config.SiteWaitsMs)
+	if err != nil {
+		db.Close()
+		return nil, nil, err
+	}
+	return db, settings, nil
 }
 
 // startReading reads every site every refresh_minutes, in the background, and groups the stories after each read.
-// It returns the stories, nil when they are off or their model isn't there (the sites are read either way).
-func startReading(config auth.AppConfig) *storyJob {
+// It returns the database, the sites' settings, and the stories: nil when they are off or their model isn't there
+// (the sites are read either way).
+func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *sites.Settings, *storyJob) {
 	if config.RefreshMinutes < 0 {
 		log.Printf("Reading the sites is off (refresh_minutes is %d)", config.RefreshMinutes)
-		return nil
+		db, settings, err := openSettings(config, found)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return db, settings, nil
 	}
-	refresher, err := openRefresher(config)
+	refresher, settings, err := openRefresher(config, found)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,6 +99,7 @@ func startReading(config auth.AppConfig) *storyJob {
 		log.Printf("Stories are off: %v", err)
 		job = nil
 	} else {
+		job.enabled = settings.Enabled
 		log.Printf("Grouping stories with %s by %s, strictness %d", config.StoryModel, config.StoryText, config.StoryStrictness)
 		refresher.AfterRun = func(ctx context.Context) {
 			start := time.Now()
@@ -85,12 +112,16 @@ func startReading(config auth.AppConfig) *storyJob {
 		}
 	}
 	go refresher.Loop(context.Background(), time.Duration(config.RefreshMinutes)*time.Minute)
-	return job
+	return refresher.Store, settings, job
 }
 
 // refreshOnce is the refresh command: one read of every site, then what it found.
 func refreshOnce(config auth.AppConfig, out io.Writer) error {
-	refresher, err := openRefresher(config)
+	found, err := sites.Load(config.SourcesDir)
+	if err != nil {
+		return err
+	}
+	refresher, _, err := openRefresher(config, found)
 	if err != nil {
 		return err
 	}

@@ -23,7 +23,7 @@ func RequireUserUnlessPublic(ctx context.Context, next graphql.RootResolver) gra
 	}
 	graphql.AddError(ctx, &gqlerror.Error{
 		Message:    "client certificate required for " + field.Name,
-		Extensions: map[string]any{"code": "UNAUTHORIZED"}, // resolver.CodeUnauthorized
+		Extensions: map[string]any{"code": "UNAUTHORIZED"}, // resolver.CodeUnauthorized (resolver imports auth)
 	})
 	return graphql.Null
 }

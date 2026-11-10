@@ -24,6 +24,23 @@ func (r *mutationResolver) CreateEnrollmentCode(ctx context.Context, user string
 	result := &model.EnrollmentCode{Code: code, User: user, ExpiresAt: expiresAt}
 	if r.Config.PublicURL != "" {
 		result.ServerURL = &r.Config.PublicURL
+	} else if r.Mapped != nil {
+		if mapped := r.Mapped(); mapped != "" {
+			result.ServerURL = &mapped
+		}
+	}
+	result.Addresses = []string{}
+	if r.Discovery != nil {
+		fingerprint, key, addresses := r.Discovery()
+		if fingerprint != "" {
+			result.Fingerprint = &fingerprint
+		}
+		if key != "" {
+			result.DhtKey = &key
+		}
+		if addresses != nil {
+			result.Addresses = addresses
+		}
 	}
 	return result, nil
 }

@@ -17,5 +17,7 @@
   "story_model": "bge-m3",
   "story_text": "title_and_subtitle",
   "story_strictness": 60,
-  "story_days": 7
+  "story_days": 7,
+  "port_mapping": true,
+  "discovery": true
 }

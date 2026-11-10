@@ -18,6 +18,8 @@ type Source struct {
 	Name     string `json:"name"`
 	BaseURL  string `json:"baseUrl"`
 	Language string `json:"language"`
+	// The site has an RSS feed the server can read its headlines from instead of its pages.
+	HasFeed bool `json:"-"`
 }
 
 // Load reads every dir/<id>/config.json, sorted by id. Folders whose name starts with "_" (the example) are
@@ -41,8 +43,14 @@ func Load(dir string) ([]Source, error) {
 			return nil, err
 		}
 		var s Source
+		var feed struct {
+			Feed json.RawMessage `json:"feed"`
+		}
 		if err := json.Unmarshal(data, &s); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if err := json.Unmarshal(data, &feed); err == nil && len(feed.Feed) > 0 && string(feed.Feed) != "null" {
+			s.HasFeed = true
 		}
 		if s.ID != e.Name() {
 			return nil, fmt.Errorf("%s: id is %q, not the folder's name %q", path, s.ID, e.Name())

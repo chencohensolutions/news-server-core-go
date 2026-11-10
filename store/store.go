@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS story_vectors (
 	vector BLOB NOT NULL,        -- little-endian float32s
 	PRIMARY KEY (space, key)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS site_settings (
+	source_id TEXT PRIMARY KEY,  -- what the app's Sources screen chose for one site
+	enabled INTEGER NOT NULL,
+	feed INTEGER NOT NULL,
+	wait_ms INTEGER NOT NULL
+);
 `
 
 // Store is the database. Safe for concurrent use.
@@ -357,4 +363,39 @@ func (s *Store) SaveVectors(ctx context.Context, space string, added map[string]
 		}
 	}
 	return tx.Commit()
+}
+
+// SiteSetting is what the app's Sources screen chose for one site: whether the server reads it, from its RSS feed
+// instead of its pages, and its wait between two requests in milliseconds.
+type SiteSetting struct {
+	Enabled bool
+	Feed    bool
+	WaitMs  int
+}
+
+// SiteSettings are the sites' saved settings, by source id; a site never set has none.
+func (s *Store) SiteSettings(ctx context.Context) (map[string]SiteSetting, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT source_id, enabled, feed, wait_ms FROM site_settings`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]SiteSetting{}
+	for rows.Next() {
+		var id string
+		var set SiteSetting
+		if err := rows.Scan(&id, &set.Enabled, &set.Feed, &set.WaitMs); err != nil {
+			return nil, err
+		}
+		out[id] = set
+	}
+	return out, rows.Err()
+}
+
+// SaveSiteSetting keeps sourceID's settings.
+func (s *Store) SaveSiteSetting(ctx context.Context, sourceID string, set SiteSetting) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO site_settings (source_id, enabled, feed, wait_ms) VALUES (?, ?, ?, ?)
+		ON CONFLICT(source_id) DO UPDATE SET enabled = excluded.enabled, feed = excluded.feed, wait_ms = excluded.wait_ms`,
+		sourceID, set.Enabled, set.Feed, set.WaitMs)
+	return err
 }

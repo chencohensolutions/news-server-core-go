@@ -7,9 +7,48 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/chencohensolutions/news-server-core-go/graph/generated"
 	"github.com/chencohensolutions/news-server-core-go/sites"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
+
+// SetSource is the resolver for the setSource field.
+func (r *mutationResolver) SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error) {
+	var site *sites.Source
+	for i := range r.Sites {
+		if r.Sites[i].ID == id {
+			site = &r.Sites[i]
+		}
+	}
+	badRequest := func(format string, args ...any) error {
+		return &gqlerror.Error{Message: fmt.Sprintf(format, args...), Extensions: map[string]any{"code": CodeBadRequest}}
+	}
+	if site == nil || r.Settings == nil {
+		return nil, badRequest("no site %q", id)
+	}
+	set := r.Settings.Get(id)
+	if enabled != nil {
+		set.Enabled = *enabled
+	}
+	if feed != nil {
+		if *feed && !site.HasFeed {
+			return nil, badRequest("%s has no RSS feed", id)
+		}
+		set.Feed = *feed
+	}
+	if waitMs != nil {
+		if *waitMs < 0 || *waitMs > sites.MaxWaitMs {
+			return nil, badRequest("waitMs is %d; it takes 0 to %d", *waitMs, sites.MaxWaitMs)
+		}
+		set.WaitMs = *waitMs
+	}
+	if err := r.Settings.Set(ctx, id, set); err != nil {
+		return nil, err
+	}
+	return site, nil
+}
 
 // Sources is the resolver for the sources field.
 func (r *queryResolver) Sources(ctx context.Context) ([]*sites.Source, error) {
@@ -19,3 +58,23 @@ func (r *queryResolver) Sources(ctx context.Context) ([]*sites.Source, error) {
 	}
 	return found, nil
 }
+
+// Enabled is the resolver for the enabled field.
+func (r *sourceResolver) Enabled(ctx context.Context, obj *sites.Source) (bool, error) {
+	return r.setting(obj).Enabled, nil
+}
+
+// Feed is the resolver for the feed field.
+func (r *sourceResolver) Feed(ctx context.Context, obj *sites.Source) (bool, error) {
+	return r.setting(obj).Feed, nil
+}
+
+// WaitMs is the resolver for the waitMs field.
+func (r *sourceResolver) WaitMs(ctx context.Context, obj *sites.Source) (int, error) {
+	return r.setting(obj).WaitMs, nil
+}
+
+// Source returns generated.SourceResolver implementation.
+func (r *Resolver) Source() generated.SourceResolver { return &sourceResolver{r} }
+
+type sourceResolver struct{ *Resolver }
