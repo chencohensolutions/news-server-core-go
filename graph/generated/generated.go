@@ -97,6 +97,23 @@ type ComplexityRoot struct {
 		URL      func(childComplexity int) int
 	}
 
+	GeminiDay struct {
+		Day            func(childComplexity int) int
+		Requests       func(childComplexity int) int
+		TokensCached   func(childComplexity int) int
+		TokensIn       func(childComplexity int) int
+		TokensOut      func(childComplexity int) int
+		TokensThinking func(childComplexity int) int
+	}
+
+	GeminiStats struct {
+		Budget  func(childComplexity int) int
+		Days    func(childComplexity int) int
+		LastRun func(childComplexity int) int
+		Model   func(childComplexity int) int
+		Today   func(childComplexity int) int
+	}
+
 	Headline struct {
 		Category    func(childComplexity int) int
 		FirstSeen   func(childComplexity int) int
@@ -125,6 +142,7 @@ type ComplexityRoot struct {
 		Headlines         func(childComplexity int, since *time.Time, sourceIds []string) int
 		ServerInfo        func(childComplexity int) int
 		Sources           func(childComplexity int) int
+		Stats             func(childComplexity int) int
 		Stories           func(childComplexity int) int
 	}
 
@@ -147,6 +165,25 @@ type ComplexityRoot struct {
 		Stories           func(childComplexity int) int
 		Summaries         func(childComplexity int) int
 		Version           func(childComplexity int) int
+	}
+
+	ServerStats struct {
+		Articles  func(childComplexity int) int
+		Gemini    func(childComplexity int) int
+		GroupedAt func(childComplexity int) int
+		Headlines func(childComplexity int) int
+		Sites     func(childComplexity int) int
+		Stories   func(childComplexity int) int
+		Summaries func(childComplexity int) int
+	}
+
+	SiteStats struct {
+		Enabled   func(childComplexity int) int
+		Error     func(childComplexity int) int
+		Headlines func(childComplexity int) int
+		LastOkAt  func(childComplexity int) int
+		LastRunAt func(childComplexity int) int
+		SourceID  func(childComplexity int) int
 	}
 
 	Source struct {
@@ -176,6 +213,14 @@ type ComplexityRoot struct {
 		Title          func(childComplexity int) int
 		WrittenAt      func(childComplexity int) int
 	}
+
+	SummaryRun struct {
+		At      func(childComplexity int) int
+		Digest  func(childComplexity int) int
+		Error   func(childComplexity int) int
+		Waiting func(childComplexity int) int
+		Written func(childComplexity int) int
+	}
 }
 
 type MutationResolver interface {
@@ -191,6 +236,7 @@ type QueryResolver interface {
 	Articles(ctx context.Context, urls []string) ([]*model.Article, error)
 	Stories(ctx context.Context) (*model.StoryList, error)
 	Sources(ctx context.Context) ([]*sites.Source, error)
+	Stats(ctx context.Context) (*model.ServerStats, error)
 	Digest(ctx context.Context) (*model.Digest, error)
 }
 type SourceResolver interface {
@@ -420,6 +466,74 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Footnote.URL(childComplexity), true
 
+	case "GeminiDay.day":
+		if e.ComplexityRoot.GeminiDay.Day == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiDay.Day(childComplexity), true
+	case "GeminiDay.requests":
+		if e.ComplexityRoot.GeminiDay.Requests == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiDay.Requests(childComplexity), true
+	case "GeminiDay.tokensCached":
+		if e.ComplexityRoot.GeminiDay.TokensCached == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiDay.TokensCached(childComplexity), true
+	case "GeminiDay.tokensIn":
+		if e.ComplexityRoot.GeminiDay.TokensIn == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiDay.TokensIn(childComplexity), true
+	case "GeminiDay.tokensOut":
+		if e.ComplexityRoot.GeminiDay.TokensOut == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiDay.TokensOut(childComplexity), true
+	case "GeminiDay.tokensThinking":
+		if e.ComplexityRoot.GeminiDay.TokensThinking == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiDay.TokensThinking(childComplexity), true
+
+	case "GeminiStats.budget":
+		if e.ComplexityRoot.GeminiStats.Budget == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiStats.Budget(childComplexity), true
+	case "GeminiStats.days":
+		if e.ComplexityRoot.GeminiStats.Days == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiStats.Days(childComplexity), true
+	case "GeminiStats.lastRun":
+		if e.ComplexityRoot.GeminiStats.LastRun == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiStats.LastRun(childComplexity), true
+	case "GeminiStats.model":
+		if e.ComplexityRoot.GeminiStats.Model == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiStats.Model(childComplexity), true
+	case "GeminiStats.today":
+		if e.ComplexityRoot.GeminiStats.Today == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GeminiStats.Today(childComplexity), true
+
 	case "Headline.category":
 		if e.ComplexityRoot.Headline.Category == nil {
 			break
@@ -584,6 +698,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Sources(childComplexity), true
+	case "Query.stats":
+		if e.ComplexityRoot.Query.Stats == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.Stats(childComplexity), true
 	case "Query.stories":
 		if e.ComplexityRoot.Query.Stories == nil {
 			break
@@ -665,6 +785,86 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ServerInfo.Version(childComplexity), true
+
+	case "ServerStats.articles":
+		if e.ComplexityRoot.ServerStats.Articles == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.Articles(childComplexity), true
+	case "ServerStats.gemini":
+		if e.ComplexityRoot.ServerStats.Gemini == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.Gemini(childComplexity), true
+	case "ServerStats.groupedAt":
+		if e.ComplexityRoot.ServerStats.GroupedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.GroupedAt(childComplexity), true
+	case "ServerStats.headlines":
+		if e.ComplexityRoot.ServerStats.Headlines == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.Headlines(childComplexity), true
+	case "ServerStats.sites":
+		if e.ComplexityRoot.ServerStats.Sites == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.Sites(childComplexity), true
+	case "ServerStats.stories":
+		if e.ComplexityRoot.ServerStats.Stories == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.Stories(childComplexity), true
+	case "ServerStats.summaries":
+		if e.ComplexityRoot.ServerStats.Summaries == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ServerStats.Summaries(childComplexity), true
+
+	case "SiteStats.enabled":
+		if e.ComplexityRoot.SiteStats.Enabled == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SiteStats.Enabled(childComplexity), true
+	case "SiteStats.error":
+		if e.ComplexityRoot.SiteStats.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SiteStats.Error(childComplexity), true
+	case "SiteStats.headlines":
+		if e.ComplexityRoot.SiteStats.Headlines == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SiteStats.Headlines(childComplexity), true
+	case "SiteStats.lastOkAt":
+		if e.ComplexityRoot.SiteStats.LastOkAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SiteStats.LastOkAt(childComplexity), true
+	case "SiteStats.lastRunAt":
+		if e.ComplexityRoot.SiteStats.LastRunAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SiteStats.LastRunAt(childComplexity), true
+	case "SiteStats.sourceId":
+		if e.ComplexityRoot.SiteStats.SourceID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SiteStats.SourceID(childComplexity), true
 
 	case "Source.baseUrl":
 		if e.ComplexityRoot.Source.BaseURL == nil {
@@ -765,6 +965,37 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StorySummary.WrittenAt(childComplexity), true
+
+	case "SummaryRun.at":
+		if e.ComplexityRoot.SummaryRun.At == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummaryRun.At(childComplexity), true
+	case "SummaryRun.digest":
+		if e.ComplexityRoot.SummaryRun.Digest == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummaryRun.Digest(childComplexity), true
+	case "SummaryRun.error":
+		if e.ComplexityRoot.SummaryRun.Error == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummaryRun.Error(childComplexity), true
+	case "SummaryRun.waiting":
+		if e.ComplexityRoot.SummaryRun.Waiting == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummaryRun.Waiting(childComplexity), true
+	case "SummaryRun.written":
+		if e.ComplexityRoot.SummaryRun.Written == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummaryRun.Written(childComplexity), true
 
 	}
 	return 0, false
@@ -1091,6 +1322,75 @@ type Source {
   waitMs: Int!
 }
 `, BuiltIn: false},
+	{Name: "../schema/stats.graphql", Input: `# --- Statistics -----------------------------------------------------------------
+# What the server has done: its reads of the sites, what it keeps, and its use of Gemini against the free tier.
+
+extend type Query {
+  stats: ServerStats!
+}
+
+type ServerStats {
+  "Headlines kept (the last keep_days), and articles downloaded."
+  headlines: Int!
+  articles: Int!
+  "Stories in the last grouping, and when it ran; null before the first or when stories are off."
+  stories: Int!
+  groupedAt: Time
+  "Stories with a generated article kept."
+  summaries: Int!
+  "Gemini's use; null when summaries are off."
+  gemini: GeminiStats
+  "Every site's last read, sorted by id."
+  sites: [SiteStats!]!
+}
+
+type GeminiStats {
+  model: String!
+  "Requests a day the server stops at, and the free tier's day it counts by (Pacific time, YYYY-MM-DD)."
+  budget: Int!
+  today: String!
+  "The last 7 days with requests, newest first."
+  days: [GeminiDay!]!
+  "The latest summary run; null before the first."
+  lastRun: SummaryRun
+}
+
+type GeminiDay {
+  day: String!
+  requests: Int!
+  "The prompts' tokens, cached ones included."
+  tokensIn: Int!
+  "Of tokensIn, the ones Gemini read from its cache (implicit caching)."
+  tokensCached: Int!
+  "The answers' tokens."
+  tokensOut: Int!
+  "The model's thinking, counted as output."
+  tokensThinking: Int!
+}
+
+type SummaryRun {
+  at: Time!
+  "Story articles written, and changed stories left for later runs."
+  written: Int!
+  waiting: Int!
+  "Whether a new front page was written."
+  digest: Boolean!
+  "Why the run stopped early (a 429, Gemini busy); null when it went through."
+  error: String
+}
+
+type SiteStats {
+  sourceId: String!
+  enabled: Boolean!
+  "The last read of its headlines, and the last one that worked; null before the first."
+  lastRunAt: Time
+  lastOkAt: Time
+  "Headlines found by the last read."
+  headlines: Int!
+  "Why the last read failed; null when it worked."
+  error: String
+}
+`, BuiltIn: false},
 	{Name: "../schema/summaries.graphql", Input: `# --- Summaries ------------------------------------------------------------------
 # The personal newspaper Gemini writes after each grouping (summary_* in config.json): a short article for each story
 # that changed in the last hours, and a digest of what is most covered in the last hour. Hebrew, facts only, each
@@ -1228,6 +1528,40 @@ func (ec *executionContext) childFields_Footnote(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Footnote", field.Name)
 }
 
+func (ec *executionContext) childFields_GeminiDay(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "day":
+		return ec.fieldContext_GeminiDay_day(ctx, field)
+	case "requests":
+		return ec.fieldContext_GeminiDay_requests(ctx, field)
+	case "tokensIn":
+		return ec.fieldContext_GeminiDay_tokensIn(ctx, field)
+	case "tokensCached":
+		return ec.fieldContext_GeminiDay_tokensCached(ctx, field)
+	case "tokensOut":
+		return ec.fieldContext_GeminiDay_tokensOut(ctx, field)
+	case "tokensThinking":
+		return ec.fieldContext_GeminiDay_tokensThinking(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type GeminiDay", field.Name)
+}
+
+func (ec *executionContext) childFields_GeminiStats(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "model":
+		return ec.fieldContext_GeminiStats_model(ctx, field)
+	case "budget":
+		return ec.fieldContext_GeminiStats_budget(ctx, field)
+	case "today":
+		return ec.fieldContext_GeminiStats_today(ctx, field)
+	case "days":
+		return ec.fieldContext_GeminiStats_days(ctx, field)
+	case "lastRun":
+		return ec.fieldContext_GeminiStats_lastRun(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type GeminiStats", field.Name)
+}
+
 func (ec *executionContext) childFields_Headline(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "sourceId":
@@ -1298,6 +1632,44 @@ func (ec *executionContext) childFields_ServerInfo(ctx context.Context, field gr
 	return nil, fmt.Errorf("no field named %q was found under type ServerInfo", field.Name)
 }
 
+func (ec *executionContext) childFields_ServerStats(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "headlines":
+		return ec.fieldContext_ServerStats_headlines(ctx, field)
+	case "articles":
+		return ec.fieldContext_ServerStats_articles(ctx, field)
+	case "stories":
+		return ec.fieldContext_ServerStats_stories(ctx, field)
+	case "groupedAt":
+		return ec.fieldContext_ServerStats_groupedAt(ctx, field)
+	case "summaries":
+		return ec.fieldContext_ServerStats_summaries(ctx, field)
+	case "gemini":
+		return ec.fieldContext_ServerStats_gemini(ctx, field)
+	case "sites":
+		return ec.fieldContext_ServerStats_sites(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ServerStats", field.Name)
+}
+
+func (ec *executionContext) childFields_SiteStats(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "sourceId":
+		return ec.fieldContext_SiteStats_sourceId(ctx, field)
+	case "enabled":
+		return ec.fieldContext_SiteStats_enabled(ctx, field)
+	case "lastRunAt":
+		return ec.fieldContext_SiteStats_lastRunAt(ctx, field)
+	case "lastOkAt":
+		return ec.fieldContext_SiteStats_lastOkAt(ctx, field)
+	case "headlines":
+		return ec.fieldContext_SiteStats_headlines(ctx, field)
+	case "error":
+		return ec.fieldContext_SiteStats_error(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SiteStats", field.Name)
+}
+
 func (ec *executionContext) childFields_Source(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -1352,6 +1724,22 @@ func (ec *executionContext) childFields_StorySummary(ctx context.Context, field 
 		return ec.fieldContext_StorySummary_writtenAt(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type StorySummary", field.Name)
+}
+
+func (ec *executionContext) childFields_SummaryRun(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "at":
+		return ec.fieldContext_SummaryRun_at(ctx, field)
+	case "written":
+		return ec.fieldContext_SummaryRun_written(ctx, field)
+	case "waiting":
+		return ec.fieldContext_SummaryRun_waiting(ctx, field)
+	case "digest":
+		return ec.fieldContext_SummaryRun_digest(ctx, field)
+	case "error":
+		return ec.fieldContext_SummaryRun_error(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SummaryRun", field.Name)
 }
 
 func (ec *executionContext) childFields___Directive(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -2472,6 +2860,277 @@ func (ec *executionContext) fieldContext_Footnote_title(_ context.Context, field
 	return graphql.NewScalarFieldContext("Footnote", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _GeminiDay_day(ctx context.Context, field graphql.CollectedField, obj *model.GeminiDay) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiDay_day(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Day, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiDay_day(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiDay", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiDay_requests(ctx context.Context, field graphql.CollectedField, obj *model.GeminiDay) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiDay_requests(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Requests, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiDay_requests(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiDay", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiDay_tokensIn(ctx context.Context, field graphql.CollectedField, obj *model.GeminiDay) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiDay_tokensIn(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TokensIn, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiDay_tokensIn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiDay", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiDay_tokensCached(ctx context.Context, field graphql.CollectedField, obj *model.GeminiDay) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiDay_tokensCached(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TokensCached, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiDay_tokensCached(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiDay", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiDay_tokensOut(ctx context.Context, field graphql.CollectedField, obj *model.GeminiDay) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiDay_tokensOut(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TokensOut, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiDay_tokensOut(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiDay", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiDay_tokensThinking(ctx context.Context, field graphql.CollectedField, obj *model.GeminiDay) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiDay_tokensThinking(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TokensThinking, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiDay_tokensThinking(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiDay", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiStats_model(ctx context.Context, field graphql.CollectedField, obj *model.GeminiStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiStats_model(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Model, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiStats_model(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiStats", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiStats_budget(ctx context.Context, field graphql.CollectedField, obj *model.GeminiStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiStats_budget(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Budget, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiStats_budget(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiStats_today(ctx context.Context, field graphql.CollectedField, obj *model.GeminiStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiStats_today(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Today, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiStats_today(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("GeminiStats", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _GeminiStats_days(ctx context.Context, field graphql.CollectedField, obj *model.GeminiStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiStats_days(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Days, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.GeminiDay) graphql.Marshaler {
+			return ec.marshalNGeminiDay2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDayᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiStats_days(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GeminiStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_GeminiDay(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _GeminiStats_lastRun(ctx context.Context, field graphql.CollectedField, obj *model.GeminiStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_GeminiStats_lastRun(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.LastRun, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SummaryRun) graphql.Marshaler {
+			return ec.marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummaryRun(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_GeminiStats_lastRun(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GeminiStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SummaryRun(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Headline_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3155,6 +3814,38 @@ func (ec *executionContext) fieldContext_Query_sources(_ context.Context, field 
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_stats(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_stats(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().Stats(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.ServerStats) graphql.Marshaler {
+			return ec.marshalNServerStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerStats(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_stats(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ServerStats(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_digest(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3555,6 +4246,323 @@ func (ec *executionContext) _ServerInfo_summaries(ctx context.Context, field gra
 }
 func (ec *executionContext) fieldContext_ServerInfo_summaries(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("ServerInfo", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _ServerStats_headlines(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_headlines(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Headlines, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_headlines(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _ServerStats_articles(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_articles(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Articles, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_articles(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _ServerStats_stories(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_stories(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Stories, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_stories(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _ServerStats_groupedAt(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_groupedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.GroupedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_groupedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerStats", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _ServerStats_summaries(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_summaries(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Summaries, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_summaries(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ServerStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _ServerStats_gemini(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_gemini(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Gemini, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.GeminiStats) graphql.Marshaler {
+			return ec.marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiStats(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_gemini(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ServerStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_GeminiStats(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ServerStats_sites(ctx context.Context, field graphql.CollectedField, obj *model.ServerStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ServerStats_sites(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Sites, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.SiteStats) graphql.Marshaler {
+			return ec.marshalNSiteStats2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStatsᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ServerStats_sites(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ServerStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SiteStats(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SiteStats_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.SiteStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SiteStats_sourceId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SiteStats_sourceId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SiteStats", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _SiteStats_enabled(ctx context.Context, field graphql.CollectedField, obj *model.SiteStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SiteStats_enabled(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Enabled, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SiteStats_enabled(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SiteStats", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _SiteStats_lastRunAt(ctx context.Context, field graphql.CollectedField, obj *model.SiteStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SiteStats_lastRunAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.LastRunAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SiteStats_lastRunAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SiteStats", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _SiteStats_lastOkAt(ctx context.Context, field graphql.CollectedField, obj *model.SiteStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SiteStats_lastOkAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.LastOkAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SiteStats_lastOkAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SiteStats", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _SiteStats_headlines(ctx context.Context, field graphql.CollectedField, obj *model.SiteStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SiteStats_headlines(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Headlines, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SiteStats_headlines(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SiteStats", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _SiteStats_error(ctx context.Context, field graphql.CollectedField, obj *model.SiteStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SiteStats_error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SiteStats_error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SiteStats", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _Source_id(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
@@ -3968,6 +4976,121 @@ func (ec *executionContext) _StorySummary_writtenAt(ctx context.Context, field g
 }
 func (ec *executionContext) fieldContext_StorySummary_writtenAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _SummaryRun_at(ctx context.Context, field graphql.CollectedField, obj *model.SummaryRun) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummaryRun_at(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.At, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummaryRun_at(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummaryRun", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _SummaryRun_written(ctx context.Context, field graphql.CollectedField, obj *model.SummaryRun) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummaryRun_written(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Written, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummaryRun_written(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummaryRun", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _SummaryRun_waiting(ctx context.Context, field graphql.CollectedField, obj *model.SummaryRun) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummaryRun_waiting(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Waiting, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummaryRun_waiting(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummaryRun", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _SummaryRun_digest(ctx context.Context, field graphql.CollectedField, obj *model.SummaryRun) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummaryRun_digest(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Digest, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummaryRun_digest(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummaryRun", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _SummaryRun_error(ctx context.Context, field graphql.CollectedField, obj *model.SummaryRun) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummaryRun_error(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SummaryRun_error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummaryRun", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -5534,6 +6657,126 @@ func (ec *executionContext) _Footnote(ctx context.Context, sel ast.SelectionSet,
 	return out
 }
 
+var geminiDayImplementors = []string{"GeminiDay"}
+
+func (ec *executionContext) _GeminiDay(ctx context.Context, sel ast.SelectionSet, obj *model.GeminiDay) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, geminiDayImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("GeminiDay")
+		case "day":
+			out.Values[i] = ec._GeminiDay_day(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "requests":
+			out.Values[i] = ec._GeminiDay_requests(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "tokensIn":
+			out.Values[i] = ec._GeminiDay_tokensIn(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "tokensCached":
+			out.Values[i] = ec._GeminiDay_tokensCached(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "tokensOut":
+			out.Values[i] = ec._GeminiDay_tokensOut(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "tokensThinking":
+			out.Values[i] = ec._GeminiDay_tokensThinking(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var geminiStatsImplementors = []string{"GeminiStats"}
+
+func (ec *executionContext) _GeminiStats(ctx context.Context, sel ast.SelectionSet, obj *model.GeminiStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, geminiStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("GeminiStats")
+		case "model":
+			out.Values[i] = ec._GeminiStats_model(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "budget":
+			out.Values[i] = ec._GeminiStats_budget(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "today":
+			out.Values[i] = ec._GeminiStats_today(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "days":
+			out.Values[i] = ec._GeminiStats_days(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "lastRun":
+			out.Values[i] = ec._GeminiStats_lastRun(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var headlineImplementors = []string{"Headline"}
 
 func (ec *executionContext) _Headline(ctx context.Context, sel ast.SelectionSet, obj *model.Headline) graphql.Marshaler {
@@ -5841,6 +7084,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "stats":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_stats(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "digest":
 			field := field
 
@@ -6024,6 +7289,124 @@ func (ec *executionContext) _ServerInfo(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var serverStatsImplementors = []string{"ServerStats"}
+
+func (ec *executionContext) _ServerStats(ctx context.Context, sel ast.SelectionSet, obj *model.ServerStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, serverStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ServerStats")
+		case "headlines":
+			out.Values[i] = ec._ServerStats_headlines(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "articles":
+			out.Values[i] = ec._ServerStats_articles(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "stories":
+			out.Values[i] = ec._ServerStats_stories(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "groupedAt":
+			out.Values[i] = ec._ServerStats_groupedAt(ctx, field, obj)
+		case "summaries":
+			out.Values[i] = ec._ServerStats_summaries(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "gemini":
+			out.Values[i] = ec._ServerStats_gemini(ctx, field, obj)
+		case "sites":
+			out.Values[i] = ec._ServerStats_sites(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var siteStatsImplementors = []string{"SiteStats"}
+
+func (ec *executionContext) _SiteStats(ctx context.Context, sel ast.SelectionSet, obj *model.SiteStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, siteStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SiteStats")
+		case "sourceId":
+			out.Values[i] = ec._SiteStats_sourceId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "enabled":
+			out.Values[i] = ec._SiteStats_enabled(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "lastRunAt":
+			out.Values[i] = ec._SiteStats_lastRunAt(ctx, field, obj)
+		case "lastOkAt":
+			out.Values[i] = ec._SiteStats_lastOkAt(ctx, field, obj)
+		case "headlines":
+			out.Values[i] = ec._SiteStats_headlines(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "error":
+			out.Values[i] = ec._SiteStats_error(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -6327,6 +7710,62 @@ func (ec *executionContext) _StorySummary(ctx context.Context, sel ast.Selection
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var summaryRunImplementors = []string{"SummaryRun"}
+
+func (ec *executionContext) _SummaryRun(ctx context.Context, sel ast.SelectionSet, obj *model.SummaryRun) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, summaryRunImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SummaryRun")
+		case "at":
+			out.Values[i] = ec._SummaryRun_at(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "written":
+			out.Values[i] = ec._SummaryRun_written(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "waiting":
+			out.Values[i] = ec._SummaryRun_waiting(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "digest":
+			out.Values[i] = ec._SummaryRun_digest(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "error":
+			out.Values[i] = ec._SummaryRun_error(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -6814,6 +8253,32 @@ func (ec *executionContext) marshalNFootnote2ᚖgithubᚗcomᚋchencohensolution
 	return ec._Footnote(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNGeminiDay2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDayᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.GeminiDay) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDay(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDay(ctx context.Context, sel ast.SelectionSet, v *model.GeminiDay) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._GeminiDay(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -6904,6 +8369,46 @@ func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋchencohensoluti
 		return graphql.Null
 	}
 	return ec._ServerInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNServerStats2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerStats(ctx context.Context, sel ast.SelectionSet, v model.ServerStats) graphql.Marshaler {
+	return ec._ServerStats(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNServerStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerStats(ctx context.Context, sel ast.SelectionSet, v *model.ServerStats) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ServerStats(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNSiteStats2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStatsᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SiteStats) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSiteStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStats(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSiteStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStats(ctx context.Context, sel ast.SelectionSet, v *model.SiteStats) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SiteStats(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNSource2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx context.Context, sel ast.SelectionSet, v sites.Source) graphql.Marshaler {
@@ -7230,6 +8735,13 @@ func (ec *executionContext) marshalODigest2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Digest(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiStats(ctx context.Context, sel ast.SelectionSet, v *model.GeminiStats) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._GeminiStats(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
 	if v == nil {
 		return nil, nil
@@ -7314,6 +8826,13 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	_ = ctx
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummaryRun(ctx context.Context, sel ast.SelectionSet, v *model.SummaryRun) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SummaryRun(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOTime2ᚖtimeᚐTime(ctx context.Context, v any) (*time.Time, error) {

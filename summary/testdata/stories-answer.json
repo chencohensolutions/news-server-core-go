@@ -16,6 +16,7 @@
     "promptTokenCount": 1200,
     "candidatesTokenCount": 300,
     "thoughtsTokenCount": 40,
-    "totalTokenCount": 1540
+    "totalTokenCount": 1540,
+    "cachedContentTokenCount": 800
   }
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/stories"
+	"github.com/chencohensolutions/news-server-core-go/summary"
 )
 
 // This file will not be regenerated automatically.
@@ -29,6 +30,8 @@ type Resolver struct {
 	Stories func() ([]stories.Story, time.Time)
 	// Summaries says the server writes summaries after each grouping.
 	Summaries bool
+	// Gemini is the summary job's model, budget and latest run, for stats; nil when summaries are off.
+	Gemini *GeminiInfo
 	// Who the server is and where (serverInfo.discovery); nil, or nil from it, before that is known.
 	Discovery func() *model.ServerDiscovery
 }
@@ -55,4 +58,11 @@ func (r *Resolver) setting(site *sites.Source) sites.Setting {
 		return sites.Setting{Enabled: true, WaitMs: sites.DefaultWaitMs}
 	}
 	return r.Settings.Get(site.ID)
+}
+
+// GeminiInfo is what stats says about the summary job.
+type GeminiInfo struct {
+	Model  string
+	Budget int
+	Status func() summary.Status
 }

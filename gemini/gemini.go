@@ -64,7 +64,10 @@ type Usage struct {
 	PromptTokens   int `json:"promptTokenCount"`
 	AnswerTokens   int `json:"candidatesTokenCount"`
 	ThoughtsTokens int `json:"thoughtsTokenCount"`
-	TotalTokens    int `json:"totalTokenCount"`
+	// CachedTokens are the part of PromptTokens Gemini read from its cache (implicit caching): cheaper, and on the
+	// free tier still counted in the limits.
+	CachedTokens int `json:"cachedContentTokenCount"`
+	TotalTokens  int `json:"totalTokenCount"`
 }
 
 type part struct {

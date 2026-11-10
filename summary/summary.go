@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	_ "time/tzdata" // the free tier's day is Pacific time, also on Windows
 
@@ -79,10 +80,27 @@ type Writer struct {
 	Log      func(format string, args ...any)
 	// Sleep waits between tries when Gemini is busy; nil waits for real.
 	Sleep func(ctx context.Context, d time.Duration) error
+
+	mu     sync.Mutex
+	status Status
 }
 
 // busyWaits are the waits before trying a busy Gemini again (503 "high demand").
 var busyWaits = []time.Duration{20 * time.Second, time.Minute}
+
+// Status is the latest run, for the statistics.
+type Status struct {
+	At time.Time // zero before the first run
+	Result
+	Error string // "" when it went through
+}
+
+// Status is the latest run's.
+func (w *Writer) Status() Status {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.status
+}
 
 // Result is what one run did.
 type Result struct {
@@ -135,8 +153,16 @@ func orDefault(v, d int) int {
 
 // Run summarizes found's changed stories, then writes the digest, within the day's budget. A 429 ends the run: the
 // next one tries again.
-func (w *Writer) Run(ctx context.Context, found []stories.Story) (Result, error) {
-	var result Result
+func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result, err error) {
+	defer func() {
+		status := Status{At: w.now(), Result: result}
+		if err != nil {
+			status.Error = err.Error()
+		}
+		w.mu.Lock()
+		w.status = status
+		w.mu.Unlock()
+	}()
 	now := w.now()
 	stored, err := w.Store.Headlines(ctx, time.Time{})
 	if err != nil {
@@ -232,7 +258,11 @@ func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json
 		if err != nil {
 			return nil, err
 		}
-		w.logf("summaries: Gemini answered in %s, %d tokens in, %d out", time.Since(start).Round(time.Millisecond), usage.PromptTokens, usage.AnswerTokens+usage.ThoughtsTokens)
+		if err := w.Store.CountGeminiTokens(ctx, day, store.Tokens{In: usage.PromptTokens, Cached: usage.CachedTokens, Out: usage.AnswerTokens, Thoughts: usage.ThoughtsTokens}); err != nil {
+			return nil, err
+		}
+		w.logf("summaries: Gemini answered in %s, %d tokens in (%d cached), %d out, %d thinking", time.Since(start).Round(time.Millisecond),
+			usage.PromptTokens, usage.CachedTokens, usage.AnswerTokens, usage.ThoughtsTokens)
 		return answer, nil
 	}
 }

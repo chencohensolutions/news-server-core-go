@@ -67,6 +67,13 @@ CREATE TABLE IF NOT EXISTS gemini_requests (
 	day TEXT PRIMARY KEY,        -- the free tier's day, in Pacific time
 	requests INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS gemini_tokens (
+	day TEXT PRIMARY KEY,        -- as gemini_requests
+	tokens_in INTEGER NOT NULL,      -- the prompts, cached ones included
+	tokens_cached INTEGER NOT NULL,  -- of tokens_in, read from Gemini's cache
+	tokens_out INTEGER NOT NULL,     -- the answers
+	tokens_thoughts INTEGER NOT NULL -- the model's thinking, billed as output
+);
 CREATE TABLE IF NOT EXISTS site_settings (
 	source_id TEXT PRIMARY KEY,  -- what the app's Sources screen chose for one site
 	enabled INTEGER NOT NULL,
@@ -504,4 +511,54 @@ func (s *Store) CountGeminiRequest(ctx context.Context, day string) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO gemini_requests (day, requests) VALUES (?, 1)
 		ON CONFLICT(day) DO UPDATE SET requests = requests + 1`, day)
 	return err
+}
+
+// Tokens are Gemini tokens: the prompts (Cached of them read from its cache), the answers, and the thinking.
+type Tokens struct{ In, Cached, Out, Thoughts int }
+
+// CountGeminiTokens adds one answer's tokens to day.
+func (s *Store) CountGeminiTokens(ctx context.Context, day string, t Tokens) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO gemini_tokens (day, tokens_in, tokens_cached, tokens_out, tokens_thoughts)
+		VALUES (?, ?, ?, ?, ?) ON CONFLICT(day) DO UPDATE SET tokens_in = tokens_in + excluded.tokens_in,
+		tokens_cached = tokens_cached + excluded.tokens_cached, tokens_out = tokens_out + excluded.tokens_out,
+		tokens_thoughts = tokens_thoughts + excluded.tokens_thoughts`, day, t.In, t.Cached, t.Out, t.Thoughts)
+	return err
+}
+
+// GeminiDay is one day's Gemini use.
+type GeminiDay struct {
+	Day      string
+	Requests int
+	Tokens
+}
+
+// GeminiDays are the last n days with Gemini use, newest first.
+func (s *Store) GeminiDays(ctx context.Context, n int) ([]GeminiDay, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT r.day, r.requests, COALESCE(t.tokens_in, 0), COALESCE(t.tokens_cached, 0),
+		COALESCE(t.tokens_out, 0), COALESCE(t.tokens_thoughts, 0)
+		FROM gemini_requests r LEFT JOIN gemini_tokens t ON t.day = r.day ORDER BY r.day DESC LIMIT ?`, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GeminiDay
+	for rows.Next() {
+		var d GeminiDay
+		if err := rows.Scan(&d.Day, &d.Requests, &d.In, &d.Cached, &d.Out, &d.Thoughts); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// Counts are how many headlines, articles and story summaries are stored.
+type Counts struct{ Headlines, Articles, Summaries int }
+
+// Counts counts what is stored.
+func (s *Store) Counts(ctx context.Context) (Counts, error) {
+	var c Counts
+	err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM headlines), (SELECT COUNT(*) FROM articles),
+		(SELECT COUNT(*) FROM summaries)`).Scan(&c.Headlines, &c.Articles, &c.Summaries)
+	return c, err
 }

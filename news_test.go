@@ -11,6 +11,7 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/graph/resolver"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/sites"
+	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/stories"
 	"github.com/chencohensolutions/news-server-core-go/summary"
 )
@@ -218,5 +219,35 @@ func TestTheAppReadsTheGeneratedArticles(t *testing.T) {
 	}
 	if got := string(resp.Data["serverInfo"]); got != `{"summaries":true}` {
 		t.Fatalf("serverInfo %s", got)
+	}
+}
+
+func TestTheAppReadsTheStatistics(t *testing.T) {
+	env := newTestEnv(t)
+	_, noon := seed(t, env)
+	ctx := context.Background()
+	if err := env.db.SaveSiteRun(ctx, "siteh", 12, nil, noon); err != nil {
+		t.Fatal(err)
+	}
+	resp := mustQuery(t, env, `{ stats { headlines articles stories groupedAt summaries gemini { model }
+		sites { sourceId enabled lastRunAt lastOkAt headlines error } } }`, nil)
+	want := fmt.Sprintf(`{"headlines":2,"articles":1,"stories":0,"groupedAt":null,"summaries":0,"gemini":null,`+
+		`"sites":[{"sourceId":"siteh","enabled":true,"lastRunAt":%q,"lastOkAt":%q,"headlines":12,"error":null}]}`,
+		noon.Format(time.RFC3339), noon.Format(time.RFC3339))
+	if got := string(resp.Data["stats"]); got != want {
+		t.Fatalf("off\n got %s\nwant %s", got, want)
+	}
+	day := summary.Day(time.Now())
+	env.db.CountGeminiRequest(ctx, day)
+	env.db.CountGeminiTokens(ctx, day, store.Tokens{In: 15000, Cached: 4000, Out: 300, Thoughts: 50})
+	env.api.Gemini = &resolver.GeminiInfo{Model: "gemini-3.5-flash-lite", Budget: 400,
+		Status: func() summary.Status { return summary.Status{At: noon, Result: summary.Result{Written: 3, Waiting: 9}} }}
+	resp = mustQuery(t, env, `{ stats { gemini { model budget today days { day requests tokensIn tokensCached tokensOut tokensThinking }
+		lastRun { at written waiting digest error } } } }`, nil)
+	want = fmt.Sprintf(`{"gemini":{"model":"gemini-3.5-flash-lite","budget":400,"today":%q,`+
+		`"days":[{"day":%q,"requests":1,"tokensIn":15000,"tokensCached":4000,"tokensOut":300,"tokensThinking":50}],`+
+		`"lastRun":{"at":%q,"written":3,"waiting":9,"digest":false,"error":null}}}`, day, day, noon.Format(time.RFC3339))
+	if got := string(resp.Data["stats"]); got != want {
+		t.Fatalf("on\n got %s\nwant %s", got, want)
 	}
 }

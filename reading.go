@@ -80,14 +80,14 @@ func openSettings(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 // startReading reads every site every refresh_minutes, in the background, and groups the stories after each read.
 // It returns the database, the sites' settings, and the stories: nil when they are off or their model isn't there
 // (the sites are read either way).
-func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *sites.Settings, *storyJob) {
+func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *sites.Settings, *storyJob, *summary.Writer) {
 	if config.RefreshMinutes < 0 {
 		log.Printf("Reading the sites is off (refresh_minutes is %d)", config.RefreshMinutes)
 		db, settings, err := openSettings(config, found)
 		if err != nil {
 			log.Fatal(err)
 		}
-		return db, settings, nil
+		return db, settings, nil, nil
 	}
 	refresher, settings, err := openRefresher(config, found)
 	if err != nil {
@@ -95,6 +95,7 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 	}
 	log.Printf("Reading %d sites every %d minutes into %s", len(refresher.Sources), config.RefreshMinutes, config.DatabaseFile)
 	var job *storyJob
+	var summaries *summary.Writer
 	if config.StoryStrictness < 0 {
 		log.Printf("Stories are off (story_strictness is %d)", config.StoryStrictness)
 	} else if job, err = openStoryJob(config, refresher.Store); err != nil {
@@ -108,6 +109,7 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 			log.Printf("Summaries are off: %v", err)
 		} else {
 			job.summaries = true
+			summaries = writer
 			log.Printf("Summarizing stories with %s, at most %d requests a day", orDefault(config.GeminiModel, gemini.DefaultModel), orDefault(config.SummaryBudget, summary.DefaultBudget))
 		}
 		refresher.AfterRun = func(ctx context.Context) {
@@ -130,7 +132,7 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 		}
 	}
 	go refresher.Loop(context.Background(), time.Duration(config.RefreshMinutes)*time.Minute)
-	return refresher.Store, settings, job
+	return refresher.Store, settings, job, summaries
 }
 
 // refreshOnce is the refresh command: one read of every site, then what it found.

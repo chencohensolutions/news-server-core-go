@@ -70,6 +70,30 @@ type Footnote struct {
 	Title *string `json:"title,omitempty"`
 }
 
+type GeminiDay struct {
+	Day      string `json:"day"`
+	Requests int    `json:"requests"`
+	// The prompts' tokens, cached ones included.
+	TokensIn int `json:"tokensIn"`
+	// Of tokensIn, the ones Gemini read from its cache (implicit caching).
+	TokensCached int `json:"tokensCached"`
+	// The answers' tokens.
+	TokensOut int `json:"tokensOut"`
+	// The model's thinking, counted as output.
+	TokensThinking int `json:"tokensThinking"`
+}
+
+type GeminiStats struct {
+	Model string `json:"model"`
+	// Requests a day the server stops at, and the free tier's day it counts by (Pacific time, YYYY-MM-DD).
+	Budget int    `json:"budget"`
+	Today  string `json:"today"`
+	// The last 7 days with requests, newest first.
+	Days []*GeminiDay `json:"days"`
+	// The latest summary run; null before the first.
+	LastRun *SummaryRun `json:"lastRun,omitempty"`
+}
+
 type Mutation struct {
 }
 
@@ -112,12 +136,50 @@ type ServerInfo struct {
 	Summaries bool `json:"summaries"`
 }
 
+type ServerStats struct {
+	// Headlines kept (the last keep_days), and articles downloaded.
+	Headlines int `json:"headlines"`
+	Articles  int `json:"articles"`
+	// Stories in the last grouping, and when it ran; null before the first or when stories are off.
+	Stories   int        `json:"stories"`
+	GroupedAt *time.Time `json:"groupedAt,omitempty"`
+	// Stories with a generated article kept.
+	Summaries int `json:"summaries"`
+	// Gemini's use; null when summaries are off.
+	Gemini *GeminiStats `json:"gemini,omitempty"`
+	// Every site's last read, sorted by id.
+	Sites []*SiteStats `json:"sites"`
+}
+
+type SiteStats struct {
+	SourceID string `json:"sourceId"`
+	Enabled  bool   `json:"enabled"`
+	// The last read of its headlines, and the last one that worked; null before the first.
+	LastRunAt *time.Time `json:"lastRunAt,omitempty"`
+	LastOkAt  *time.Time `json:"lastOkAt,omitempty"`
+	// Headlines found by the last read.
+	Headlines int `json:"headlines"`
+	// Why the last read failed; null when it worked.
+	Error *string `json:"error,omitempty"`
+}
+
 type StorySummary struct {
 	Title     string      `json:"title"`
 	Sentences []*Sentence `json:"sentences"`
 	// Where sites state different facts about the story, one sentence each saying which says what; usually none.
 	Contradictions []*Sentence `json:"contradictions"`
 	WrittenAt      time.Time   `json:"writtenAt"`
+}
+
+type SummaryRun struct {
+	At time.Time `json:"at"`
+	// Story articles written, and changed stories left for later runs.
+	Written int `json:"written"`
+	Waiting int `json:"waiting"`
+	// Whether a new front page was written.
+	Digest bool `json:"digest"`
+	// Why the run stopped early (a 429, Gemini busy); null when it went through.
+	Error *string `json:"error,omitempty"`
 }
 
 type EnrollmentRejectedReason string

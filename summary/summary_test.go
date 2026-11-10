@@ -180,6 +180,14 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	if n, _ := w.Store.GeminiRequests(ctx, Day(now)); n != 2 {
 		t.Fatalf("%d requests counted", n)
 	}
+	// Both answers' tokens, by the free tier's day; and the run, for the statistics.
+	days, err := w.Store.GeminiDays(ctx, 7)
+	if err != nil || len(days) != 1 || days[0].Tokens != (store.Tokens{In: 1700, Cached: 800, Out: 380, Thoughts: 40}) {
+		t.Fatalf("%+v %v", days, err)
+	}
+	if status := w.Status(); status.At != now || status.Written != 2 || !status.Digest || status.Error != "" {
+		t.Fatalf("%+v", status)
+	}
 }
 
 func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {

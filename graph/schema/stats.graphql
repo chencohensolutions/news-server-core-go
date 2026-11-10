@@ -1,0 +1,68 @@
+# --- Statistics -----------------------------------------------------------------
+# What the server has done: its reads of the sites, what it keeps, and its use of Gemini against the free tier.
+
+extend type Query {
+  stats: ServerStats!
+}
+
+type ServerStats {
+  "Headlines kept (the last keep_days), and articles downloaded."
+  headlines: Int!
+  articles: Int!
+  "Stories in the last grouping, and when it ran; null before the first or when stories are off."
+  stories: Int!
+  groupedAt: Time
+  "Stories with a generated article kept."
+  summaries: Int!
+  "Gemini's use; null when summaries are off."
+  gemini: GeminiStats
+  "Every site's last read, sorted by id."
+  sites: [SiteStats!]!
+}
+
+type GeminiStats {
+  model: String!
+  "Requests a day the server stops at, and the free tier's day it counts by (Pacific time, YYYY-MM-DD)."
+  budget: Int!
+  today: String!
+  "The last 7 days with requests, newest first."
+  days: [GeminiDay!]!
+  "The latest summary run; null before the first."
+  lastRun: SummaryRun
+}
+
+type GeminiDay {
+  day: String!
+  requests: Int!
+  "The prompts' tokens, cached ones included."
+  tokensIn: Int!
+  "Of tokensIn, the ones Gemini read from its cache (implicit caching)."
+  tokensCached: Int!
+  "The answers' tokens."
+  tokensOut: Int!
+  "The model's thinking, counted as output."
+  tokensThinking: Int!
+}
+
+type SummaryRun {
+  at: Time!
+  "Story articles written, and changed stories left for later runs."
+  written: Int!
+  waiting: Int!
+  "Whether a new front page was written."
+  digest: Boolean!
+  "Why the run stopped early (a 429, Gemini busy); null when it went through."
+  error: String
+}
+
+type SiteStats {
+  sourceId: String!
+  enabled: Boolean!
+  "The last read of its headlines, and the last one that worked; null before the first."
+  lastRunAt: Time
+  lastOkAt: Time
+  "Headlines found by the last read."
+  headlines: Int!
+  "Why the last read failed; null when it worked."
+  error: String
+}
