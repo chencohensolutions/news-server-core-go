@@ -167,6 +167,10 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 		strings.Join(got.Unrelated, " ") != budgetSiteg.URL {
 		t.Fatalf("budget %+v", got)
 	}
+	// And kept for the grouping, against the rest of its story.
+	if flags, err := w.Store.Unrelated(ctx, time.Time{}); err != nil || len(flags) != 1 || len(flags[budgetSiteg.URL]) != 1 || !flags[budgetSiteg.URL][budgetSited.URL] {
+		t.Fatalf("flags %v, %v", flags, err)
+	}
 	// The digest: the stories with reports in the last hour, from their summaries; its thoughts are not the answer.
 	if !strings.Contains(fake.prompts[1], "- גשם כבד ירד הבוקר בצפון. [a1,a2]") || strings.Contains(fake.prompts[1], "התקציב") {
 		t.Fatalf("digest prompt:\n%s", fake.prompts[1])

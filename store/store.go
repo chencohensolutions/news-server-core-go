@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS gemini_tokens (
 	tokens_out INTEGER NOT NULL,     -- the answers
 	tokens_thoughts INTEGER NOT NULL -- the model's thinking, billed as output
 );
+CREATE TABLE IF NOT EXISTS unrelated (
+	url TEXT NOT NULL,           -- a headline Gemini found to be about another event than its story
+	other_url TEXT NOT NULL,     -- one of that story's other reports
+	flagged_at INTEGER NOT NULL,
+	PRIMARY KEY (url, other_url)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS site_settings (
 	source_id TEXT PRIMARY KEY,  -- what the app's Sources screen chose for one site
 	enabled INTEGER NOT NULL,
@@ -561,4 +567,45 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM headlines), (SELECT COUNT(*) FROM articles),
 		(SELECT COUNT(*) FROM summaries)`).Scan(&c.Headlines, &c.Articles, &c.Summaries)
 	return c, err
+}
+
+// SaveUnrelated keeps that url was found to be about another event than others, the rest of its story.
+func (s *Store) SaveUnrelated(ctx context.Context, url string, others []string, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, other := range others {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO unrelated (url, other_url, flagged_at) VALUES (?, ?, ?)
+			ON CONFLICT(url, other_url) DO UPDATE SET flagged_at = excluded.flagged_at`, url, other, millis(now)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// Unrelated is what SaveUnrelated kept since since: each flagged URL and the URLs it is not about the same event as.
+// Older flags are deleted.
+func (s *Store) Unrelated(ctx context.Context, since time.Time) (map[string]map[string]bool, error) {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM unrelated WHERE flagged_at < ?`, millis(since)); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT url, other_url FROM unrelated`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]map[string]bool{}
+	for rows.Next() {
+		var url, other string
+		if err := rows.Scan(&url, &other); err != nil {
+			return nil, err
+		}
+		if out[url] == nil {
+			out[url] = map[string]bool{}
+		}
+		out[url][other] = true
+	}
+	return out, rows.Err()
 }

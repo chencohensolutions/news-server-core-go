@@ -546,6 +546,18 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		if err := w.Store.SaveSummary(ctx, StoryKey(s), data, now); err != nil {
 			return written, asked, err
 		}
+		// The grouping moves it to a closer story, or out, from the next run on.
+		for _, url := range unrelated {
+			var others []string
+			for _, r := range s.Reports {
+				if own[r.URL] {
+					others = append(others, r.URL)
+				}
+			}
+			if err := w.Store.SaveUnrelated(ctx, url, others, now); err != nil {
+				return written, asked, err
+			}
+		}
 		delete(byID, storyID(a.Story))
 		written++
 	}

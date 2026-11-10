@@ -98,10 +98,17 @@ func (j *storyJob) run(ctx context.Context) ([]stories.Story, error) {
 		}
 	}
 	now := time.Now()
-	found, err := j.finder.Find(ctx, stories.WithinDays(items, j.days, now), j.threshold)
+	feed := stories.WithinDays(items, j.days, now)
+	found, err := j.finder.Find(ctx, feed, j.threshold)
 	if err != nil {
 		return nil, err
 	}
+	// What Gemini found to be about another event goes to the story it is closest to, or out.
+	flags, err := j.db.Unrelated(ctx, now.AddDate(0, 0, -max(1, j.days)))
+	if err != nil {
+		return nil, err
+	}
+	found = j.finder.MoveUnrelated(found, feed, flags, j.threshold)
 	j.mu.Lock()
 	j.latest, j.at = found, now
 	j.mu.Unlock()

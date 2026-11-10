@@ -146,3 +146,54 @@ func TestAFailedEmbeddingKeepsWhatWasDone(t *testing.T) {
 		t.Fatalf("err %v, embedded %d", err, finder.LastEmbedded)
 	}
 }
+
+func TestAnUnrelatedReportMovesToTheClosestOtherStory(t *testing.T) {
+	ctx := context.Background()
+	vectors := map[string][]float32{
+		"rain in the north":   {1, 0, 0},
+		"heavy rain up north": {1, 0.1, 0},
+		"rain and elections":  {0.8, 0, 0.65},
+		"elections called":    {0, 0, 1},
+		"elections set":       {0, 0.05, 1},
+	}
+	feed := []scrape.ArticleSummary{
+		report("siteh", "y1", "rain in the north", "2026-11-10T08:00:00Z"),
+		report("sitee", "n1", "heavy rain up north", "2026-11-10T09:00:00Z"),
+		report("siteg", "w1", "rain and elections", "2026-11-10T07:00:00Z"),
+		report("siteh", "y2", "elections called", "2026-11-10T06:00:00Z"),
+		report("sitee", "n2", "elections set", "2026-11-10T05:00:00Z"),
+	}
+	flags := map[string]map[string]bool{"w1": {"y1": true, "n1": true}}
+	for _, c := range []struct {
+		threshold float32
+		want      [][]string
+	}{
+		// Close enough to the elections story: it joins it.
+		{0.6, [][]string{{"n1", "y1"}, {"w1", "y2", "n2"}}},
+		// Not close enough to any other: in no story.
+		{0.7, [][]string{{"n1", "y1"}, {"y2", "n2"}}},
+	} {
+		finder := NewFinder(&fakeEmbedder{vectors: vectors}, openStore(t), E5Small, TitleAndSubtitle)
+		found, err := finder.Find(ctx, feed, c.threshold)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := storyURLs(found), [][]string{{"n1", "y1", "w1"}, {"y2", "n2"}}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("at %v grouped %v, want %v", c.threshold, got, want)
+		}
+		if got := storyURLs(finder.MoveUnrelated(found, feed, flags, c.threshold)); !reflect.DeepEqual(got, c.want) {
+			t.Fatalf("at %v moved %v, want %v", c.threshold, got, c.want)
+		}
+		// Flagged against the story it is in now: it isn't moved back.
+		back := map[string]map[string]bool{"w1": {"y1": true, "n1": true, "y2": true}}
+		if got := storyURLs(finder.MoveUnrelated(found, feed, back, c.threshold)); !reflect.DeepEqual(got, [][]string{{"n1", "y1"}, {"y2", "n2"}}) {
+			t.Fatalf("at %v flagged twice: %v", c.threshold, got)
+		}
+	}
+	// A story left with one site is no story.
+	finder := NewFinder(&fakeEmbedder{vectors: vectors}, openStore(t), E5Small, TitleAndSubtitle)
+	found, _ := finder.Find(ctx, feed[3:], 0.6)
+	if got := finder.MoveUnrelated(found, feed[3:], map[string]map[string]bool{"n2": {"y2": true}}, 0.6); len(got) != 0 {
+		t.Fatalf("one site left: %v", storyURLs(got))
+	}
+}
