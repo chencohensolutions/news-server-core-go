@@ -47,6 +47,9 @@ func NewFinder(embedder TextEmbedder, store VectorStore, model ModelSpec, text S
 	}
 }
 
+// Text is what the finder groups headlines by.
+func (f *Finder) Text() StoryText { return f.text }
+
 // key is what a headline's vector is kept under: its URL and texts, so when its subtitle arrives it is embedded again.
 func (f *Finder) key(item scrape.ArticleSummary) string {
 	key := item.URL

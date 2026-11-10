@@ -114,6 +114,14 @@ type ComplexityRoot struct {
 		Today   func(childComplexity int) int
 	}
 
+	Grouping struct {
+		Days       func(childComplexity int) int
+		Model      func(childComplexity int) int
+		Strictness func(childComplexity int) int
+		Text       func(childComplexity int) int
+		Threshold  func(childComplexity int) int
+	}
+
 	Headline struct {
 		Category    func(childComplexity int) int
 		FirstSeen   func(childComplexity int) int
@@ -143,6 +151,7 @@ type ComplexityRoot struct {
 	Mutation struct {
 		EnrollDevice     func(childComplexity int, input model.EnrollDeviceInput) int
 		RenewCertificate func(childComplexity int, csr string, keyProtection model.KeyProtection) int
+		SetGrouping      func(childComplexity int, strictness *int, text *model.StoryText, days *int) int
 		SetSource        func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
 	}
 
@@ -151,6 +160,7 @@ type ComplexityRoot struct {
 		Articles          func(childComplexity int, urls []string) int
 		Digest            func(childComplexity int) int
 		EnrollmentPreview func(childComplexity int, code string) int
+		Grouping          func(childComplexity int) int
 		Headlines         func(childComplexity int, since *time.Time, sourceIds []string) int
 		ServerInfo        func(childComplexity int) int
 		Sources           func(childComplexity int) int
@@ -240,11 +250,13 @@ type ComplexityRoot struct {
 type MutationResolver interface {
 	EnrollDevice(ctx context.Context, input model.EnrollDeviceInput) (model.EnrollDeviceResult, error)
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
+	SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int) (*model.Grouping, error)
 	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
 }
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
 	ServerInfo(ctx context.Context) (*model.ServerInfo, error)
+	Grouping(ctx context.Context) (*model.Grouping, error)
 	Headlines(ctx context.Context, since *time.Time, sourceIds []string) ([]*model.Headline, error)
 	Article(ctx context.Context, url string) (*model.Article, error)
 	Articles(ctx context.Context, urls []string) ([]*model.Article, error)
@@ -548,6 +560,37 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.GeminiStats.Today(childComplexity), true
 
+	case "Grouping.days":
+		if e.ComplexityRoot.Grouping.Days == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Grouping.Days(childComplexity), true
+	case "Grouping.model":
+		if e.ComplexityRoot.Grouping.Model == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Grouping.Model(childComplexity), true
+	case "Grouping.strictness":
+		if e.ComplexityRoot.Grouping.Strictness == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Grouping.Strictness(childComplexity), true
+	case "Grouping.text":
+		if e.ComplexityRoot.Grouping.Text == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Grouping.Text(childComplexity), true
+	case "Grouping.threshold":
+		if e.ComplexityRoot.Grouping.Threshold == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Grouping.Threshold(childComplexity), true
+
 	case "Headline.category":
 		if e.ComplexityRoot.Headline.Category == nil {
 			break
@@ -692,6 +735,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RenewCertificate(childComplexity, args["csr"].(string), args["keyProtection"].(model.KeyProtection)), true
+	case "Mutation.setGrouping":
+		if e.ComplexityRoot.Mutation.SetGrouping == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setGrouping_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SetGrouping(childComplexity, args["strictness"].(*int), args["text"].(*model.StoryText), args["days"].(*int)), true
 	case "Mutation.setSource":
 		if e.ComplexityRoot.Mutation.SetSource == nil {
 			break
@@ -743,6 +797,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.EnrollmentPreview(childComplexity, args["code"].(string)), true
+	case "Query.grouping":
+		if e.ComplexityRoot.Query.Grouping == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.Grouping(childComplexity), true
 	case "Query.headlines":
 		if e.ComplexityRoot.Query.Headlines == nil {
 			break
@@ -1185,6 +1245,44 @@ type ServerDiscovery {
   key: String
   "Where the server can be reached now, https://host:port, the most likely first (public, IPv6, then LAN)."
   addresses: [String!]!
+}
+`, BuiltIn: false},
+	{Name: "../schema/grouping.graphql", Input: `# --- Grouping -------------------------------------------------------------------
+# How the server groups headlines into stories: the app's grouping settings, kept on the server. The model is the
+# one the server has downloaded (config.json's story_model); the rest the app's settings screen changes.
+
+extend type Query {
+  "How the server groups stories; null when stories are off."
+  grouping: Grouping
+}
+
+extend type Mutation {
+  """
+  Changes how the server groups stories; the fields left out keep their value. The stories are grouped again at once
+  (stories shows them a few seconds later), and summaries are written for the changed stories in the next round.
+  A value out of range, or stories off, fails with BAD_REQUEST in extensions.code.
+  """
+  setGrouping(strictness: Int, text: StoryText, days: Int): Grouping!
+}
+
+"What a headline is grouped by: the app's StoryText."
+enum StoryText {
+  TITLE
+  SUBTITLE
+  TITLE_AND_SUBTITLE
+  TITLE_TIMES_SUBTITLE
+}
+
+type Grouping {
+  "The model's id (\"bge-m3\"); set in config.json, not here."
+  model: String!
+  text: StoryText!
+  "The app's grouping slider: 10 (loose, related topics merge) to 90 (strict, one event splits)."
+  strictness: Int!
+  "The days of headlines grouped; 0: all kept."
+  days: Int!
+  "The similarity strictness is for this model and text."
+  threshold: Float!
 }
 `, BuiltIn: false},
 	{Name: "../schema/news.graphql", Input: `# --- Headlines, articles and stories ----------------------------------------------
@@ -1664,6 +1762,22 @@ func (ec *executionContext) childFields_GeminiStats(ctx context.Context, field g
 	return nil, fmt.Errorf("no field named %q was found under type GeminiStats", field.Name)
 }
 
+func (ec *executionContext) childFields_Grouping(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "model":
+		return ec.fieldContext_Grouping_model(ctx, field)
+	case "text":
+		return ec.fieldContext_Grouping_text(ctx, field)
+	case "strictness":
+		return ec.fieldContext_Grouping_strictness(ctx, field)
+	case "days":
+		return ec.fieldContext_Grouping_days(ctx, field)
+	case "threshold":
+		return ec.fieldContext_Grouping_threshold(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Grouping", field.Name)
+}
+
 func (ec *executionContext) childFields_Headline(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "sourceId":
@@ -2021,6 +2135,36 @@ func (ec *executionContext) field_Mutation_renewCertificate_args(ctx context.Con
 		return nil, err
 	}
 	args["keyProtection"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setGrouping_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "strictness",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["strictness"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "text",
+		func(ctx context.Context, v any) (*model.StoryText, error) {
+			return ec.unmarshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["text"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "days",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["days"] = arg2
 	return args, nil
 }
 
@@ -3261,6 +3405,121 @@ func (ec *executionContext) fieldContext_GeminiStats_lastRun(_ context.Context, 
 	return fc, nil
 }
 
+func (ec *executionContext) _Grouping_model(ctx context.Context, field graphql.CollectedField, obj *model.Grouping) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Grouping_model(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Model, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Grouping_model(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Grouping", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Grouping_text(ctx context.Context, field graphql.CollectedField, obj *model.Grouping) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Grouping_text(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Text, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.StoryText) graphql.Marshaler {
+			return ec.marshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Grouping_text(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Grouping", field, false, false, errors.New("field of type StoryText does not have child fields"))
+}
+
+func (ec *executionContext) _Grouping_strictness(ctx context.Context, field graphql.CollectedField, obj *model.Grouping) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Grouping_strictness(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Strictness, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Grouping_strictness(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Grouping", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _Grouping_days(ctx context.Context, field graphql.CollectedField, obj *model.Grouping) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Grouping_days(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Days, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Grouping_days(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Grouping", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _Grouping_threshold(ctx context.Context, field graphql.CollectedField, obj *model.Grouping) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Grouping_threshold(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Threshold, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v float64) graphql.Marshaler {
+			return ec.marshalNFloat2float64(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Grouping_threshold(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Grouping", field, false, false, errors.New("field of type Float does not have child fields"))
+}
+
 func (ec *executionContext) _Headline_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.Headline) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3822,6 +4081,50 @@ func (ec *executionContext) fieldContext_Mutation_renewCertificate(ctx context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_setGrouping(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setGrouping(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetGrouping(ctx, fc.Args["strictness"].(*int), fc.Args["text"].(*model.StoryText), fc.Args["days"].(*int))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
+			return ec.marshalNGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setGrouping(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Grouping(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setGrouping_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_setSource(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3950,6 +4253,38 @@ func (ec *executionContext) fieldContext_Query_serverInfo(_ context.Context, fie
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_ServerInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_grouping(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_grouping(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().Grouping(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
+			return ec.marshalOGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_grouping(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Grouping(ctx, field)
 		},
 	}
 	return fc, nil
@@ -7169,6 +7504,65 @@ func (ec *executionContext) _GeminiStats(ctx context.Context, sel ast.SelectionS
 	return out
 }
 
+var groupingImplementors = []string{"Grouping"}
+
+func (ec *executionContext) _Grouping(ctx context.Context, sel ast.SelectionSet, obj *model.Grouping) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, groupingImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Grouping")
+		case "model":
+			out.Values[i] = ec._Grouping_model(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "text":
+			out.Values[i] = ec._Grouping_text(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "strictness":
+			out.Values[i] = ec._Grouping_strictness(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "days":
+			out.Values[i] = ec._Grouping_days(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "threshold":
+			out.Values[i] = ec._Grouping_threshold(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var headlineImplementors = []string{"Headline"}
 
 func (ec *executionContext) _Headline(ctx context.Context, sel ast.SelectionSet, obj *model.Headline) graphql.Marshaler {
@@ -7349,6 +7743,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "setGrouping":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setGrouping(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "setSource":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_setSource(ctx, field)
@@ -7433,6 +7834,25 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "grouping":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_grouping(ctx, field)
 				return res
 			}
 
@@ -8767,6 +9187,20 @@ func (ec *executionContext) marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutio
 	return ec._GeminiDay(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNGrouping2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v model.Grouping) graphql.Marshaler {
+	return ec._Grouping(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Grouping(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -8967,6 +9401,16 @@ func (ec *executionContext) marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutio
 		return graphql.Null
 	}
 	return ec._StoryList(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, v any) (model.StoryText, error) {
+	var res model.StoryText
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, sel ast.SelectionSet, v model.StoryText) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {
@@ -9247,6 +9691,13 @@ func (ec *executionContext) marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolut
 	return ec._GeminiStats(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalOGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Grouping(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
 	if v == nil {
 		return nil, nil
@@ -9284,6 +9735,22 @@ func (ec *executionContext) marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolu
 		return graphql.Null
 	}
 	return ec._StorySummary(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, v any) (*model.StoryText, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.StoryText)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, sel ast.SelectionSet, v *model.StoryText) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
 }
 
 func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {

@@ -251,3 +251,62 @@ func TestTheAppReadsTheStatistics(t *testing.T) {
 		t.Fatalf("on\n got %s\nwant %s", got, want)
 	}
 }
+
+// anyText embeds every text as one vector: the stories are anything, what counts here is that they are grouped.
+type anyText struct{}
+
+func (anyText) Embed(string) ([]float32, error) { return []float32{1, 0}, nil }
+func (anyText) Close()                          {}
+
+func TestTheAppSetsTheServersGrouping(t *testing.T) {
+	env := newTestEnv(t)
+	seed(t, env)
+	// Stories off: no grouping, and nothing to set.
+	resp := mustQuery(t, env, `{ grouping { model } }`, nil)
+	if got := string(resp.Data["grouping"]); got != `null` {
+		t.Fatalf("off: %s", got)
+	}
+	cert, _ := env.enrollDevice(t, "hen")
+	if _, resp := env.query(t, cert, `mutation { setGrouping(strictness: 50) { model } }`, nil); len(resp.Errors) != 1 || resp.Errors[0].Extensions["code"] != resolver.CodeBadRequest {
+		t.Fatalf("off: %+v", resp.Errors)
+	}
+	config := stories.Grouping{Text: stories.TitleAndSubtitle, Strictness: 60, Days: 7}
+	job := &storyJob{db: env.db, embedder: anyText{}, model: stories.BGEM3, grouping: config}
+	env.api.Grouping, env.api.StoryModel = job, stories.BGEM3.ID
+	resp = mustQuery(t, env, `{ grouping { model text strictness days threshold } }`, nil)
+	if got := string(resp.Data["grouping"]); got != `{"model":"bge-m3","text":"TITLE_AND_SUBTITLE","strictness":60,"days":7,"threshold":0.6625}` {
+		t.Fatalf("grouping: %s", got)
+	}
+	// The app's slider and text: kept, and the stories grouped again at once.
+	resp = mustQuery(t, env, `mutation { setGrouping(strictness: 30, text: TITLE) { text strictness days } }`, nil)
+	if got := string(resp.Data["setGrouping"]); got != `{"text":"TITLE","strictness":30,"days":7}` {
+		t.Fatalf("setGrouping: %s", got)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		if _, at := job.Stories(); !at.IsZero() {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("not grouped again")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if job.finder.Text() != stories.Title {
+		t.Fatalf("grouped by %s", job.finder.Text())
+	}
+	// After a restart, the app's choice, not config.json's.
+	if got, err := savedGrouping(env.db, config); err != nil || got.Text != stories.Title || got.Strictness != 30 || got.Days != 7 {
+		t.Fatalf("after a restart: %+v, %v", got, err)
+	}
+	// What it can't take.
+	for _, mutation := range []string{
+		`mutation { setGrouping(strictness: 95) { days } }`,
+		`mutation { setGrouping(days: -1) { days } }`,
+		`mutation { setGrouping(days: 31) { days } }`,
+	} {
+		_, resp := env.query(t, cert, mutation, nil)
+		if len(resp.Errors) != 1 || resp.Errors[0].Extensions["code"] != resolver.CodeBadRequest {
+			t.Fatalf("%s: %+v", mutation, resp.Errors)
+		}
+	}
+}

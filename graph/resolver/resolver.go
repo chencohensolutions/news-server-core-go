@@ -1,6 +1,9 @@
 package resolver
 
 import (
+	"context"
+	"math"
+	"strings"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/enroll"
@@ -28,6 +31,10 @@ type Resolver struct {
 	Store *store.Store
 	// The stories last grouped and when; nil when stories are off.
 	Stories func() ([]stories.Story, time.Time)
+	// Grouping is how the stories are grouped, which the app changes; nil when stories are off.
+	Grouping Grouping
+	// StoryModel is the story model's id, for grouping.
+	StoryModel string
 	// Summaries says the server writes summaries after each grouping.
 	Summaries bool
 	// Gemini is the summary job's model, budget and latest run, for stats; nil when summaries are off.
@@ -62,9 +69,24 @@ func (r *Resolver) setting(site *sites.Source) sites.Setting {
 	return r.Settings.Get(site.ID)
 }
 
+// Grouping is the story job's grouping settings.
+type Grouping interface {
+	// Grouping is the settings now and the similarity they are.
+	Grouping() (stories.Grouping, float32)
+	// SetGrouping keeps g (checked) and groups the stories again.
+	SetGrouping(ctx context.Context, g stories.Grouping) error
+}
+
 // GeminiInfo is what stats says about the summary job.
 type GeminiInfo struct {
 	Model  string
 	Budget int
 	Status func() summary.Status
+}
+
+// grouping is the grouping field: Grouping's settings now.
+func (r *Resolver) grouping() *model.Grouping {
+	g, threshold := r.Grouping.Grouping()
+	return &model.Grouping{Model: r.StoryModel, Text: model.StoryText(strings.ToUpper(g.Text.String())), Strictness: g.Strictness,
+		Days: g.Days, Threshold: math.Round(float64(threshold)*1e4) / 1e4}
 }

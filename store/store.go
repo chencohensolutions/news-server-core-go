@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS unrelated (
 	flagged_at INTEGER NOT NULL,
 	PRIMARY KEY (url, other_url)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS server_settings (
+	key TEXT PRIMARY KEY,        -- a setting the app changes on the server ("grouping")
+	value TEXT NOT NULL          -- as JSON
+);
 CREATE TABLE IF NOT EXISTS site_settings (
 	source_id TEXT PRIMARY KEY,  -- what the app's Sources screen chose for one site
 	enabled INTEGER NOT NULL,
@@ -608,4 +612,24 @@ func (s *Store) Unrelated(ctx context.Context, since time.Time) (map[string]map[
 		out[url][other] = true
 	}
 	return out, rows.Err()
+}
+
+// ServerSetting is the setting key the app saved; false when none is.
+func (s *Store) ServerSetting(ctx context.Context, key string) (json.RawMessage, bool, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM server_settings WHERE key = ?`, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return json.RawMessage(value), true, nil
+}
+
+// SaveServerSetting keeps key's value.
+func (s *Store) SaveServerSetting(ctx context.Context, key string, value json.RawMessage) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO server_settings (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, string(value))
+	return err
 }

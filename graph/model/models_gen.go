@@ -94,6 +94,18 @@ type GeminiStats struct {
 	LastRun *SummaryRun `json:"lastRun,omitempty"`
 }
 
+type Grouping struct {
+	// The model's id ("bge-m3"); set in config.json, not here.
+	Model string    `json:"model"`
+	Text  StoryText `json:"text"`
+	// The app's grouping slider: 10 (loose, related topics merge) to 90 (strict, one event splits).
+	Strictness int `json:"strictness"`
+	// The days of headlines grouped; 0: all kept.
+	Days int `json:"days"`
+	// The similarity strictness is for this model and text.
+	Threshold float64 `json:"threshold"`
+}
+
 // One round of the server's loop. A round starts every everyMinutes, or a minute after the last one ends if it ran longer.
 type LoopStats struct {
 	StartedAt    time.Time `json:"startedAt"`
@@ -325,6 +337,66 @@ func (e *KeyProtection) UnmarshalJSON(b []byte) error {
 }
 
 func (e KeyProtection) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// What a headline is grouped by: the app's StoryText.
+type StoryText string
+
+const (
+	StoryTextTitle              StoryText = "TITLE"
+	StoryTextSubtitle           StoryText = "SUBTITLE"
+	StoryTextTitleAndSubtitle   StoryText = "TITLE_AND_SUBTITLE"
+	StoryTextTitleTimesSubtitle StoryText = "TITLE_TIMES_SUBTITLE"
+)
+
+var AllStoryText = []StoryText{
+	StoryTextTitle,
+	StoryTextSubtitle,
+	StoryTextTitleAndSubtitle,
+	StoryTextTitleTimesSubtitle,
+}
+
+func (e StoryText) IsValid() bool {
+	switch e {
+	case StoryTextTitle, StoryTextSubtitle, StoryTextTitleAndSubtitle, StoryTextTitleTimesSubtitle:
+		return true
+	}
+	return false
+}
+
+func (e StoryText) String() string {
+	return string(e)
+}
+
+func (e *StoryText) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = StoryText(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid StoryText", str)
+	}
+	return nil
+}
+
+func (e StoryText) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *StoryText) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e StoryText) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

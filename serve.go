@@ -70,6 +70,7 @@ func serve(config auth.AppConfig) {
 	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones, Loop: loop.stats}
 	if job != nil {
 		api.Stories = job.Stories
+		api.Grouping, api.StoryModel = job, job.model.ID
 		api.Summaries = job.summaries
 	}
 	if summaries != nil {

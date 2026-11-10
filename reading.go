@@ -105,7 +105,8 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 		job = nil
 	} else {
 		job.enabled = settings.Enabled
-		log.Printf("Grouping stories with %s by %s, strictness %d", config.StoryModel, config.StoryText, config.StoryStrictness)
+		g, _ := job.Grouping()
+		log.Printf("Grouping stories with %s by %s, strictness %d, over %d days", config.StoryModel, g.Text, g.Strictness, g.Days)
 		writer, err := openSummaries(config, refresher.Store, found)
 		if err != nil {
 			log.Printf("Summaries are off: %v", err)
@@ -122,7 +123,7 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 				log.Printf("stories: %v", err)
 				return
 			}
-			log.Printf("stories: %d, %d headlines embedded, in %s", len(grouped), job.finder.LastEmbedded, time.Since(start).Round(time.Millisecond))
+			log.Printf("stories: %d, %d headlines embedded, in %s", len(grouped), job.Embedded(), time.Since(start).Round(time.Millisecond))
 			if writer == nil {
 				return
 			}
