@@ -9,7 +9,12 @@ and the same code (`enroll/`, `auth/access.go`, `middleware.go`). The difference
   instead of trusting a CA and the host name, so the self-made CA and an IP address both work and nothing is built
   into the app. `enroll-code` also prints its first 16 digits as `Key`; when the code is typed instead of scanned,
   the app shows the key it sees for you to compare.
-- No peers, no private files, no discovery through the DHT: `public_url` is the address the app uses.
+- No peers, no private files, no discovery through the DHT: `public_url` is the address the app uses. When it is
+  empty, the enrollment link gets the router's outside address instead, once the server has its port mapped.
+- **Away from home:** the server asks the home router to forward its port (UPnP or NAT-PMP, journal-server-go's
+  `portmap`), renews it, and removes it on Ctrl+C or a service stop. `"port_mapping": false` turns it off. Behind
+  carrier-grade NAT the log says the mapping can't help. A home IP can change, and the app keeps the address it
+  enrolled with, so a dynamic DNS name in `public_url` is the lasting choice.
 - Port 56399 and admin API 127.0.0.1:8082 by default, beside the journal server's 56398 and 8081.
 
 ## Access rules

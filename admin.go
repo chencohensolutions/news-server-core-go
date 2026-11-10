@@ -42,7 +42,7 @@ func serveAdmin(config auth.AppConfig, enrollment *enroll.Service) {
 
 func newAdminMux(config auth.AppConfig, enrollment *enroll.Service, token string) *http.ServeMux {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
-		Resolvers: &resolver.Resolver{Config: config, Enrollment: enrollment, Now: time.Now},
+		Resolvers: &resolver.Resolver{Config: config, Enrollment: enrollment, Now: time.Now, Mapped: mappedURL},
 	}))
 	srv.AddTransport(transport.POST{})
 

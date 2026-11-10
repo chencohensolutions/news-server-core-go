@@ -6,6 +6,9 @@ require (
 	github.com/99designs/gqlgen v0.17.90
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/ebitengine/purego v0.11.2
+	github.com/huin/goupnp v1.3.1
+	github.com/jackpal/gateway v1.2.0
+	github.com/jackpal/go-nat-pmp v1.1.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/vektah/gqlparser/v2 v2.5.33
 	golang.org/x/net v0.62.0

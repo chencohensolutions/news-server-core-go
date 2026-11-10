@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -44,6 +47,19 @@ func serve(config auth.AppConfig) {
 		log.Fatal(err)
 	}
 	log.Printf("Read %d sites from %s", len(found), config.SourcesDir)
+	// Ctrl+C or a service stop removes the router's mapping before the process ends.
+	stopping, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	unmapped := make(chan struct{})
+	mapPort(stopping, config, unmapped)
+	go func() {
+		<-stopping.Done()
+		select {
+		case <-unmapped:
+		case <-time.After(5 * time.Second):
+		}
+		os.Exit(0)
+	}()
 	go serveAdmin(config, enrollment)
 	db, job := startReading(config)
 	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Version: version, Store: db}

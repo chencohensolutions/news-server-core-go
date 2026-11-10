@@ -53,7 +53,13 @@ type AppConfig struct {
 	StoryText       string `json:"story_text"`
 	StoryStrictness int    `json:"story_strictness"`
 	StoryDays       int    `json:"story_days"`
+	// Whether the server asks the home router (UPnP or NAT-PMP) to forward its port, so the phone reaches it away
+	// from home; on unless false. With public_url empty, the router's outside address goes in the enrollment link.
+	PortMapping *bool `json:"port_mapping"`
 }
+
+// PortMappingOn says whether the server asks the router to forward its port: on unless "port_mapping": false.
+func (c AppConfig) PortMappingOn() bool { return c.PortMapping == nil || *c.PortMapping }
 
 const (
 	// DefaultPort is one above the journal server's 56398, so both can run on one PC.

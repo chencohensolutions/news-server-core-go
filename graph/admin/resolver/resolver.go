@@ -16,4 +16,7 @@ type Resolver struct {
 	Config     auth.AppConfig
 	Enrollment *enroll.Service
 	Now        func() time.Time
+	// Mapped is the router's outside address for the server's port (https://ip:port), "" when there is none; the
+	// enrollment link's server when public_url is empty. Nil: none.
+	Mapped func() string
 }
