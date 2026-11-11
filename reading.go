@@ -138,6 +138,15 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 			log.Printf("summaries: %d written, %d waiting, digest %v, in %s", result.Written, result.Waiting, result.Digest, time.Since(start).Round(time.Millisecond))
 		}
 	}
+	if config.ArchiveDir != "-" {
+		grouped := refresher.AfterRun
+		refresher.AfterRun = func(ctx context.Context) {
+			if grouped != nil {
+				grouped(ctx)
+			}
+			archiveNow(ctx, refresher.Store, config.ArchiveDir)
+		}
+	}
 	loop.refresher, loop.every = refresher, config.RefreshMinutes
 	go refresher.Loop(context.Background(), time.Duration(config.RefreshMinutes)*time.Minute)
 	return refresher.Store, settings, job, summaries

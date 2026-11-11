@@ -8,6 +8,7 @@
   "sources_dir": "news/sources",
   "users": [{ "username": "hen" }],
   "database_file": "news.db",
+  "archive_dir": "archive",
   "refresh_minutes": 10,
   "keep_days": -1,
   "feed_sources": [],

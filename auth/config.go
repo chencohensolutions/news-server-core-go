@@ -35,6 +35,9 @@ type AppConfig struct {
 	Users      []UserConfig `json:"users"`
 	// What the server read from the sites: one SQLite file.
 	DatabaseFile string `json:"database_file"`
+	// A copy of what the database holds that can't be read again, in plain files, updated after each read of the
+	// sites: what `news-server restore` puts back. "" is DefaultArchiveDir, "-" turns it off.
+	ArchiveDir string `json:"archive_dir"`
 	// Minutes between reads of every site; 0 is DefaultRefreshMinutes, -1 turns reading off.
 	RefreshMinutes int `json:"refresh_minutes"`
 	// Days a headline no longer on its site is kept, with its article; 0 is DefaultKeepDays, -1 keeps everything.
@@ -91,6 +94,7 @@ const (
 	DefaultAdminTokenFile = "admin.token"
 	DefaultSourcesDir     = "news/sources"
 	DefaultDatabaseFile   = "news.db"
+	DefaultArchiveDir     = "archive"
 	DefaultRefreshMinutes = 10
 	DefaultKeepDays       = -1
 	DefaultModelsDir      = "models"
@@ -143,6 +147,9 @@ func (c AppConfig) WithDefaults() AppConfig {
 	}
 	if c.DatabaseFile == "" {
 		c.DatabaseFile = DefaultDatabaseFile
+	}
+	if c.ArchiveDir == "" {
+		c.ArchiveDir = DefaultArchiveDir
 	}
 	if c.RefreshMinutes == 0 {
 		c.RefreshMinutes = DefaultRefreshMinutes
