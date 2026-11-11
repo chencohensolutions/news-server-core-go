@@ -5,6 +5,9 @@
 /admin.token
 /news-server
 /news-server.exe
+/news-server-*.exe
+/server.log
+*.before-*
 
 # The database of what the server read
 news.db
