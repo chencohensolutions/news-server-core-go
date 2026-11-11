@@ -310,3 +310,57 @@ func TestTheAppSetsTheServersGrouping(t *testing.T) {
 		}
 	}
 }
+
+func TestTheAppReadsTheThreads(t *testing.T) {
+	env := newTestEnv(t)
+	seed(t, env)
+	ctx := context.Background()
+	noon := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	story := stories.Story{Reports: []scrape.ArticleSummary{
+		{SourceID: "siteh", URL: "https://siteh/1", Title: "Rain all day"},
+		{SourceID: "sitee", URL: "https://sitee/1", Title: "Vote"},
+	}}
+	// Written before ids: its key is its id.
+	data, _ := json.Marshal(summary.StorySummary{Title: "גשם", WrittenAt: noon,
+		Sentences: []summary.Sentence{{Text: "ירד גשם.", Sources: []string{"https://siteh/1"}}}})
+	id := summary.StoryKey(story)
+	if err := env.db.SaveSummary(ctx, id, data, noon); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.db.SaveStoryRecord(ctx, id, data, noon); err != nil {
+		t.Fatal(err)
+	}
+	for _, th := range []store.Thread{
+		{ID: "th1", Name: "החורף", Summary: "גשם בצפון.", StartedAt: noon, UpdatedAt: noon},
+		{ID: "th2", Name: "הכבישים", Summary: "כבישים נסגרו.", StartedAt: noon, UpdatedAt: noon.Add(time.Hour)},
+	} {
+		if err := env.db.SaveThread(ctx, th); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := env.db.LinkStory(ctx, id, []string{"th1", "th2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.db.RelateThreads(ctx, "th1", "th2"); err != nil {
+		t.Fatal(err)
+	}
+	env.api.Stories = func() ([]stories.Story, time.Time) { return []stories.Story{story}, noon }
+	resp := mustQuery(t, env, `{
+		stories { stories { summary { threads { id name storyCount } } } }
+		threads { id }
+		thread(id: "th1") { name summary startedAt stories { title sentences { text footnotes { title } } firstWrittenAt } related { name } }
+		none: thread(id: "nope") { id } }`, nil)
+	if got := string(resp.Data["stories"]); got != `{"stories":[{"summary":{"threads":[{"id":"th2","name":"הכבישים","storyCount":1},{"id":"th1","name":"החורף","storyCount":1}]}}]}` {
+		t.Fatalf("stories %s", got)
+	}
+	if got := string(resp.Data["threads"]); got != `[{"id":"th2"},{"id":"th1"}]` {
+		t.Fatalf("threads %s", got)
+	}
+	want := fmt.Sprintf(`{"name":"החורף","summary":"גשם בצפון.","startedAt":%q,"stories":[{"title":"גשם","sentences":[{"text":"ירד גשם.","footnotes":[{"title":"Rain all day"}]}],"firstWrittenAt":%[1]q}],"related":[{"name":"הכבישים"}]}`, noon.Format(time.RFC3339))
+	if got := string(resp.Data["thread"]); got != want {
+		t.Fatalf("thread\n got %s\nwant %s", got, want)
+	}
+	if got := string(resp.Data["none"]); got != "null" {
+		t.Fatalf("none %s", got)
+	}
+}

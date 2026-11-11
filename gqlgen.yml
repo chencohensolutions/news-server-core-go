@@ -27,3 +27,13 @@ models:
     model: github.com/chencohensolutions/news-server-core-go/graph/model.StoryList
   Story:
     model: github.com/chencohensolutions/news-server-core-go/graph/model.Story
+  StorySummary:
+    fields:
+      threads:
+        resolver: true
+  Thread:
+    fields:
+      stories:
+        resolver: true
+      related:
+        resolver: true

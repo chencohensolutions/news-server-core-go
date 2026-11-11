@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/chencohensolutions/news-server-core-go/graph/generated"
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/summary"
@@ -30,3 +31,8 @@ func (r *queryResolver) Digest(ctx context.Context) (*model.Digest, error) {
 	}
 	return &model.Digest{Title: digest.Title, Sentences: model.SentencesOf(digest.Sentences, byURL), WrittenAt: digest.WrittenAt}, nil
 }
+
+// StorySummary returns generated.StorySummaryResolver implementation.
+func (r *Resolver) StorySummary() generated.StorySummaryResolver { return &storySummaryResolver{r} }
+
+type storySummaryResolver struct{ *Resolver }

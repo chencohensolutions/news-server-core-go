@@ -99,6 +99,10 @@ func (r *queryResolver) Stories(ctx context.Context) (*model.StoryList, error) {
 	for _, s := range found {
 		story := &model.Story{}
 		if sum, ok := summaries[summary.StoryKey(s)]; ok {
+			if sum.ID == "" {
+				// Written before ids: its key is its id.
+				sum.ID = summary.StoryKey(s)
+			}
 			story.Summary = model.StorySummaryOf(sum, byURL)
 		}
 		for _, report := range s.Reports {

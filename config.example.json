@@ -24,6 +24,7 @@
   "summary_hours": 12,
   "summary_min_reports": 2,
   "summary_requests_per_run": 4,
+  "threads_hours": 24,
   "port_mapping": true,
   "discovery": true
 }

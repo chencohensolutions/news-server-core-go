@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "{\"links\": [{\"story\": \"n1\", \"threads\": [\"t1\", \"t9\"]}], \"newThreads\": [{\"name\": \"מזג האוויר בחורף\", \"summary\": \"גשם כבד ירד בצפון.\", \"stories\": [\"n1\", \"n2\"]}, {\"name\": \"התקציב\", \"summary\": \"הכנסת אישרה את התקציב.\", \"stories\": [\"n2\", \"n99\"]}, {\"name\": \"\", \"summary\": \"x\", \"stories\": [\"n1\"]}], \"summaries\": [{\"thread\": \"t1\", \"summary\": \"הסיפור עד כה, מעודכן.\"}], \"related\": [{\"thread\": \"מזג האוויר בחורף\", \"related\": [\"התקציב\", \"t7\"]}]}"
+          }
+        ]
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 700,
+    "candidatesTokenCount": 90,
+    "totalTokenCount": 790
+  }
+}

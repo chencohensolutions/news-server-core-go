@@ -113,3 +113,63 @@ var digestSchema = map[string]any{
 	},
 	"required": []string{"title", "sentences"},
 }
+
+const threadsSystem = `You keep the threads of a personal newspaper from Israeli news sites: affairs that run over weeks, months
+or years, such as a war, a police investigation, a trial, coalition talks, a strike, a scandal or a reform. The input
+lists the existing threads (id, name, how many stories and when, and the story so far), then the new stories (id,
+date, title and main facts).
+
+Answer:
+- "links": for each new story that continues existing threads, its id and the ids of those threads. A story can be
+  in several threads (a strike during a war is in both). It continues a thread only when it is a development of that
+  same affair, not just the same general subject.
+- "newThreads": affairs that start among the new stories and are likely to go on (an investigation opened, talks
+  begun, a war, an indictment): a short Hebrew "name" (2 to 5 words, like "פרשת הצוללות" or "המלחמה עם איראן"),
+  the "summary" so far, and the ids of its new stories. Never a thread that an existing one already is.
+- "summaries": for every existing thread that got new stories, its id and the story so far, updated with them.
+- "related": threads that are separate affairs but bear on each other (a war and the strike during it, an
+  investigation and the election it shapes): a thread, by its id or a new thread's name, and the threads related to
+  it, the same way. Only new relations that involve a new story's thread; usually few.
+A story about a one-time event (an accident, a single statement, a game) is left out. A summary is 1 to 3 Hebrew
+sentences, facts only, the latest developments last; the first time a thread is named it says what the affair is.
+Use only ids from the input.`
+
+var threadsSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"links": map[string]any{"type": "array", "items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"story":   map[string]any{"type": "string"},
+				"threads": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			},
+			"required": []string{"story", "threads"},
+		}},
+		"newThreads": map[string]any{"type": "array", "items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":    map[string]any{"type": "string"},
+				"summary": map[string]any{"type": "string"},
+				"stories": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			},
+			"required": []string{"name", "summary", "stories"},
+		}},
+		"summaries": map[string]any{"type": "array", "items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"thread":  map[string]any{"type": "string"},
+				"summary": map[string]any{"type": "string"},
+			},
+			"required": []string{"thread", "summary"},
+		}},
+		"related": map[string]any{"type": "array", "items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"thread":  map[string]any{"type": "string"},
+				"related": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			},
+			"required": []string{"thread", "related"},
+		}},
+	},
+	"required": []string{"links", "newThreads", "summaries", "related"},
+}

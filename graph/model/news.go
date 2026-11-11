@@ -151,7 +151,7 @@ func SentencesOf(sentences []summary.Sentence, headlines map[string]store.Headli
 func StorySummaryOf(s summary.StorySummary, headlines map[string]store.Headline) *StorySummary {
 	return &StorySummary{Title: s.Title, Sentences: SentencesOf(s.Sentences, headlines),
 		Contradictions: SentencesOf(s.Contradictions, headlines), Unrelated: append([]string{}, s.Unrelated...), WrittenAt: s.WrittenAt,
-		Updates: updatesOf(s, headlines)}
+		Updates: updatesOf(s, headlines), ID: s.ID}
 }
 
 // updatesOf is how s unfolded; a summary written before updates were kept is its own first one.
@@ -163,6 +163,15 @@ func updatesOf(s summary.StorySummary, headlines map[string]store.Headline) []*S
 	out := make([]*StoryUpdate, len(updates))
 	for i, u := range updates {
 		out[i] = &StoryUpdate{At: u.At, Sentences: SentencesOf(u.Sentences, headlines)}
+	}
+	return out
+}
+
+// ThreadsOf are threads for the API (their stories come from their own resolver).
+func ThreadsOf(threads []store.Thread) []*Thread {
+	out := make([]*Thread, len(threads))
+	for i, t := range threads {
+		out[i] = &Thread{ID: t.ID, Name: t.Name, Summary: t.Summary, StartedAt: t.StartedAt, UpdatedAt: t.UpdatedAt, StoryCount: t.Stories}
 	}
 	return out
 }

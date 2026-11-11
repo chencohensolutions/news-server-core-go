@@ -33,6 +33,8 @@ type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
 	Source() SourceResolver
+	StorySummary() StorySummaryResolver
+	Thread() ThreadResolver
 }
 
 type DirectiveRoot struct {
@@ -166,6 +168,8 @@ type ComplexityRoot struct {
 		Sources           func(childComplexity int) int
 		Stats             func(childComplexity int) int
 		Stories           func(childComplexity int) int
+		Thread            func(childComplexity int, id string) int
+		Threads           func(childComplexity int, first *int) int
 	}
 
 	Sentence struct {
@@ -232,7 +236,9 @@ type ComplexityRoot struct {
 
 	StorySummary struct {
 		Contradictions func(childComplexity int) int
+		ID             func(childComplexity int) int
 		Sentences      func(childComplexity int) int
+		Threads        func(childComplexity int) int
 		Title          func(childComplexity int) int
 		Unrelated      func(childComplexity int) int
 		Updates        func(childComplexity int) int
@@ -250,6 +256,25 @@ type ComplexityRoot struct {
 		Error   func(childComplexity int) int
 		Waiting func(childComplexity int) int
 		Written func(childComplexity int) int
+	}
+
+	Thread struct {
+		ID         func(childComplexity int) int
+		Name       func(childComplexity int) int
+		Related    func(childComplexity int) int
+		StartedAt  func(childComplexity int) int
+		Stories    func(childComplexity int) int
+		StoryCount func(childComplexity int) int
+		Summary    func(childComplexity int) int
+		UpdatedAt  func(childComplexity int) int
+	}
+
+	ThreadStory struct {
+		FirstWrittenAt func(childComplexity int) int
+		ID             func(childComplexity int) int
+		Sentences      func(childComplexity int) int
+		Title          func(childComplexity int) int
+		WrittenAt      func(childComplexity int) int
 	}
 }
 
@@ -270,12 +295,21 @@ type QueryResolver interface {
 	Sources(ctx context.Context) ([]*sites.Source, error)
 	Stats(ctx context.Context) (*model.ServerStats, error)
 	Digest(ctx context.Context) (*model.Digest, error)
+	Threads(ctx context.Context, first *int) ([]*model.Thread, error)
+	Thread(ctx context.Context, id string) (*model.Thread, error)
 }
 type SourceResolver interface {
 	Enabled(ctx context.Context, obj *sites.Source) (bool, error)
 
 	Feed(ctx context.Context, obj *sites.Source) (bool, error)
 	WaitMs(ctx context.Context, obj *sites.Source) (int, error)
+}
+type StorySummaryResolver interface {
+	Threads(ctx context.Context, obj *model.StorySummary) ([]*model.Thread, error)
+}
+type ThreadResolver interface {
+	Stories(ctx context.Context, obj *model.Thread) ([]*model.ThreadStory, error)
+	Related(ctx context.Context, obj *model.Thread) ([]*model.Thread, error)
 }
 
 type executableSchema graphql.ExecutableSchemaState[ResolverRoot, DirectiveRoot, ComplexityRoot]
@@ -845,6 +879,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Stories(childComplexity), true
+	case "Query.thread":
+		if e.ComplexityRoot.Query.Thread == nil {
+			break
+		}
+
+		args, err := ec.field_Query_thread_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.Thread(childComplexity, args["id"].(string)), true
+	case "Query.threads":
+		if e.ComplexityRoot.Query.Threads == nil {
+			break
+		}
+
+		args, err := ec.field_Query_threads_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.Threads(childComplexity, args["first"].(*int)), true
 
 	case "Sentence.footnotes":
 		if e.ComplexityRoot.Sentence.Footnotes == nil {
@@ -1088,12 +1144,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StorySummary.Contradictions(childComplexity), true
+	case "StorySummary.id":
+		if e.ComplexityRoot.StorySummary.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.ID(childComplexity), true
 	case "StorySummary.sentences":
 		if e.ComplexityRoot.StorySummary.Sentences == nil {
 			break
 		}
 
 		return e.ComplexityRoot.StorySummary.Sentences(childComplexity), true
+	case "StorySummary.threads":
+		if e.ComplexityRoot.StorySummary.Threads == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Threads(childComplexity), true
 	case "StorySummary.title":
 		if e.ComplexityRoot.StorySummary.Title == nil {
 			break
@@ -1162,6 +1230,86 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SummaryRun.Written(childComplexity), true
+
+	case "Thread.id":
+		if e.ComplexityRoot.Thread.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.ID(childComplexity), true
+	case "Thread.name":
+		if e.ComplexityRoot.Thread.Name == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.Name(childComplexity), true
+	case "Thread.related":
+		if e.ComplexityRoot.Thread.Related == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.Related(childComplexity), true
+	case "Thread.startedAt":
+		if e.ComplexityRoot.Thread.StartedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.StartedAt(childComplexity), true
+	case "Thread.stories":
+		if e.ComplexityRoot.Thread.Stories == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.Stories(childComplexity), true
+	case "Thread.storyCount":
+		if e.ComplexityRoot.Thread.StoryCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.StoryCount(childComplexity), true
+	case "Thread.summary":
+		if e.ComplexityRoot.Thread.Summary == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.Summary(childComplexity), true
+	case "Thread.updatedAt":
+		if e.ComplexityRoot.Thread.UpdatedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Thread.UpdatedAt(childComplexity), true
+
+	case "ThreadStory.firstWrittenAt":
+		if e.ComplexityRoot.ThreadStory.FirstWrittenAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ThreadStory.FirstWrittenAt(childComplexity), true
+	case "ThreadStory.id":
+		if e.ComplexityRoot.ThreadStory.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ThreadStory.ID(childComplexity), true
+	case "ThreadStory.sentences":
+		if e.ComplexityRoot.ThreadStory.Sentences == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ThreadStory.Sentences(childComplexity), true
+	case "ThreadStory.title":
+		if e.ComplexityRoot.ThreadStory.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ThreadStory.Title(childComplexity), true
+	case "ThreadStory.writtenAt":
+		if e.ComplexityRoot.ThreadStory.WrittenAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ThreadStory.WrittenAt(childComplexity), true
 
 	}
 	return 0, false
@@ -1677,6 +1825,51 @@ type Footnote {
   title: String
 }
 `, BuiltIn: false},
+	{Name: "../schema/threads.graphql", Input: `# --- Threads --------------------------------------------------------------------
+# Affairs that run over months or years (a war, an investigation, coalition talks): generated stories Gemini links
+# once a day, from the new stories and every thread so far. A story can be in several threads; a thread has many.
+# Every generated story is kept for good, so a thread reaches back as far as the server has read.
+
+extend type Query {
+  "Threads, latest updated first; first is how many (50 unless set, at most 500)."
+  threads(first: Int): [Thread!]!
+  "One thread; null when there is none with id."
+  thread(id: ID!): Thread
+}
+
+extend type StorySummary {
+  "The story's id, kept by its later versions."
+  id: ID!
+  "The threads the story is in, latest updated first; none until the day's linking placed it."
+  threads: [Thread!]!
+}
+
+type Thread {
+  id: ID!
+  "Gemini's short Hebrew name (\"המלחמה עם איראן\")."
+  name: String!
+  "The story so far, a few sentences, kept up to date as stories join."
+  summary: String!
+  "When its first and its latest stories were written."
+  startedAt: Time!
+  updatedAt: Time!
+  storyCount: Int!
+  "Its stories, oldest first."
+  stories: [ThreadStory!]!
+  "Separate affairs that bear on this one (a war and the strike during it), latest updated first."
+  related: [Thread!]!
+}
+
+"A story in a thread: its latest version."
+type ThreadStory {
+  id: ID!
+  title: String!
+  sentences: [Sentence!]!
+  "When its first version was written: its place in the thread."
+  firstWrittenAt: Time!
+  writtenAt: Time!
+}
+`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
@@ -2004,6 +2197,10 @@ func (ec *executionContext) childFields_StorySummary(ctx context.Context, field 
 		return ec.fieldContext_StorySummary_writtenAt(ctx, field)
 	case "updates":
 		return ec.fieldContext_StorySummary_updates(ctx, field)
+	case "id":
+		return ec.fieldContext_StorySummary_id(ctx, field)
+	case "threads":
+		return ec.fieldContext_StorySummary_threads(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type StorySummary", field.Name)
 }
@@ -2032,6 +2229,44 @@ func (ec *executionContext) childFields_SummaryRun(ctx context.Context, field gr
 		return ec.fieldContext_SummaryRun_error(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type SummaryRun", field.Name)
+}
+
+func (ec *executionContext) childFields_Thread(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_Thread_id(ctx, field)
+	case "name":
+		return ec.fieldContext_Thread_name(ctx, field)
+	case "summary":
+		return ec.fieldContext_Thread_summary(ctx, field)
+	case "startedAt":
+		return ec.fieldContext_Thread_startedAt(ctx, field)
+	case "updatedAt":
+		return ec.fieldContext_Thread_updatedAt(ctx, field)
+	case "storyCount":
+		return ec.fieldContext_Thread_storyCount(ctx, field)
+	case "stories":
+		return ec.fieldContext_Thread_stories(ctx, field)
+	case "related":
+		return ec.fieldContext_Thread_related(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Thread", field.Name)
+}
+
+func (ec *executionContext) childFields_ThreadStory(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_ThreadStory_id(ctx, field)
+	case "title":
+		return ec.fieldContext_ThreadStory_title(ctx, field)
+	case "sentences":
+		return ec.fieldContext_ThreadStory_sentences(ctx, field)
+	case "firstWrittenAt":
+		return ec.fieldContext_ThreadStory_firstWrittenAt(ctx, field)
+	case "writtenAt":
+		return ec.fieldContext_ThreadStory_writtenAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ThreadStory", field.Name)
 }
 
 func (ec *executionContext) childFields___Directive(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -2329,6 +2564,34 @@ func (ec *executionContext) field_Query_headlines_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["sourceIds"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_thread_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_threads_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg0
 	return args, nil
 }
 
@@ -4598,6 +4861,94 @@ func (ec *executionContext) fieldContext_Query_digest(_ context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_threads(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_threads(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().Threads(ctx, fc.Args["first"].(*int))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
+			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_threads(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Thread(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_threads_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_thread(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_thread(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().Thread(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Thread) graphql.Marshaler {
+			return ec.marshalOThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_thread(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Thread(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_thread_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -5785,6 +6136,61 @@ func (ec *executionContext) fieldContext_StorySummary_updates(_ context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _StorySummary_id(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _StorySummary_threads(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_threads(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.StorySummary().Threads(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
+			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_threads(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StorySummary",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Thread(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _StoryUpdate_at(ctx context.Context, field graphql.CollectedField, obj *model.StoryUpdate) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -5953,6 +6359,332 @@ func (ec *executionContext) _SummaryRun_error(ctx context.Context, field graphql
 }
 func (ec *executionContext) fieldContext_SummaryRun_error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SummaryRun", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Thread_id(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Thread", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _Thread_name(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_name(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Thread", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Thread_summary(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_summary(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Summary, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_summary(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Thread", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Thread_startedAt(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_startedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.StartedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_startedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Thread", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Thread_updatedAt(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_updatedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.UpdatedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Thread", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Thread_storyCount(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_storyCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.StoryCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_storyCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Thread", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _Thread_stories(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_stories(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Thread().Stories(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.ThreadStory) graphql.Marshaler {
+			return ec.marshalNThreadStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStoryᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_stories(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Thread",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ThreadStory(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Thread_related(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Thread_related(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Thread().Related(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
+			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Thread_related(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Thread",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Thread(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ThreadStory_id(ctx context.Context, field graphql.CollectedField, obj *model.ThreadStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ThreadStory_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ThreadStory_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _ThreadStory_title(ctx context.Context, field graphql.CollectedField, obj *model.ThreadStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ThreadStory_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ThreadStory_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ThreadStory_sentences(ctx context.Context, field graphql.CollectedField, obj *model.ThreadStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ThreadStory_sentences(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Sentences, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ThreadStory_sentences(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ThreadStory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Sentence(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ThreadStory_firstWrittenAt(ctx context.Context, field graphql.CollectedField, obj *model.ThreadStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ThreadStory_firstWrittenAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FirstWrittenAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ThreadStory_firstWrittenAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _ThreadStory_writtenAt(ctx context.Context, field graphql.CollectedField, obj *model.ThreadStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ThreadStory_writtenAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.WrittenAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ThreadStory_writtenAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type Time does not have child fields"))
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -8145,6 +8877,47 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "threads":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_threads(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "thread":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_thread(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -8715,33 +9488,74 @@ func (ec *executionContext) _StorySummary(ctx context.Context, sel ast.Selection
 		case "title":
 			out.Values[i] = ec._StorySummary_title(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "sentences":
 			out.Values[i] = ec._StorySummary_sentences(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "contradictions":
 			out.Values[i] = ec._StorySummary_contradictions(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "unrelated":
 			out.Values[i] = ec._StorySummary_unrelated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "writtenAt":
 			out.Values[i] = ec._StorySummary_writtenAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "updates":
 			out.Values[i] = ec._StorySummary_updates(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "id":
+			out.Values[i] = ec._StorySummary_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "threads":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._StorySummary_threads(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8842,6 +9656,201 @@ func (ec *executionContext) _SummaryRun(ctx context.Context, sel ast.SelectionSe
 			}
 		case "error":
 			out.Values[i] = ec._SummaryRun_error(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var threadImplementors = []string{"Thread"}
+
+func (ec *executionContext) _Thread(ctx context.Context, sel ast.SelectionSet, obj *model.Thread) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, threadImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Thread")
+		case "id":
+			out.Values[i] = ec._Thread_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "name":
+			out.Values[i] = ec._Thread_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "summary":
+			out.Values[i] = ec._Thread_summary(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "startedAt":
+			out.Values[i] = ec._Thread_startedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "updatedAt":
+			out.Values[i] = ec._Thread_updatedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "storyCount":
+			out.Values[i] = ec._Thread_storyCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "stories":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Thread_stories(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "related":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Thread_related(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var threadStoryImplementors = []string{"ThreadStory"}
+
+func (ec *executionContext) _ThreadStory(ctx context.Context, sel ast.SelectionSet, obj *model.ThreadStory) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, threadStoryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ThreadStory")
+		case "id":
+			out.Values[i] = ec._ThreadStory_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "title":
+			out.Values[i] = ec._ThreadStory_title(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sentences":
+			out.Values[i] = ec._ThreadStory_sentences(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "firstWrittenAt":
+			out.Values[i] = ec._ThreadStory_firstWrittenAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "writtenAt":
+			out.Values[i] = ec._ThreadStory_writtenAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9411,6 +10420,22 @@ func (ec *executionContext) marshalNHeadline2ᚖgithubᚗcomᚋchencohensolution
 	return ec._Headline(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {
+	res, err := graphql.UnmarshalID(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalID(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
 func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v any) (int, error) {
 	res, err := graphql.UnmarshalInt(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -9667,6 +10692,58 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 	}
 
 	return ret
+}
+
+func (ec *executionContext) marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx context.Context, sel ast.SelectionSet, v *model.Thread) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Thread(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNThreadStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ThreadStory) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNThreadStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStory(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNThreadStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStory(ctx context.Context, sel ast.SelectionSet, v *model.ThreadStory) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ThreadStory(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v any) (time.Time, error) {
@@ -10022,6 +11099,13 @@ func (ec *executionContext) marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensoluti
 		return graphql.Null
 	}
 	return ec._SummaryRun(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx context.Context, sel ast.SelectionSet, v *model.Thread) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Thread(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOTime2ᚖtimeᚐTime(ctx context.Context, v any) (*time.Time, error) {

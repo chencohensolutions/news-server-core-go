@@ -54,6 +54,8 @@ type StorySummary struct {
 	// footnotes. The grouping put them in the story by mistake.
 	Unrelated []string  `json:"unrelated,omitempty"`
 	WrittenAt time.Time `json:"writtenAt"`
+	// ID is the story's id, kept by its later versions: its threads find it by it.
+	ID string `json:"id,omitempty"`
 	// Reports are the URLs of the story's reports it was written from: how the next version finds it.
 	Reports []string `json:"reports,omitempty"`
 	// Updates are how the story unfolded, oldest first: the first version's sentences, then each later version's new
@@ -89,7 +91,7 @@ func reportsOf(s StorySummary) []string {
 }
 
 // previous is the saved summary story is a later version of: the one that shares the most reports with it, at
-// least half of its own; nil for a new story.
+// least half of its own; nil for a new story. Its ID is set (its key, for one written before IDs).
 func previous(story stories.Story, saved map[string]StorySummary) *StorySummary {
 	urls := map[string]bool{}
 	for _, r := range story.Reports {
@@ -97,7 +99,7 @@ func previous(story stories.Story, saved map[string]StorySummary) *StorySummary 
 	}
 	var best *StorySummary
 	bestShared := 0
-	for _, s := range saved {
+	for key, s := range saved {
 		reports := reportsOf(s)
 		shared := 0
 		for _, url := range reports {
@@ -107,6 +109,9 @@ func previous(story stories.Story, saved map[string]StorySummary) *StorySummary 
 		}
 		if shared > 0 && 2*shared >= len(reports) && (shared > bestShared || shared == bestShared && best != nil && s.WrittenAt.After(best.WrittenAt)) {
 			s := s
+			if s.ID == "" {
+				s.ID = key
+			}
 			best, bestShared = &s, shared
 		}
 	}
@@ -155,6 +160,8 @@ type Writer struct {
 	MaxChars   int // article text in one request; 0 is DefaultMaxChars
 	// MaxRequests is the most story requests one run sends while stories wait; 0 is DefaultMaxRequests.
 	MaxRequests int
+	// ThreadsEvery is how often stories are linked into threads; 0 is DefaultThreadsEvery, below 0 never.
+	ThreadsEvery time.Duration
 	// Every is how often a run starts (refresh_minutes); 0 is 10 minutes. Extra requests keep the budget's share of
 	// the runs left in the day.
 	Every time.Duration
@@ -319,6 +326,9 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		}
 	} else {
 		w.logf("summaries: the day's %d Gemini requests are used", orDefault(w.Budget, DefaultBudget))
+	}
+	if err := w.linkThreadsIfDue(ctx, day, now); err != nil {
+		w.logf("threads: %v", err)
 	}
 	keep := map[string]bool{}
 	for _, s := range found {
@@ -704,11 +714,19 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			added = ids.sentences(a.New, own)
 		}
 		summary.Updates = unfolded(prevOf[storyID(a.Story)], summary.Sentences, added, now)
+		summary.ID = StoryKey(s)
+		if prev := prevOf[storyID(a.Story)]; prev != nil {
+			summary.ID = prev.ID
+		}
 		data, err := json.Marshal(summary)
 		if err != nil {
 			return written, asked, err
 		}
 		if err := w.Store.SaveSummary(ctx, StoryKey(s), data, now); err != nil {
+			return written, asked, err
+		}
+		// Kept for good, for its threads.
+		if err := w.Store.SaveStoryRecord(ctx, summary.ID, data, now); err != nil {
 			return written, asked, err
 		}
 		// The grouping moves it to a closer story, or out, from the next run on.

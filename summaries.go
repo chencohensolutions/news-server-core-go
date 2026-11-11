@@ -28,14 +28,15 @@ func openSummaries(config auth.AppConfig, db *store.Store, found []sites.Source)
 		names[s.ID] = s.Name
 	}
 	return &summary.Writer{
-		Gemini:      &gemini.Client{Key: key, Model: config.GeminiModel},
-		Store:       db,
-		Budget:      config.SummaryBudget,
-		Hours:       config.SummaryHours,
-		MinReports:  config.SummaryMinReports,
-		MaxRequests: config.SummaryRequestsPerRun,
-		Every:       time.Duration(config.RefreshMinutes) * time.Minute,
-		SiteName:    func(id string) string { return names[id] },
+		Gemini:       &gemini.Client{Key: key, Model: config.GeminiModel},
+		Store:        db,
+		Budget:       config.SummaryBudget,
+		Hours:        config.SummaryHours,
+		MinReports:   config.SummaryMinReports,
+		MaxRequests:  config.SummaryRequestsPerRun,
+		ThreadsEvery: time.Duration(config.ThreadsHours) * time.Hour,
+		Every:        time.Duration(config.RefreshMinutes) * time.Minute,
+		SiteName:     func(id string) string { return names[id] },
 	}, nil
 }
 

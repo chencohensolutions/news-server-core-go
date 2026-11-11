@@ -66,6 +66,9 @@ type AppConfig struct {
 	SummaryHours          int    `json:"summary_hours"`
 	SummaryMinReports     int    `json:"summary_min_reports"`
 	SummaryRequestsPerRun int    `json:"summary_requests_per_run"`
+	// Hours between linkings of the stories into threads (affairs over months), one Gemini request or a few each;
+	// 0 is 24, -1 turns threads off.
+	ThreadsHours int `json:"threads_hours"`
 	// Whether the server asks the home router (UPnP or NAT-PMP) to forward its port, so the phone reaches it away
 	// from home; on unless false. With public_url empty, the router's outside address goes in the enrollment link.
 	PortMapping *bool `json:"port_mapping"`

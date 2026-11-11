@@ -205,6 +205,10 @@ type StorySummary struct {
 	// How the story unfolded, oldest first: what its first version said, then what each later version added (only the
 	// new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
 	Updates []*StoryUpdate `json:"updates"`
+	// The story's id, kept by its later versions.
+	ID string `json:"id"`
+	// The threads the story is in, latest updated first; none until the day's linking placed it.
+	Threads []*Thread `json:"threads"`
 }
 
 // What one version of a story added, and when it was written.
@@ -222,6 +226,32 @@ type SummaryRun struct {
 	Digest bool `json:"digest"`
 	// Why the run stopped early (a 429, Gemini busy); null when it went through.
 	Error *string `json:"error,omitempty"`
+}
+
+type Thread struct {
+	ID string `json:"id"`
+	// Gemini's short Hebrew name ("המלחמה עם איראן").
+	Name string `json:"name"`
+	// The story so far, a few sentences, kept up to date as stories join.
+	Summary string `json:"summary"`
+	// When its first and its latest stories were written.
+	StartedAt  time.Time `json:"startedAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+	StoryCount int       `json:"storyCount"`
+	// Its stories, oldest first.
+	Stories []*ThreadStory `json:"stories"`
+	// Separate affairs that bear on this one (a war and the strike during it), latest updated first.
+	Related []*Thread `json:"related"`
+}
+
+// A story in a thread: its latest version.
+type ThreadStory struct {
+	ID        string      `json:"id"`
+	Title     string      `json:"title"`
+	Sentences []*Sentence `json:"sentences"`
+	// When its first version was written: its place in the thread.
+	FirstWrittenAt time.Time `json:"firstWrittenAt"`
+	WrittenAt      time.Time `json:"writtenAt"`
 }
 
 type EnrollmentRejectedReason string

@@ -57,6 +57,9 @@ func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
 		if strings.Contains(string(system), "front page") {
 			name = "digest-answer.json"
 		}
+		if strings.Contains(string(system), "threads of a personal newspaper") {
+			name = "threads-answer.json"
+		}
 		data, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
 			t.Error(err)
@@ -107,7 +110,7 @@ func setup(t *testing.T) (*Writer, *fakeGemini, []stories.Story) {
 	}
 	fake := &fakeGemini{}
 	w := &Writer{Gemini: fake.serve(t), Store: db, Now: func() time.Time { return now }, Log: t.Logf,
-		Sleep:    func(context.Context, time.Duration) error { return nil },
+		Sleep: func(context.Context, time.Duration) error { return nil }, ThreadsEvery: -1,
 		SiteName: func(id string) string { return map[string]string{"siteh": "siteh", "sitee": "SiteE"}[id] }}
 	found := []stories.Story{
 		{Reports: []scrape.ArticleSummary{rainSiteh, rainSiteE}},
@@ -155,7 +158,7 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	want := StorySummary{Title: "גשם כבד בצפון", WrittenAt: now,
 		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}},
 		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}},
-		Reports:        []string{rainSiteh.URL, rainSiteE.URL}}
+		Reports:        []string{rainSiteh.URL, rainSiteE.URL}, ID: StoryKey(found[0])}
 	// A new story unfolds from its first version.
 	want.Updates = []Update{{At: now, Sentences: want.Sentences}}
 	if got, _ := json.Marshal(rain); string(got) != mustJSON(want) {
@@ -233,6 +236,10 @@ func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {
 	if len(rain.Updates) != 2 || len(rain.Updates[0].Sentences) != 2 || len(rain.Updates[1].Sentences) != 1 ||
 		rain.Updates[1].Sentences[0].Text != "גשם ירד גם בגליל." || rain.Updates[1].Sentences[0].Sources[0] != third.URL {
 		t.Fatalf("updates %+v", rain.Updates)
+	}
+	// The same story: it keeps its id.
+	if want := StoryKey(stories.Story{Reports: found[0].Reports[:2]}); rain.ID != want {
+		t.Fatalf("id %s, want %s", rain.ID, want)
 	}
 }
 
@@ -377,5 +384,91 @@ func TestARunSendsMoreRequestsWhileTheBudgetHasRoom(t *testing.T) {
 func TestAbbreviationsUseHebrewMarks(t *testing.T) {
 	if got := oneLine(`דובר צה"ל ויו”ר הכנסת   אמרו לג'ו "שלום"`); got != `דובר צה״ל ויו״ר הכנסת אמרו לג׳ו "שלום"` {
 		t.Fatal(got)
+	}
+}
+
+func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
+	w, fake, found := setup(t)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	// Two stories written and kept for good, under their own ids.
+	waiting, err := w.Store.UnlinkedStories(ctx, 10)
+	if err != nil || len(waiting) != 2 {
+		t.Fatalf("%d waiting, %v", len(waiting), err)
+	}
+	w.ThreadsEvery = 24 * time.Hour
+	if err := w.linkThreadsIfDue(ctx, Day(now), now); err != nil {
+		t.Fatal(err)
+	}
+	if fake.count() != 3 || !strings.Contains(fake.prompts[2], "(אין עדיין)") || !strings.Contains(fake.prompts[2], "[n2]") {
+		t.Fatalf("%d requests; linking:\n%s", fake.count(), fake.prompts[len(fake.prompts)-1])
+	}
+	threads, err := w.Store.Threads(ctx, 10)
+	if err != nil || len(threads) != 2 {
+		t.Fatalf("threads %+v, %v", threads, err)
+	}
+	// Many to many: the weather thread has both stories, the budget thread one (n99 isn't in the input), and the
+	// unnamed one is none; links to threads that don't exist yet (t1, t9) are dropped.
+	counts := map[string]int{}
+	for _, th := range threads {
+		counts[th.Name] = th.Stories
+		if !th.StartedAt.Equal(now) || !th.UpdatedAt.Equal(now) || th.Summary == "" {
+			t.Fatalf("thread %+v", th)
+		}
+	}
+	if counts["מזג האוויר בחורף"] != 2 || counts["התקציב"] != 1 {
+		t.Fatalf("counts %v", counts)
+	}
+	// Related both ways; t7 doesn't exist.
+	for _, th := range threads {
+		rel, err := w.Store.RelatedThreads(ctx, th.ID)
+		if err != nil || len(rel) != 1 || rel[0].ID == th.ID {
+			t.Fatalf("%s related %+v, %v", th.Name, rel, err)
+		}
+	}
+	if left, _ := w.Store.UnlinkedStories(ctx, 10); len(left) != 0 {
+		t.Fatalf("%d still waiting", len(left))
+	}
+	in := 0
+	for _, r := range waiting {
+		ths, err := w.Store.StoryThreads(ctx, r.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in += len(ths)
+	}
+	if in != 3 {
+		t.Fatalf("%d story-thread links", in)
+	}
+	// Not again within the day.
+	if err := w.linkThreadsIfDue(ctx, Day(now), now.Add(time.Hour)); err != nil || fake.count() != 3 {
+		t.Fatalf("%v, %d requests", err, fake.count())
+	}
+	// A day later a new story is offered with the threads so far, and links to the latest updated (t1).
+	later := now.Add(25 * time.Hour)
+	data, _ := json.Marshal(StorySummary{ID: "x", Title: "עוד גשם", Sentences: []Sentence{{"ירד גשם.", []string{rainSiteh.URL}}}})
+	if err := w.Store.SaveStoryRecord(ctx, "x", data, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.linkThreadsIfDue(ctx, Day(later), later); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fake.prompts[3], "[t1]") || !strings.Contains(fake.prompts[3], "[t2]") || !strings.Contains(fake.prompts[3], "עוד גשם") {
+		t.Fatalf("second linking:\n%s", fake.prompts[3])
+	}
+	ths, err := w.Store.StoryThreads(ctx, "x")
+	if err != nil || len(ths) < 2 {
+		t.Fatalf("x in %+v, %v", ths, err)
+	}
+	t1 := ths[0]
+	for _, th := range ths {
+		if th.Summary == "הסיפור עד כה, מעודכן." && th.UpdatedAt.Equal(later) {
+			t1 = th
+		}
+	}
+	if t1.Summary != "הסיפור עד כה, מעודכן." || !t1.UpdatedAt.Equal(later) {
+		t.Fatalf("t1 after %+v", ths)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/scrape"
@@ -79,6 +80,32 @@ CREATE TABLE IF NOT EXISTS unrelated (
 	other_url TEXT NOT NULL,     -- one of that story's other reports
 	flagged_at INTEGER NOT NULL,
 	PRIMARY KEY (url, other_url)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS story_records (
+	id TEXT PRIMARY KEY,         -- a story's id, kept by its later versions (summary.StorySummary.ID)
+	summary TEXT NOT NULL,       -- its latest version, as JSON
+	first_written INTEGER NOT NULL,
+	written_at INTEGER NOT NULL,
+	linked INTEGER NOT NULL DEFAULT 0 -- 1 once Gemini placed it in its threads, or none
+);
+CREATE INDEX IF NOT EXISTS story_records_linked ON story_records (linked, first_written);
+CREATE TABLE IF NOT EXISTS story_threads (
+	story TEXT NOT NULL,         -- a story in a thread: a story can be in several, a thread has many
+	thread TEXT NOT NULL,
+	PRIMARY KEY (story, thread)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS story_threads_thread ON story_threads (thread);
+CREATE TABLE IF NOT EXISTS threads (
+	id TEXT PRIMARY KEY,         -- an affair that runs over months: stories Gemini linked
+	name TEXT NOT NULL,
+	summary TEXT NOT NULL,       -- the story so far
+	started_at INTEGER NOT NULL, -- its first story's
+	updated_at INTEGER NOT NULL  -- its latest story's
+);
+CREATE TABLE IF NOT EXISTS thread_links (
+	a TEXT NOT NULL,             -- two related threads (a war and the strike during it), each way
+	b TEXT NOT NULL,
+	PRIMARY KEY (a, b)
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS server_settings (
 	key TEXT PRIMARY KEY,        -- a setting the app changes on the server ("grouping")
@@ -641,4 +668,216 @@ func (s *Store) SaveServerSetting(ctx context.Context, key string, value json.Ra
 	_, err := s.db.ExecContext(ctx, `INSERT INTO server_settings (key, value) VALUES (?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, string(value))
 	return err
+}
+
+// StoryRecord is a story kept for good: its latest version, when its first and latest were written, and whether
+// Gemini placed it in its threads yet.
+type StoryRecord struct {
+	ID           string
+	Summary      json.RawMessage
+	FirstWritten time.Time
+	WrittenAt    time.Time
+	Linked       bool
+}
+
+// SaveStoryRecord keeps id's latest version, written at now; its first time and thread stay.
+func (s *Store) SaveStoryRecord(ctx context.Context, id string, summary json.RawMessage, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO story_records (id, summary, first_written, written_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, written_at = excluded.written_at`,
+		id, string(summary), millis(now), millis(now))
+	return err
+}
+
+const recordColumns = `id, summary, first_written, written_at, linked`
+
+func scanRecords(rows *sql.Rows) ([]StoryRecord, error) {
+	defer rows.Close()
+	var out []StoryRecord
+	for rows.Next() {
+		var r StoryRecord
+		var data string
+		var first, written int64
+		if err := rows.Scan(&r.ID, &data, &first, &written, &r.Linked); err != nil {
+			return nil, err
+		}
+		r.Summary = json.RawMessage(data)
+		r.FirstWritten, r.WrittenAt = time.UnixMilli(first).UTC(), time.UnixMilli(written).UTC()
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// StoryRecord is id's record, or nil.
+func (s *Store) StoryRecord(ctx context.Context, id string) (*StoryRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+recordColumns+` FROM story_records WHERE id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
+	out, err := scanRecords(rows)
+	if err != nil || len(out) == 0 {
+		return nil, err
+	}
+	return &out[0], nil
+}
+
+// UnlinkedStories are up to limit stories not yet placed in a thread, oldest first.
+func (s *Store) UnlinkedStories(ctx context.Context, limit int) ([]StoryRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+recordColumns+` FROM story_records WHERE linked = 0
+		ORDER BY first_written, id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanRecords(rows)
+}
+
+// ThreadStories are thread's stories, oldest first.
+func (s *Store) ThreadStories(ctx context.Context, thread string) ([]StoryRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+recordColumns+` FROM story_records
+		WHERE id IN (SELECT story FROM story_threads WHERE thread = ?) ORDER BY first_written, id`, thread)
+	if err != nil {
+		return nil, err
+	}
+	return scanRecords(rows)
+}
+
+// LinkStory puts story id in threads (none: in no thread): it is placed, and not offered again.
+func (s *Store) LinkStory(ctx context.Context, id string, threads []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, t := range threads {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO story_threads (story, thread) VALUES (?, ?)`, id, t); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE story_records SET linked = 1 WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// StoryThreads are the threads story id is in, latest updated first.
+func (s *Store) StoryThreads(ctx context.Context, id string) ([]Thread, error) {
+	rows, err := s.db.QueryContext(ctx, threadQuery+` WHERE t.id IN (SELECT thread FROM story_threads WHERE story = ?)
+		ORDER BY t.updated_at DESC, t.id`, id)
+	if err != nil {
+		return nil, err
+	}
+	return scanThreads(rows)
+}
+
+// Thread is an affair over months: Gemini's name for it, the story so far, and its stories' span and count.
+type Thread struct {
+	ID        string
+	Name      string
+	Summary   string
+	StartedAt time.Time
+	UpdatedAt time.Time
+	Stories   int
+}
+
+const threadQuery = `SELECT t.id, t.name, t.summary, t.started_at, t.updated_at,
+	(SELECT COUNT(*) FROM story_threads st WHERE st.thread = t.id) FROM threads t`
+
+func scanThreads(rows *sql.Rows) ([]Thread, error) {
+	defer rows.Close()
+	var out []Thread
+	for rows.Next() {
+		var t Thread
+		var started, updated int64
+		if err := rows.Scan(&t.ID, &t.Name, &t.Summary, &started, &updated, &t.Stories); err != nil {
+			return nil, err
+		}
+		t.StartedAt, t.UpdatedAt = time.UnixMilli(started).UTC(), time.UnixMilli(updated).UTC()
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// Threads are up to limit threads, latest updated first.
+func (s *Store) Threads(ctx context.Context, limit int) ([]Thread, error) {
+	rows, err := s.db.QueryContext(ctx, threadQuery+` ORDER BY t.updated_at DESC, t.id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanThreads(rows)
+}
+
+// ThreadByID is thread id, or nil.
+func (s *Store) ThreadByID(ctx context.Context, id string) (*Thread, error) {
+	rows, err := s.db.QueryContext(ctx, threadQuery+` WHERE t.id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
+	out, err := scanThreads(rows)
+	if err != nil || len(out) == 0 {
+		return nil, err
+	}
+	return &out[0], nil
+}
+
+// SaveThread keeps t (its Stories aside).
+func (s *Store) SaveThread(ctx context.Context, t Thread) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO threads (id, name, summary, started_at, updated_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET name = excluded.name, summary = excluded.summary, started_at = excluded.started_at,
+		updated_at = excluded.updated_at`, t.ID, t.Name, t.Summary, millis(t.StartedAt), millis(t.UpdatedAt))
+	return err
+}
+
+// HeadlinesByURL are the stored headlines of urls, by URL; ones not stored are left out.
+func (s *Store) HeadlinesByURL(ctx context.Context, urls []string) (map[string]Headline, error) {
+	out := map[string]Headline{}
+	for start := 0; start < len(urls); start += 500 {
+		chunk := urls[start:min(len(urls), start+500)]
+		args := make([]any, len(chunk))
+		for i, u := range chunk {
+			args[i] = u
+		}
+		rows, err := s.db.QueryContext(ctx, `SELECT item, first_seen, last_seen FROM headlines WHERE url IN (?`+
+			strings.Repeat(", ?", len(chunk)-1)+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var data string
+			var first, last int64
+			if err := rows.Scan(&data, &first, &last); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			var h Headline
+			if err := json.Unmarshal([]byte(data), &h.ArticleSummary); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			h.FirstSeen, h.LastSeen = time.UnixMilli(first).UTC(), time.UnixMilli(last).UTC()
+			out[h.URL] = h
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// RelateThreads links threads a and b, both ways.
+func (s *Store) RelateThreads(ctx context.Context, a, b string) error {
+	if a == b {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO thread_links (a, b) VALUES (?, ?), (?, ?)`, a, b, b, a)
+	return err
+}
+
+// RelatedThreads are the threads related to id, latest updated first.
+func (s *Store) RelatedThreads(ctx context.Context, id string) ([]Thread, error) {
+	rows, err := s.db.QueryContext(ctx, threadQuery+` WHERE t.id IN (SELECT b FROM thread_links WHERE a = ?)
+		ORDER BY t.updated_at DESC, t.id`, id)
+	if err != nil {
+		return nil, err
+	}
+	return scanThreads(rows)
 }
