@@ -39,6 +39,15 @@ func archiveCommand(config auth.AppConfig, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(out, "archived into %s: %s\n", config.ArchiveDir, result)
+	if result.Pages > 0 {
+		// The emptied pages' space goes back to the disk.
+		if err := db.Vacuum(context.Background()); err != nil {
+			return err
+		}
+		if info, err := os.Stat(config.DatabaseFile); err == nil {
+			fmt.Fprintf(out, "%s is %d MB\n", config.DatabaseFile, info.Size()>>20)
+		}
+	}
 	return nil
 }
 

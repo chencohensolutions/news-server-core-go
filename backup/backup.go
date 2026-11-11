@@ -12,6 +12,9 @@
 //	threads.json  story_threads.json  thread_links.json  server_settings.json  site_settings.json
 //	gemini_requests.json  gemini_tokens.json      the whole table, written again each time
 //
+// The database keeps an article's page only until it is archived: then it is emptied there, and the archive's copy is
+// the only one (a restore leaves it out of the database too).
+//
 // Not kept: the vectors (the model makes them again), the sites' latest runs and failed fetches. The certificates,
 // devices.json, config.json and gemini.key are files already: copy them with the archive.
 package backup
@@ -60,7 +63,8 @@ type state map[string]int64
 
 // Result is what one Archive added.
 type Result struct {
-	Rows map[string]int // by table
+	Rows  map[string]int // by table
+	Pages int64          // article pages emptied in the database, now that the archive has them
 }
 
 func (r Result) String() string {
@@ -69,6 +73,9 @@ func (r Result) String() string {
 		if n := r.Rows[t.table]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, t.table))
 		}
+	}
+	if r.Pages > 0 {
+		parts = append(parts, fmt.Sprintf("%d pages moved out of the database", r.Pages))
 	}
 	if len(parts) == 0 {
 		return "nothing new"
@@ -130,6 +137,14 @@ func Archive(ctx context.Context, db *store.Store, dir string, now time.Time) (R
 				break
 			}
 		}
+	}
+	// The archived articles' pages are in the files now: the database needn't keep them.
+	if upTo := done["articles"]; upTo > 0 {
+		pages, err := db.DropPages(ctx, upTo)
+		if err != nil {
+			return result, fmt.Errorf("dropping archived pages: %w", err)
+		}
+		result.Pages = pages
 	}
 	for _, table := range whole {
 		var rows []store.Row
@@ -299,7 +314,11 @@ func restoreFile(ctx context.Context, db *store.Store, table, path string, log f
 			log("restore: %s: skipped a line cut short", path)
 			continue
 		}
-		rows = append(rows, rowOf(raw))
+		row := rowOf(raw)
+		if table == "articles" {
+			row["page"] = "" // the archive keeps it
+		}
+		rows = append(rows, row)
 		if len(rows) == 500 {
 			if err := flush(); err != nil {
 				return n, err
