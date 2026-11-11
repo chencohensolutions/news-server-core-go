@@ -233,3 +233,18 @@ func TestASiteSwitchedOffIsNotRead(t *testing.T) {
 		t.Fatal("b wasn't read")
 	}
 }
+
+func TestTheLoopKeepsItsLastRound(t *testing.T) {
+	r, s, _ := setup(t)
+	s.set("a.example/", `<div class="i"><a href="/1">One</a></div>`)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	r.AfterRun = func(context.Context) { close(done) }
+	go r.Loop(ctx, time.Hour)
+	<-done
+	last := r.Last()
+	if last.Start.IsZero() || last.Took <= 0 || last.Headlines != 1 || len(last.Failures) != 1 {
+		t.Fatalf("%+v", last)
+	}
+}

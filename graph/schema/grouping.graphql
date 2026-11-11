@@ -1,0 +1,51 @@
+# --- Grouping -------------------------------------------------------------------
+# How the server groups headlines into stories: the app's grouping settings, kept on the server. The model is the
+# one the server has downloaded (config.json's story_model); the rest the app's settings screen changes.
+
+extend type Query {
+  "How the server groups stories; null when stories are off."
+  grouping: Grouping
+}
+
+extend type Mutation {
+  """
+  Changes how the server groups stories; the fields left out keep their value. The stories are grouped again at once
+  (stories shows them a few seconds later), and summaries are written for the changed stories in the next round.
+  A value out of range, or stories off, fails with BAD_REQUEST in extensions.code.
+  """
+  setGrouping(strictness: Int, text: StoryText, days: Int, method: GroupingMethod): Grouping!
+}
+
+"What a headline is grouped by: the app's StoryText."
+enum StoryText {
+  TITLE
+  SUBTITLE
+  TITLE_AND_SUBTITLE
+  TITLE_TIMES_SUBTITLE
+}
+
+"Who groups the headlines into stories."
+enum GroupingMethod {
+  "The story model (model): by meaning vectors, at strictness."
+  MODEL
+  """
+  Gemini, each round placing the new headlines in the stories so far (a request of the day's budget); the model's
+  grouping stands in when Gemini doesn't answer. Needs a Gemini key (geminiAvailable).
+  """
+  GEMINI
+}
+
+type Grouping {
+  method: GroupingMethod!
+  "Whether GEMINI can be chosen: the server has a Gemini key."
+  geminiAvailable: Boolean!
+  "The model's id (\"bge-m3\"); set in config.json, not here."
+  model: String!
+  text: StoryText!
+  "The app's grouping slider: 10 (loose, related topics merge) to 90 (strict, one event splits)."
+  strictness: Int!
+  "The days of headlines grouped; 0: all kept."
+  days: Int!
+  "The similarity strictness is for this model and text."
+  threshold: Float!
+}

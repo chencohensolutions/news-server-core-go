@@ -1,0 +1,115 @@
+# --- Summaries ------------------------------------------------------------------
+# The personal newspaper Gemini writes after each grouping (summary_* in config.json): a short article for each story
+# that changed in the last hours. Hebrew, facts only, each fact once; every sentence has footnotes, the articles it
+# comes from. (The digest, a front page of the last hour, was dropped on Nov 11, 2026.)
+
+extend type Query {
+  "How the summaries are written, which the app's settings change; null when summaries are off."
+  summarySettings: SummarySettings
+}
+
+extend type Mutation {
+  """
+  Changes how the summaries are written; the fields left out keep their value. Stories written from now on follow
+  it. Summaries off fails with BAD_REQUEST in extensions.code.
+  """
+  setSummarySettings(fullArticles: Boolean, length: StoryLength, rewriteMinutes: Int, rewriteOnNewSite: Boolean,
+    reserveAfter: Int): SummarySettings!
+}
+
+type SummarySettings {
+  """
+  Gemini reads each article's whole body (default): without the lines that aren't the article (promotions, "more on
+  this", other news), a paywall stub, or paragraphs another site of the story has word for word, and up to 4,000
+  characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
+  """
+  fullArticles: Boolean!
+  "How long a generated story is (default MEDIUM). Stories are written at it from the next round."
+  length: StoryLength!
+  """
+  The least minutes between two versions of a story (default 30): the reports that join it meanwhile wait and go in
+  together, which saves requests on busy stories. 0 writes it again on every change; at most 240.
+  """
+  rewriteMinutes: Int!
+  "A site that wasn't in the story joining writes it again at once, rewriteMinutes or not (default false)."
+  rewriteOnNewSite: Boolean!
+  """
+  After this many of the day's Gemini requests, only new stories are written, not new versions of written ones
+  (default 300); 0 is off. Takes 0 to the daily budget.
+  """
+  reserveAfter: Int!
+}
+
+"How long a generated story is: its sentences, more within the range the more sites cover it."
+enum StoryLength {
+  "2 to 6 sentences; an update adds up to 4."
+  SHORT
+  "3 to 10; an update adds up to 6."
+  MEDIUM
+  "5 to 15; an update adds up to 8."
+  LONG
+  "No limit: every fact the articles give, each once. Fewer stories a request, so more requests."
+  FULL
+}
+
+extend type ServerInfo {
+  "The server writes summaries (stories are on and a Gemini key is set)."
+  summaries: Boolean!
+}
+
+extend type Story {
+  "The story's generated article; null until it is written (a story that gains a report is written again)."
+  summary: StorySummary
+}
+
+type StorySummary {
+  title: String!
+  sentences: [Sentence!]!
+  "Where sites state different facts about the story, one sentence each saying which says what; usually none."
+  contradictions: [Sentence!]!
+  "URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article."
+  unrelated: [String!]!
+  writtenAt: Time!
+  """
+  How the story unfolded, oldest first: what its first version said, then what each later version added (only the
+  new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
+  """
+  updates: [StoryUpdate!]!
+  """
+  URLs of the reports its latest version was written from: the ones Gemini read: all of them, up to 40 (one
+  per site first); the rest of a bigger story weren't read.
+  """
+  reports: [String!]!
+  "Of reports, the ones Gemini read only the title and subtitle of: a paywall stub (on some sites), or no article."
+  headlineOnly: [String!]!
+  "The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026)."
+  writtenWith: SummarySettings
+}
+
+"What one version of a story added, and when it was written."
+type StoryUpdate {
+  at: Time!
+  sentences: [Sentence!]!
+}
+
+type Sentence {
+  text: String!
+  "The articles the sentence comes from, at least one."
+  footnotes: [Footnote!]!
+}
+
+"One article a sentence comes from: tapping it opens the article."
+type Footnote {
+  url: String!
+  "The article's site; null when the server no longer has its headline."
+  sourceId: String
+  "The article's title; null when the server no longer has its headline."
+  title: String
+  "The article has a video (known once its page was read); false when the server no longer has its headline."
+  video: Boolean!
+  """
+  When the article was published: its site's time, or when the server first saw it when the site gives none; null
+  when the server no longer has its headline.
+  """
+  publishedAt: Time
+}

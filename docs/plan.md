@@ -17,7 +17,8 @@ decisions and milestones next to the code.
 - **Summaries: Gemini free tier only**, `gemini-3.5-flash-lite`. Every 10 minutes, one request with every story that
   changed in the last 12 hours, and one for the 12-hour digest built from the story summaries: 288 requests a day,
   under the free tier's ~500. A daily request budget (~400, configurable), 429s back off to the next run, the digest
-  goes first when the budget is short. Structured output (a JSON schema), thinking low.
+  goes first when the budget is short. Structured output (a JSON schema), thinking low. (Nov 11, 2026: hen dropped
+  the digest and its screen; the requests go to the stories and the daily thread linking.)
 - **The app connects like the journal app:** gqlgen schema-first GraphQL, Apollo Kotlin in the app with the schema
   copied by a Gradle task, mTLS with enrollment codes and QR codes.
 
@@ -35,7 +36,10 @@ decisions and milestones next to the code.
 5. **API and app:** `headlines` (with `since`, which is the changes), `article`, `articles` and `stories` (server
    part done; `digest` comes with milestone 6); Apollo in the news app, the server as a setting with the phone's
    scraper as fallback.
-6. **Summaries:** the 10-minute job, tests with a fake Gemini, the eval; the summary in the app (UI lab mock first).
+6. **Summaries** (server part in progress): after each grouping, one Gemini request with the stories that changed in
+   the last 12 hours and one for the digest of the last hour (`summary/`, `gemini/`), every sentence with its footnotes,
+   under a daily budget; `story.summary` and `digest` in the API; `news-server summarize`; tests on recorded
+   answers. Still to do: the eval; the summary in the app (UI lab mock first).
 7. **Run it** on the PC as a service for a week before the phone stops scraping.
 
 ## Harness

@@ -54,10 +54,86 @@ func (EnrollmentRejected) IsEnrollmentPreviewResult() {}
 
 func (EnrollmentRejected) IsEnrollDeviceResult() {}
 
+// One article a sentence comes from: tapping it opens the article.
+type Footnote struct {
+	URL string `json:"url"`
+	// The article's site; null when the server no longer has its headline.
+	SourceID *string `json:"sourceId,omitempty"`
+	// The article's title; null when the server no longer has its headline.
+	Title *string `json:"title,omitempty"`
+	// The article has a video (known once its page was read); false when the server no longer has its headline.
+	Video bool `json:"video"`
+	// When the article was published: its site's time, or when the server first saw it when the site gives none; null
+	// when the server no longer has its headline.
+	PublishedAt *time.Time `json:"publishedAt,omitempty"`
+}
+
+type GeminiDay struct {
+	Day      string `json:"day"`
+	Requests int    `json:"requests"`
+	// The prompts' tokens, cached ones included.
+	TokensIn int `json:"tokensIn"`
+	// Of tokensIn, the ones Gemini read from its cache (implicit caching).
+	TokensCached int `json:"tokensCached"`
+	// The answers' tokens.
+	TokensOut int `json:"tokensOut"`
+	// The model's thinking, counted as output.
+	TokensThinking int `json:"tokensThinking"`
+}
+
+type GeminiStats struct {
+	Model string `json:"model"`
+	// Requests a day the server stops at, and the free tier's day it counts by (Pacific time, YYYY-MM-DD).
+	Budget int    `json:"budget"`
+	Today  string `json:"today"`
+	// The last 7 days with requests, newest first.
+	Days []*GeminiDay `json:"days"`
+	// The latest summary run; null before the first.
+	LastRun *SummaryRun `json:"lastRun,omitempty"`
+}
+
+type Grouping struct {
+	Method GroupingMethod `json:"method"`
+	// Whether GEMINI can be chosen: the server has a Gemini key.
+	GeminiAvailable bool `json:"geminiAvailable"`
+	// The model's id ("bge-m3"); set in config.json, not here.
+	Model string    `json:"model"`
+	Text  StoryText `json:"text"`
+	// The app's grouping slider: 10 (loose, related topics merge) to 90 (strict, one event splits).
+	Strictness int `json:"strictness"`
+	// The days of headlines grouped; 0: all kept.
+	Days int `json:"days"`
+	// The similarity strictness is for this model and text.
+	Threshold float64 `json:"threshold"`
+}
+
+// One round of the server's loop. A round starts every everyMinutes, or a minute after the last one ends if it ran longer.
+type LoopStats struct {
+	StartedAt    time.Time `json:"startedAt"`
+	EveryMinutes int       `json:"everyMinutes"`
+	// Reading the sites: their headlines and the new articles.
+	ReadSeconds float64 `json:"readSeconds"`
+	Headlines   int     `json:"headlines"`
+	NewArticles int     `json:"newArticles"`
+	FailedSites int     `json:"failedSites"`
+	// Grouping the stories; null when stories are off or still running.
+	GroupSeconds *float64 `json:"groupSeconds,omitempty"`
+	// Writing the summaries with Gemini; null when summaries are off or still running.
+	SummarySeconds *float64 `json:"summarySeconds,omitempty"`
+	// The whole round so far.
+	TotalSeconds float64 `json:"totalSeconds"`
+}
+
 type Mutation struct {
 }
 
 type Query struct {
+}
+
+type Sentence struct {
+	Text string `json:"text"`
+	// The articles the sentence comes from, at least one.
+	Footnotes []*Footnote `json:"footnotes"`
 }
 
 // Who this server is and where it is now. The app pins the fingerprint (checking the server's key instead of the host
@@ -86,6 +162,123 @@ type ServerInfo struct {
 	Stories bool `json:"stories"`
 	// Who this server is and where it is now; null until the server has worked out its addresses.
 	Discovery *ServerDiscovery `json:"discovery,omitempty"`
+	// The server writes summaries (stories are on and a Gemini key is set).
+	Summaries bool `json:"summaries"`
+}
+
+type ServerStats struct {
+	// Headlines kept (the last keep_days), and articles downloaded.
+	Headlines int `json:"headlines"`
+	Articles  int `json:"articles"`
+	// Stories in the last grouping, and when it ran; null before the first or when stories are off.
+	Stories   int        `json:"stories"`
+	GroupedAt *time.Time `json:"groupedAt,omitempty"`
+	// Stories with a generated article kept.
+	Summaries int `json:"summaries"`
+	// Gemini's use; null when summaries are off.
+	Gemini *GeminiStats `json:"gemini,omitempty"`
+	// Every site's last read, sorted by id.
+	Sites []*SiteStats `json:"sites"`
+	// The latest round of the loop (read the sites, group stories, write summaries); null before the first, or when reading is off.
+	LastLoop *LoopStats `json:"lastLoop,omitempty"`
+}
+
+type SiteStats struct {
+	SourceID string `json:"sourceId"`
+	Enabled  bool   `json:"enabled"`
+	// The last read of its headlines, and the last one that worked; null before the first.
+	LastRunAt *time.Time `json:"lastRunAt,omitempty"`
+	LastOkAt  *time.Time `json:"lastOkAt,omitempty"`
+	// Headlines found by the last read.
+	Headlines int `json:"headlines"`
+	// Why the last read failed; null when it worked.
+	Error *string `json:"error,omitempty"`
+}
+
+type StorySummary struct {
+	Title     string      `json:"title"`
+	Sentences []*Sentence `json:"sentences"`
+	// Where sites state different facts about the story, one sentence each saying which says what; usually none.
+	Contradictions []*Sentence `json:"contradictions"`
+	// URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article.
+	Unrelated []string  `json:"unrelated"`
+	WrittenAt time.Time `json:"writtenAt"`
+	// How the story unfolded, oldest first: what its first version said, then what each later version added (only the
+	// new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
+	Updates []*StoryUpdate `json:"updates"`
+	// URLs of the reports its latest version was written from: the ones Gemini read: all of them, up to 40 (one
+	// per site first); the rest of a bigger story weren't read.
+	Reports []string `json:"reports"`
+	// Of reports, the ones Gemini read only the title and subtitle of: a paywall stub (on some sites), or no article.
+	HeadlineOnly []string `json:"headlineOnly"`
+	// The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026).
+	WrittenWith *SummarySettings `json:"writtenWith,omitempty"`
+	// The story's id, kept by its later versions.
+	ID string `json:"id"`
+	// The threads the story is in, latest updated first; none until the day's linking placed it.
+	Threads []*Thread `json:"threads"`
+}
+
+// What one version of a story added, and when it was written.
+type StoryUpdate struct {
+	At        time.Time   `json:"at"`
+	Sentences []*Sentence `json:"sentences"`
+}
+
+type SummaryRun struct {
+	At time.Time `json:"at"`
+	// Story articles written, and changed stories left for later runs.
+	Written int `json:"written"`
+	Waiting int `json:"waiting"`
+	// Why the run stopped early (a 429, Gemini busy); null when it went through.
+	Error *string `json:"error,omitempty"`
+}
+
+type SummarySettings struct {
+	// Gemini reads each article's whole body (default): without the lines that aren't the article (promotions, "more on
+	// this", other news), a paywall stub, or paragraphs another site of the story has word for word, and up to 4,000
+	// characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
+	FullArticles bool `json:"fullArticles"`
+	// How long a generated story is (default MEDIUM). Stories are written at it from the next round.
+	Length StoryLength `json:"length"`
+	// The least minutes between two versions of a story (default 30): the reports that join it meanwhile wait and go in
+	// together, which saves requests on busy stories. 0 writes it again on every change; at most 240.
+	RewriteMinutes int `json:"rewriteMinutes"`
+	// A site that wasn't in the story joining writes it again at once, rewriteMinutes or not (default false).
+	RewriteOnNewSite bool `json:"rewriteOnNewSite"`
+	// After this many of the day's Gemini requests, only new stories are written, not new versions of written ones
+	// (default 300); 0 is off. Takes 0 to the daily budget.
+	ReserveAfter int `json:"reserveAfter"`
+}
+
+type Thread struct {
+	ID string `json:"id"`
+	// Gemini's short Hebrew name ("המלחמה עם איראן").
+	Name string `json:"name"`
+	// The story so far, a few sentences, kept up to date as stories join.
+	Summary string `json:"summary"`
+	// When its first and its latest stories were written.
+	StartedAt  time.Time `json:"startedAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+	StoryCount int       `json:"storyCount"`
+	// Its stories, oldest first.
+	Stories []*ThreadStory `json:"stories"`
+	// Separate affairs that bear on this one (a war and the strike during it), latest updated first.
+	Related []*Thread `json:"related"`
+}
+
+// A story in a thread: its latest version.
+type ThreadStory struct {
+	ID        string      `json:"id"`
+	Title     string      `json:"title"`
+	Sentences []*Sentence `json:"sentences"`
+	// When its first version was written: its place in the thread.
+	FirstWrittenAt time.Time `json:"firstWrittenAt"`
+	WrittenAt      time.Time `json:"writtenAt"`
+	// When its earliest and its latest reports were published (the site's time, or when the server first saw it): the
+	// span of the event, not of the writing. Null when the server no longer has its reports' headlines.
+	FirstReportAt *time.Time `json:"firstReportAt,omitempty"`
+	LastReportAt  *time.Time `json:"lastReportAt,omitempty"`
 }
 
 type EnrollmentRejectedReason string
@@ -151,6 +344,65 @@ func (e EnrollmentRejectedReason) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Who groups the headlines into stories.
+type GroupingMethod string
+
+const (
+	// The story model (model): by meaning vectors, at strictness.
+	GroupingMethodModel GroupingMethod = "MODEL"
+	// Gemini, each round placing the new headlines in the stories so far (a request of the day's budget); the model's
+	// grouping stands in when Gemini doesn't answer. Needs a Gemini key (geminiAvailable).
+	GroupingMethodGemini GroupingMethod = "GEMINI"
+)
+
+var AllGroupingMethod = []GroupingMethod{
+	GroupingMethodModel,
+	GroupingMethodGemini,
+}
+
+func (e GroupingMethod) IsValid() bool {
+	switch e {
+	case GroupingMethodModel, GroupingMethodGemini:
+		return true
+	}
+	return false
+}
+
+func (e GroupingMethod) String() string {
+	return string(e)
+}
+
+func (e *GroupingMethod) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = GroupingMethod(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid GroupingMethod", str)
+	}
+	return nil
+}
+
+func (e GroupingMethod) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *GroupingMethod) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e GroupingMethod) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 // Where the device keeps its private key.
 type KeyProtection string
 
@@ -210,6 +462,130 @@ func (e *KeyProtection) UnmarshalJSON(b []byte) error {
 }
 
 func (e KeyProtection) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// How long a generated story is: its sentences, more within the range the more sites cover it.
+type StoryLength string
+
+const (
+	// 2 to 6 sentences; an update adds up to 4.
+	StoryLengthShort StoryLength = "SHORT"
+	// 3 to 10; an update adds up to 6.
+	StoryLengthMedium StoryLength = "MEDIUM"
+	// 5 to 15; an update adds up to 8.
+	StoryLengthLong StoryLength = "LONG"
+	// No limit: every fact the articles give, each once. Fewer stories a request, so more requests.
+	StoryLengthFull StoryLength = "FULL"
+)
+
+var AllStoryLength = []StoryLength{
+	StoryLengthShort,
+	StoryLengthMedium,
+	StoryLengthLong,
+	StoryLengthFull,
+}
+
+func (e StoryLength) IsValid() bool {
+	switch e {
+	case StoryLengthShort, StoryLengthMedium, StoryLengthLong, StoryLengthFull:
+		return true
+	}
+	return false
+}
+
+func (e StoryLength) String() string {
+	return string(e)
+}
+
+func (e *StoryLength) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = StoryLength(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid StoryLength", str)
+	}
+	return nil
+}
+
+func (e StoryLength) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *StoryLength) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e StoryLength) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// What a headline is grouped by: the app's StoryText.
+type StoryText string
+
+const (
+	StoryTextTitle              StoryText = "TITLE"
+	StoryTextSubtitle           StoryText = "SUBTITLE"
+	StoryTextTitleAndSubtitle   StoryText = "TITLE_AND_SUBTITLE"
+	StoryTextTitleTimesSubtitle StoryText = "TITLE_TIMES_SUBTITLE"
+)
+
+var AllStoryText = []StoryText{
+	StoryTextTitle,
+	StoryTextSubtitle,
+	StoryTextTitleAndSubtitle,
+	StoryTextTitleTimesSubtitle,
+}
+
+func (e StoryText) IsValid() bool {
+	switch e {
+	case StoryTextTitle, StoryTextSubtitle, StoryTextTitleAndSubtitle, StoryTextTitleTimesSubtitle:
+		return true
+	}
+	return false
+}
+
+func (e StoryText) String() string {
+	return string(e)
+}
+
+func (e *StoryText) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = StoryText(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid StoryText", str)
+	}
+	return nil
+}
+
+func (e StoryText) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *StoryText) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e StoryText) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

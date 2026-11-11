@@ -47,6 +47,9 @@ func NewFinder(embedder TextEmbedder, store VectorStore, model ModelSpec, text S
 	}
 }
 
+// Text is what the finder groups headlines by.
+func (f *Finder) Text() StoryText { return f.text }
+
 // key is what a headline's vector is kept under: its URL and texts, so when its subtitle arrives it is embedded again.
 func (f *Finder) key(item scrape.ArticleSummary) string {
 	key := item.URL
@@ -156,4 +159,88 @@ func (f *Finder) Find(ctx context.Context, items []scrape.ArticleSummary, thresh
 		}
 	}
 	return NewestFirst(stories, items), nil
+}
+
+// MoveUnrelated takes out of found the reports flags says aren't about the same event as the rest of their story
+// (Gemini's: a flagged URL and the URLs it was flagged against) and moves each to the other story it is closest to,
+// by its mean similarity to that story's reports, when that is at least threshold, as Find would have grouped it;
+// else it is in no story. A story left with one site is no story. Run it on what Find returned, with the same feed.
+func (f *Finder) MoveUnrelated(found []Story, feed []scrape.ArticleSummary, flags map[string]map[string]bool, threshold float32) []Story {
+	if len(flags) == 0 {
+		return found
+	}
+	var loose []scrape.ArticleSummary
+	kept := make([]Story, 0, len(found))
+	for _, s := range found {
+		var reports []scrape.ArticleSummary
+		for _, r := range s.Reports {
+			against := flags[r.URL]
+			flagged := false
+			for _, o := range s.Reports {
+				if o.URL != r.URL && against[o.URL] {
+					flagged = true
+					break
+				}
+			}
+			if flagged {
+				loose = append(loose, r)
+			} else {
+				reports = append(reports, r)
+			}
+		}
+		if len(reports) == len(s.Reports) {
+			kept = append(kept, s)
+		} else if sites(reports) > 1 {
+			kept = append(kept, Story{reports})
+		}
+	}
+	if len(loose) == 0 {
+		return found
+	}
+	similarity := f.text.Similarity()
+	moves := make([][]scrape.ArticleSummary, len(kept))
+	for _, r := range loose {
+		v, ok := f.vectors[f.key(r)]
+		if !ok {
+			continue
+		}
+		best, bestSim := -1, threshold
+		for i, s := range kept {
+			var sum float32
+			n, skip := 0, false
+			for _, o := range s.Reports {
+				if flags[r.URL][o.URL] {
+					skip = true
+					break
+				}
+				if w, ok := f.vectors[f.key(o)]; ok {
+					sum += similarity(v, w)
+					n++
+				}
+			}
+			if skip || n == 0 {
+				continue
+			}
+			if mean := sum / float32(n); mean >= bestSim {
+				best, bestSim = i, mean
+			}
+		}
+		if best >= 0 {
+			moves[best] = append(moves[best], r)
+		}
+	}
+	for i, added := range moves {
+		if len(added) > 0 {
+			kept[i] = Story{append(append([]scrape.ArticleSummary{}, kept[i].Reports...), added...)}
+		}
+	}
+	return NewestFirst(kept, feed)
+}
+
+func sites(reports []scrape.ArticleSummary) int {
+	seen := map[string]bool{}
+	for _, r := range reports {
+		seen[r.SourceID] = true
+	}
+	return len(seen)
 }

@@ -11,12 +11,15 @@ import (
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
+	"github.com/chencohensolutions/news-server-core-go/store"
+	"github.com/chencohensolutions/news-server-core-go/stories"
+	"github.com/chencohensolutions/news-server-core-go/summary"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 // Headlines is the resolver for the headlines field.
 func (r *queryResolver) Headlines(ctx context.Context, since *time.Time, sourceIds []string) ([]*model.Headline, error) {
-	var from time.Time
+	from := store.Recent(time.Now(), 0)
 	if since != nil {
 		from = *since
 	}
@@ -79,16 +82,29 @@ func (r *queryResolver) Stories(ctx context.Context) (*model.StoryList, error) {
 	}
 	list.GroupedAt = &at
 	// When each report was first and last seen: the stored headlines of the stories' days.
-	stored, err := r.Store.Headlines(ctx, time.Time{})
+	stored, err := r.Store.Headlines(ctx, store.Recent(at, stories.MaxDays))
 	if err != nil {
 		return nil, err
 	}
 	seen := make(map[string][2]time.Time, len(stored))
+	byURL := make(map[string]store.Headline, len(stored))
 	for _, h := range stored {
 		seen[h.URL] = [2]time.Time{h.FirstSeen, h.LastSeen}
+		byURL[h.URL] = h
+	}
+	summaries, err := summary.Summaries(ctx, r.Store)
+	if err != nil {
+		return nil, err
 	}
 	for _, s := range found {
 		story := &model.Story{}
+		if sum, ok := summaries[summary.StoryKey(s)]; ok {
+			if sum.ID == "" {
+				// Written before ids: its key is its id.
+				sum.ID = summary.StoryKey(s)
+			}
+			story.Summary = model.StorySummaryOf(sum, byURL)
+		}
 		for _, report := range s.Reports {
 			if !r.enabled(report.SourceID) {
 				continue

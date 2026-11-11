@@ -20,9 +20,11 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/enroll"
+	"github.com/chencohensolutions/news-server-core-go/gemini"
 	"github.com/chencohensolutions/news-server-core-go/graph/generated"
 	"github.com/chencohensolutions/news-server-core-go/graph/resolver"
 	"github.com/chencohensolutions/news-server-core-go/sites"
+	"github.com/chencohensolutions/news-server-core-go/summary"
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
@@ -64,10 +66,16 @@ func serve(config auth.AppConfig) {
 		os.Exit(0)
 	}()
 	go serveAdmin(config, enrollment)
-	db, settings, job := startReading(config, found)
-	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones}
+	db, settings, job, summaries := startReading(config, found)
+	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones, Loop: loop.stats}
 	if job != nil {
 		api.Stories = job.Stories
+		api.Grouping, api.StoryModel = job, job.model.ID
+		api.Summaries = job.summaries
+	}
+	if summaries != nil {
+		api.Gemini = &resolver.GeminiInfo{Model: orDefault(config.GeminiModel, gemini.DefaultModel),
+			Budget: orDefault(config.SummaryBudget, summary.DefaultBudget), Status: summaries.Status}
 	}
 
 	server := &http.Server{

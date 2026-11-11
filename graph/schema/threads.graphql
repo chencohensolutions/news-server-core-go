@@ -1,0 +1,50 @@
+# --- Threads --------------------------------------------------------------------
+# Affairs that run over months or years (a war, an investigation, coalition talks): generated stories Gemini links
+# once a day, from the new stories and every thread so far. A story can be in several threads; a thread has many.
+# Every generated story is kept for good, so a thread reaches back as far as the server has read.
+
+extend type Query {
+  "Threads, latest updated first; first is how many (50 unless set, at most 500)."
+  threads(first: Int): [Thread!]!
+  "One thread; null when there is none with id."
+  thread(id: ID!): Thread
+}
+
+extend type StorySummary {
+  "The story's id, kept by its later versions."
+  id: ID!
+  "The threads the story is in, latest updated first; none until the day's linking placed it."
+  threads: [Thread!]!
+}
+
+type Thread {
+  id: ID!
+  "Gemini's short Hebrew name (\"המלחמה עם איראן\")."
+  name: String!
+  "The story so far, a few sentences, kept up to date as stories join."
+  summary: String!
+  "When its first and its latest stories were written."
+  startedAt: Time!
+  updatedAt: Time!
+  storyCount: Int!
+  "Its stories, oldest first."
+  stories: [ThreadStory!]!
+  "Separate affairs that bear on this one (a war and the strike during it), latest updated first."
+  related: [Thread!]!
+}
+
+"A story in a thread: its latest version."
+type ThreadStory {
+  id: ID!
+  title: String!
+  sentences: [Sentence!]!
+  "When its first version was written: its place in the thread."
+  firstWrittenAt: Time!
+  writtenAt: Time!
+  """
+  When its earliest and its latest reports were published (the site's time, or when the server first saw it): the
+  span of the event, not of the writing. Null when the server no longer has its reports' headlines.
+  """
+  firstReportAt: Time
+  lastReportAt: Time
+}

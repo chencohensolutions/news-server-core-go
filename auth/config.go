@@ -35,9 +35,12 @@ type AppConfig struct {
 	Users      []UserConfig `json:"users"`
 	// What the server read from the sites: one SQLite file.
 	DatabaseFile string `json:"database_file"`
+	// A copy of what the database holds that can't be read again, in plain files, updated after each read of the
+	// sites: what `news-server restore` puts back. "" is DefaultArchiveDir, "-" turns it off.
+	ArchiveDir string `json:"archive_dir"`
 	// Minutes between reads of every site; 0 is DefaultRefreshMinutes, -1 turns reading off.
 	RefreshMinutes int `json:"refresh_minutes"`
-	// Days a headline no longer on its site is kept; 0 is DefaultKeepDays.
+	// Days a headline no longer on its site is kept, with its article; 0 is DefaultKeepDays, -1 keeps everything.
 	KeepDays int `json:"keep_days"`
 	// Sources read from their RSS feed instead of their pages, and each site's wait between its requests in
 	// milliseconds (the others wait 250 ms): the starting values; the app's Sources screen changes them (setSource),
@@ -54,6 +57,21 @@ type AppConfig struct {
 	StoryText       string `json:"story_text"`
 	StoryStrictness int    `json:"story_strictness"`
 	StoryDays       int    `json:"story_days"`
+	// Summaries (Gemini, free tier only): the file holding the API key (Google AI Studio, a project without
+	// billing; "" is gemini.key, and no file turns summaries off), the model ("" is gemini-3.5-flash-lite), the
+	// day's request budget (0 is 400, -1 turns summaries off), the hours of stories summarized (0 is 12), and the
+	// fewest reports a summarized story has (0 is 2). A run sends more story requests while stories wait, up to
+	// summary_requests_per_run (0 is 4), as long as the budget keeps two for each run left in the day. Summaries
+	// need stories.
+	GeminiKeyFile         string `json:"gemini_key_file"`
+	GeminiModel           string `json:"gemini_model"`
+	SummaryBudget         int    `json:"summary_budget"`
+	SummaryHours          int    `json:"summary_hours"`
+	SummaryMinReports     int    `json:"summary_min_reports"`
+	SummaryRequestsPerRun int    `json:"summary_requests_per_run"`
+	// Hours between linkings of the stories into threads (affairs over months), one Gemini request or a few each;
+	// 0 is 24, -1 turns threads off.
+	ThreadsHours int `json:"threads_hours"`
 	// Whether the server asks the home router (UPnP or NAT-PMP) to forward its port, so the phone reaches it away
 	// from home; on unless false. With public_url empty, the router's outside address goes in the enrollment link.
 	PortMapping *bool `json:"port_mapping"`
@@ -76,8 +94,9 @@ const (
 	DefaultAdminTokenFile = "admin.token"
 	DefaultSourcesDir     = "news/sources"
 	DefaultDatabaseFile   = "news.db"
+	DefaultArchiveDir     = "archive"
 	DefaultRefreshMinutes = 10
-	DefaultKeepDays       = 7
+	DefaultKeepDays       = -1
 	DefaultModelsDir      = "models"
 	// bge-m3 is the more accurate model, too big for the phone; the text and strictness are the app's defaults.
 	DefaultStoryModel      = "bge-m3"
@@ -129,6 +148,9 @@ func (c AppConfig) WithDefaults() AppConfig {
 	if c.DatabaseFile == "" {
 		c.DatabaseFile = DefaultDatabaseFile
 	}
+	if c.ArchiveDir == "" {
+		c.ArchiveDir = DefaultArchiveDir
+	}
 	if c.RefreshMinutes == 0 {
 		c.RefreshMinutes = DefaultRefreshMinutes
 	}
@@ -149,6 +171,9 @@ func (c AppConfig) WithDefaults() AppConfig {
 	}
 	if c.StoryDays == 0 {
 		c.StoryDays = DefaultStoryDays
+	}
+	if c.GeminiKeyFile == "" {
+		c.GeminiKeyFile = "gemini.key"
 	}
 	return c
 }

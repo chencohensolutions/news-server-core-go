@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -16,21 +18,37 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/stories"
 )
 
-// storyJob groups the stored headlines into stories after each read of the sites, with the model config.json names,
-// and keeps the latest stories for the API.
+// storyJob groups the stored headlines into stories after each read of the sites, with the model config.json names
+// and the grouping the app set (config.json's until it does), and keeps the latest stories for the API.
 type storyJob struct {
-	db        *store.Store
-	finder    *stories.Finder
-	embedder  *stories.Embedder
-	threshold float32
-	days      int
+	db       *store.Store
+	embedder interface {
+		stories.TextEmbedder
+		Close()
+	}
+	model stories.ModelSpec
 	// enabled, when set, says whether a site's headlines are grouped: the sites switched off are left out.
 	enabled func(id string) bool
+	// summaries says the summary job runs after each grouping (serverInfo.summaries).
+	summaries bool
+	// byGemini groups a feed with Gemini (the summary writer's Group) when the grouping asks for it; nil without a
+	// Gemini key.
+	byGemini func(ctx context.Context, feed []scrape.ArticleSummary, now time.Time) ([]stories.Story, error)
 
-	mu     sync.Mutex
-	latest []stories.Story
-	at     time.Time
+	// running is held by a grouping: one at a time, as the finder isn't safe for concurrent use.
+	running sync.Mutex
+	finder  *stories.Finder
+
+	mu sync.Mutex
+	// embedded is how many headlines the last grouping embedded.
+	embedded int
+	grouping stories.Grouping
+	latest   []stories.Story
+	at       time.Time
 }
+
+// groupingKey is where the app's grouping is kept in the database.
+const groupingKey = "grouping"
 
 // storySettings checks config.json's story keys: the model, the text and the threshold its strictness is.
 func storySettings(config auth.AppConfig) (stories.ModelSpec, stories.StoryText, float32, error) {
@@ -48,9 +66,14 @@ func storySettings(config auth.AppConfig) (stories.ModelSpec, stories.StoryText,
 	return model, text, model.Scale(text).Threshold(config.StoryStrictness), nil
 }
 
-// openStoryJob loads ONNX Runtime and the model; an error says what to download.
+// openStoryJob loads ONNX Runtime and the model; an error says what to download. The grouping the app saved, if
+// any, replaces config.json's.
 func openStoryJob(config auth.AppConfig, db *store.Store) (*storyJob, error) {
-	model, text, threshold, err := storySettings(config)
+	model, text, _, err := storySettings(config)
+	if err != nil {
+		return nil, err
+	}
+	grouping, err := savedGrouping(db, stories.Grouping{Text: text, Strictness: config.StoryStrictness, Days: config.StoryDays})
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +81,73 @@ func openStoryJob(config auth.AppConfig, db *store.Store) (*storyJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &storyJob{db: db, finder: stories.NewFinder(embedder, db, model, text), embedder: embedder,
-		threshold: threshold, days: config.StoryDays}, nil
+	return &storyJob{db: db, embedder: embedder, model: model, grouping: grouping}, nil
+}
+
+// savedGrouping is the grouping the app saved, else config (config.json's).
+func savedGrouping(db *store.Store, config stories.Grouping) (stories.Grouping, error) {
+	saved, ok, err := db.ServerSetting(context.Background(), groupingKey)
+	if err != nil || !ok {
+		return config, err
+	}
+	g, err := parseGrouping(saved)
+	if err != nil {
+		log.Printf("stories: the saved grouping is ignored: %v", err)
+		return config, nil
+	}
+	return g, nil
+}
+
+func parseGrouping(data []byte) (stories.Grouping, error) {
+	var g stories.Grouping
+	if err := json.Unmarshal(data, &g); err != nil {
+		return g, err
+	}
+	text, err := stories.ParseStoryText(g.TextName)
+	if err != nil {
+		return g, err
+	}
+	g.Text = text
+	return g, g.Check()
+}
+
+// Grouping is how the job groups stories now, and the similarity that is.
+func (j *storyJob) Grouping() (stories.Grouping, float32) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.grouping, j.model.Scale(j.grouping.Text).Threshold(j.grouping.Strictness)
+}
+
+// GeminiAvailable says Gemini can group the stories.
+func (j *storyJob) GeminiAvailable() bool { return j.byGemini != nil }
+
+// SetGrouping keeps g and groups the stories again with it, in the background.
+func (j *storyJob) SetGrouping(ctx context.Context, g stories.Grouping) error {
+	if err := g.Check(); err != nil {
+		return err
+	}
+	g.TextName = g.Text.String()
+	data, err := json.Marshal(g)
+	if err != nil {
+		return err
+	}
+	if err := j.db.SaveServerSetting(ctx, groupingKey, data); err != nil {
+		return err
+	}
+	j.mu.Lock()
+	j.grouping = g
+	j.mu.Unlock()
+	go func() {
+		start := time.Now()
+		found, err := j.run(context.Background())
+		if err != nil {
+			log.Printf("stories: regrouping after the app's change: %v", err)
+			return
+		}
+		log.Printf("stories: regrouped by %s at strictness %d over %d days: %d stories in %s", g.Text, g.Strictness, g.Days,
+			len(found), time.Since(start).Round(time.Millisecond))
+	}()
+	return nil
 }
 
 // openEmbedder loads ONNX Runtime and model from models_dir.
@@ -83,9 +171,21 @@ func openEmbedder(config auth.AppConfig, model stories.ModelSpec) (*stories.Embe
 
 func (j *storyJob) close() { j.embedder.Close() }
 
-// run groups the stored headlines of the last story_days days.
+// run groups the stored headlines of the grouping's days.
 func (j *storyJob) run(ctx context.Context) ([]stories.Story, error) {
-	headlines, err := j.db.Headlines(ctx, time.Time{})
+	j.running.Lock()
+	defer j.running.Unlock()
+	g, threshold := j.Grouping()
+	if j.finder == nil || j.finder.Text() != g.Text {
+		// Another text is other vectors: embedded once, kept in the database beside the others.
+		j.finder = stories.NewFinder(j.embedder, j.db, j.model, g.Text)
+	}
+	// The grouping's days, by when a headline was last on its site too: one without a time isn't grouped forever.
+	days := g.Days
+	if days == 0 {
+		days = stories.MaxDays
+	}
+	headlines, err := j.db.Headlines(ctx, time.Now().AddDate(0, 0, -days))
 	if err != nil {
 		return nil, err
 	}
@@ -96,14 +196,39 @@ func (j *storyJob) run(ctx context.Context) ([]stories.Story, error) {
 		}
 	}
 	now := time.Now()
-	found, err := j.finder.Find(ctx, stories.WithinDays(items, j.days, now), j.threshold)
+	feed := stories.WithinDays(items, g.Days, now)
+	found, err := j.finder.Find(ctx, feed, threshold)
+	j.mu.Lock()
+	j.embedded = j.finder.LastEmbedded
+	j.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
+	// What Gemini found to be about another event goes to the story it is closest to, or out.
+	flags, err := j.db.Unrelated(ctx, now.AddDate(0, 0, -max(1, g.Days)))
+	if err != nil {
+		return nil, err
+	}
+	if g.ByGemini && j.byGemini != nil {
+		// The model's grouping above is the fallback: the vectors are embedded either way.
+		if byGemini, err := j.byGemini(ctx, feed, now); err != nil {
+			log.Printf("stories: grouping by Gemini: %v; the model's grouping stands in", err)
+		} else {
+			found = byGemini
+		}
+	}
+	found = j.finder.MoveUnrelated(found, feed, flags, threshold)
 	j.mu.Lock()
 	j.latest, j.at = found, now
 	j.mu.Unlock()
 	return found, nil
+}
+
+// Embedded is how many headlines the last grouping embedded.
+func (j *storyJob) Embedded() int {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.embedded
 }
 
 // Stories are the latest run's stories and when it ran.
@@ -149,8 +274,9 @@ func printStories(config auth.AppConfig, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	g, threshold := job.Grouping()
 	fmt.Fprintf(out, "%d stories (%s, %s, strictness %d: similarity %.3f); %d headlines embedded in %s\n\n",
-		len(found), config.StoryModel, config.StoryText, config.StoryStrictness, job.threshold, job.finder.LastEmbedded,
+		len(found), config.StoryModel, g.Text, g.Strictness, threshold, job.Embedded(),
 		time.Since(start).Round(time.Millisecond))
 	for _, s := range found {
 		for i, r := range s.Reports {
