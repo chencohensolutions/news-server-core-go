@@ -28,6 +28,7 @@ const usage = `usage:
   news-server stories              group the stored headlines into stories now and print them
   news-server summarize            group the stories and summarize what changed with Gemini now, and print them
   news-server eval-stories         score the story model on the app's 348 labeled headline pairs
+  news-server eval-gemini-grouping score Gemini's grouping on the same pairs (one request of the day's budget)
 
 site tools (no config.json needed):
   news-server check <folder>...                              run the golden fixtures of a source folder, or of every source in a folder
@@ -65,7 +66,7 @@ func main() {
 		return
 	}
 	local := map[string]func(auth.AppConfig, io.Writer) error{"refresh": refreshOnce, "discovery": func(c auth.AppConfig, _ io.Writer) error { return discoveryCommand(c) }, "models": downloadModels, "stories": printStories, "summarize": summarizeCommand,
-		"eval-stories": evalStories}
+		"eval-stories": evalStories, "eval-gemini-grouping": evalGeminiGrouping}
 	if run, ok := local[os.Args[1]]; ok && len(os.Args) == 2 {
 		if err := run(config, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
