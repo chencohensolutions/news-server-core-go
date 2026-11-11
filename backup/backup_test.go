@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -90,5 +91,32 @@ func TestTheArchiveRestoresTheDatabase(t *testing.T) {
 	}
 	if want, got := dump(t, db), dump(t, restored); !reflect.DeepEqual(want, got) {
 		t.Fatalf("restored\n got %v\nwant %v", got, want)
+	}
+}
+
+func TestTheArchiveKeepsRowsOfOneMillisecondPastABatch(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+	db := open(t, filepath.Join(tmp, "news.db"))
+	at := time.Date(2026, 11, 10, 22, 55, 0, 0, time.UTC)
+	// A read's headlines are saved at one time; more of them than a batch.
+	var items []scrape.ArticleSummary
+	for i := range batch + 500 {
+		items = append(items, scrape.ArticleSummary{SourceID: "sitec", URL: fmt.Sprintf("https://sitec/%d", i), Title: "כותרת"})
+	}
+	if err := db.SaveHeadlines(ctx, items, at); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(tmp, "archive")
+	if _, err := Archive(ctx, db, dir, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	restored := open(t, filepath.Join(tmp, "restored.db"))
+	result, err := Restore(ctx, restored, dir, t.Logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(dump(t, restored)["headlines"]); got != len(items) {
+		t.Fatalf("%d of %d headlines restored (%d lines)", got, len(items), result.Rows["headlines"])
 	}
 }

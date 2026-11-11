@@ -91,7 +91,7 @@ func Archive(ctx context.Context, db *store.Store, dir string, now time.Time) (R
 		for {
 			files := map[string]*bytes.Buffer{}
 			last := done[t.table]
-			n, err := db.Rows(ctx, t.table, t.by, last, upTo, batch, func(row store.Row) error {
+			add := func(row store.Row) error {
 				ms, _ := row[t.by].(int64)
 				name := dayFile(t.table, ms)
 				if files[name] == nil {
@@ -104,7 +104,14 @@ func Archive(ctx context.Context, db *store.Store, dir string, now time.Time) (R
 				files[name].Write(append(line, '\n'))
 				last = max(last, ms)
 				return nil
-			})
+			}
+			n, err := db.Rows(ctx, t.table, t.by, last, upTo, batch, add)
+			if err == nil && n == batch {
+				// A full batch may end among rows of the same millisecond (a read saves its headlines at one time):
+				// the rest of them too, or the next batch, after it, would skip them. Some are added twice; restoring
+				// replaces them.
+				_, err = db.Rows(ctx, t.table, t.by, last-1, last, 1<<30, add)
+			}
 			if err != nil {
 				return result, fmt.Errorf("archiving %s: %w", t.table, err)
 			}
