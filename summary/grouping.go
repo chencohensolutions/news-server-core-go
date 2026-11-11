@@ -21,7 +21,7 @@ const (
 	// groupHours is how recent a headline must be to be placed, and a story to be offered.
 	groupHours = 48
 	// groupBatch is the most new headlines one request places; groupRequests the most requests a round sends.
-	groupBatch    = 150
+	groupBatch    = 100 // as in the test that measured it (eval-gemini-grouping); at 150 the first live answer left most out
 	groupRequests = 3
 	// groupStories is the most stories a request offers, the latest first; groupTitles the titles shown of each.
 	groupStories = 1500
@@ -158,16 +158,16 @@ func (w *Writer) placeHeadlines(ctx context.Context, day string, feed, waiting [
 		return err
 	}
 	var answer struct {
-		Headlines []struct {
-			ID    string `json:"id"`
-			Story string `json:"story"`
-		} `json:"headlines"`
-		Merge []struct {
+		Headlines []placing `json:"headlines"`
+		Merge     []struct {
 			Stories []string `json:"stories"`
 		} `json:"merge"`
 	}
 	if err := json.Unmarshal(raw, &answer); err != nil {
 		return fmt.Errorf("reading Gemini's answer: %w", err)
+	}
+	if err := checkPlacing(len(waiting), answer.Headlines); err != nil {
+		return err
 	}
 	fresh := map[string]string{} // Gemini's label for a new story → its id
 	news := map[string]string{}
@@ -229,6 +229,30 @@ func (w *Writer) placeHeadlines(ctx context.Context, day string, feed, waiting [
 	w.logf("grouping: %d new headlines, %d placed: %d joined stories, %d started %d stories, %d alone; %d stories merged",
 		len(waiting), len(news), joined, len(news)-joined-alone, started, alone, len(merged))
 	return nil
+}
+
+// checkPlacing refuses a lazy answer: one that leaves out most of the headlines, or puts every one of many alone
+// (the first live answer placed 52 of 150, all alone). Nothing of it is kept, so the headlines are sent again.
+func checkPlacing(asked int, answered []placing) error {
+	if len(answered)*2 < asked {
+		return fmt.Errorf("Gemini placed %d of %d headlines", len(answered), asked)
+	}
+	alone := 0
+	for _, a := range answered {
+		if strings.TrimSpace(a.Story) == "alone" {
+			alone++
+		}
+	}
+	if asked >= 20 && alone == len(answered) {
+		return fmt.Errorf("Gemini put all %d headlines alone", asked)
+	}
+	return nil
+}
+
+// placing is one headline's place in Gemini's answer.
+type placing struct {
+	ID    string `json:"id"`
+	Story string `json:"story"`
 }
 
 func newGroupID() string { return "g" + newThreadID()[2:] }

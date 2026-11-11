@@ -60,3 +60,23 @@ func TestArticleTextCutsAtAParagraph(t *testing.T) {
 		t.Errorf("not cut at a paragraph's end: …%s", string([]rune(got)[len([]rune(got))-20:]))
 	}
 }
+
+func TestCheckPlacingRefusesALazyAnswer(t *testing.T) {
+	var all, alone []placing
+	for i := 0; i < 30; i++ {
+		all = append(all, placing{ID: fmt.Sprintf("h%d", i+1), Story: "new1"})
+		alone = append(alone, placing{ID: fmt.Sprintf("h%d", i+1), Story: "alone"})
+	}
+	if err := checkPlacing(30, all); err != nil {
+		t.Errorf("a full answer: %v", err)
+	}
+	if err := checkPlacing(100, all); err == nil {
+		t.Error("30 of 100 placed: no error")
+	}
+	if err := checkPlacing(30, alone); err == nil {
+		t.Error("all alone: no error")
+	}
+	if err := checkPlacing(3, alone[:3]); err != nil {
+		t.Errorf("3 alone: %v", err)
+	}
+}
