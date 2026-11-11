@@ -70,6 +70,9 @@ type Footnote struct {
 	Title *string `json:"title,omitempty"`
 	// The article has a video (known once its page was read); false when the server no longer has its headline.
 	Video bool `json:"video"`
+	// When the article was published: its site's time, or when the server first saw it when the site gives none; null
+	// when the server no longer has its headline.
+	PublishedAt *time.Time `json:"publishedAt,omitempty"`
 }
 
 type GeminiDay struct {

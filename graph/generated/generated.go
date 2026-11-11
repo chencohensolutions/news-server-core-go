@@ -94,10 +94,11 @@ type ComplexityRoot struct {
 	}
 
 	Footnote struct {
-		SourceID func(childComplexity int) int
-		Title    func(childComplexity int) int
-		URL      func(childComplexity int) int
-		Video    func(childComplexity int) int
+		PublishedAt func(childComplexity int) int
+		SourceID    func(childComplexity int) int
+		Title       func(childComplexity int) int
+		URL         func(childComplexity int) int
+		Video       func(childComplexity int) int
 	}
 
 	GeminiDay struct {
@@ -525,6 +526,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.EnrollmentRejected.Reason(childComplexity), true
 
+	case "Footnote.publishedAt":
+		if e.ComplexityRoot.Footnote.PublishedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Footnote.PublishedAt(childComplexity), true
 	case "Footnote.sourceId":
 		if e.ComplexityRoot.Footnote.SourceID == nil {
 			break
@@ -1932,6 +1939,11 @@ type Footnote {
   title: String
   "The article has a video (known once its page was read); false when the server no longer has its headline."
   video: Boolean!
+  """
+  When the article was published: its site's time, or when the server first saw it when the site gives none; null
+  when the server no longer has its headline.
+  """
+  publishedAt: Time
 }
 `, BuiltIn: false},
 	{Name: "../schema/threads.graphql", Input: `# --- Threads --------------------------------------------------------------------
@@ -2064,6 +2076,8 @@ func (ec *executionContext) childFields_Footnote(ctx context.Context, field grap
 		return ec.fieldContext_Footnote_title(ctx, field)
 	case "video":
 		return ec.fieldContext_Footnote_video(ctx, field)
+	case "publishedAt":
+		return ec.fieldContext_Footnote_publishedAt(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Footnote", field.Name)
 }
@@ -3621,6 +3635,29 @@ func (ec *executionContext) _Footnote_video(ctx context.Context, field graphql.C
 }
 func (ec *executionContext) fieldContext_Footnote_video(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Footnote", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Footnote_publishedAt(ctx context.Context, field graphql.CollectedField, obj *model.Footnote) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Footnote_publishedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PublishedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Footnote_publishedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Footnote", field, false, false, errors.New("field of type Time does not have child fields"))
 }
 
 func (ec *executionContext) _GeminiDay_day(ctx context.Context, field graphql.CollectedField, obj *model.GeminiDay) (ret graphql.Marshaler) {
@@ -8579,6 +8616,8 @@ func (ec *executionContext) _Footnote(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "publishedAt":
+			out.Values[i] = ec._Footnote_publishedAt(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
