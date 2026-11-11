@@ -323,9 +323,9 @@ func TestABusyGeminiIsTriedAgain(t *testing.T) {
 	}
 }
 
-func TestABigStoryShowsSixteenReportsOnePerSiteFirst(t *testing.T) {
+func TestABigStoryShowsItsReportsOnePerSiteFirst(t *testing.T) {
 	var s stories.Story
-	for i := range 20 {
+	for i := range 50 {
 		s.Reports = append(s.Reports, scrape.ArticleSummary{SourceID: fmt.Sprintf("site%d", i%3), URL: fmt.Sprintf("https://x/%d", i)})
 	}
 	got := shown(s)
