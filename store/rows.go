@@ -17,7 +17,7 @@ var jsonColumns = map[string]bool{"item": true, "article": true, "summary": true
 var tables = map[string]bool{
 	"headlines": true, "articles": true, "summaries": true, "digests": true, "story_records": true, "unrelated": true,
 	"gemini_groups": true, "threads": true, "story_threads": true, "thread_links": true, "server_settings": true,
-	"site_settings": true, "gemini_requests": true, "gemini_tokens": true,
+	"site_settings": true, "gemini_requests": true, "gemini_tokens": true, "user_hidden_sources": true, "user_reads": true,
 }
 
 // Rows calls fn with table's rows, in the order of by (a column of Unix milliseconds) from after (exclusive) to upTo

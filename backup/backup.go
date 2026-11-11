@@ -7,16 +7,16 @@
 //	state.json                          how far each table is archived
 //	headlines/2026-11/2026-11-11.jsonl  one row a line, by the day it was first seen (UTC)
 //	articles/2026-11/2026-11-11.jsonl.gz  with the page each was read from; gzip, a member each archiving
-//	story_records/…  summaries/…  digests/…  unrelated/…  gemini_groups/…  the same, by the day written:
+//	story_records/…  summaries/…  digests/…  unrelated/…  gemini_groups/…  user_reads/…  the same, by the day written:
 //	                                    a row written again is added again, so every version is kept
 //	threads.json  story_threads.json  thread_links.json  server_settings.json  site_settings.json
-//	gemini_requests.json  gemini_tokens.json      the whole table, written again each time
+//	gemini_requests.json  gemini_tokens.json  user_hidden_sources.json  the whole table, written again each time
 //
 // The database keeps an article's page only until it is archived: then it is emptied there, and the archive's copy is
 // the only one (a restore leaves it out of the database too).
 //
 // Not kept: the vectors (the model makes them again), the sites' latest runs and failed fetches. The certificates,
-// devices.json, config.json and gemini.key are files already: copy them with the archive.
+// devices.json, users.json, config.json and gemini.key are files already: copy them with the archive.
 package backup
 
 import (
@@ -46,10 +46,11 @@ var added = []struct{ table, by string }{
 	{"digests", "written_at"},
 	{"unrelated", "flagged_at"},
 	{"gemini_groups", "placed_at"},
+	{"user_reads", "read_at"},
 }
 
 // whole are the small tables written whole each time.
-var whole = []string{"threads", "story_threads", "thread_links", "server_settings", "site_settings", "gemini_requests", "gemini_tokens"}
+var whole = []string{"threads", "story_threads", "thread_links", "server_settings", "site_settings", "gemini_requests", "gemini_tokens", "user_hidden_sources"}
 
 const (
 	batch = 2000
