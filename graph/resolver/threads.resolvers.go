@@ -68,6 +68,7 @@ func (r *threadResolver) Stories(ctx context.Context, obj *model.Thread) ([]*mod
 		for _, sentence := range s.Sentences {
 			urls = append(urls, sentence.Sources...)
 		}
+		urls = append(urls, s.Reports...)
 	}
 	headlines, err := r.Store.HeadlinesByURL(ctx, urls)
 	if err != nil {
@@ -77,6 +78,28 @@ func (r *threadResolver) Stories(ctx context.Context, obj *model.Thread) ([]*mod
 	for i, rec := range records {
 		out[i] = &model.ThreadStory{ID: rec.ID, Title: written[i].Title, Sentences: model.SentencesOf(written[i].Sentences, headlines),
 			FirstWrittenAt: rec.FirstWritten, WrittenAt: rec.WrittenAt}
+		reports := written[i].Reports
+		if len(reports) == 0 { // written before reports were kept: its footnotes
+			for _, sentence := range written[i].Sentences {
+				reports = append(reports, sentence.Sources...)
+			}
+		}
+		for _, url := range reports {
+			h, ok := headlines[url]
+			if !ok {
+				continue
+			}
+			t := model.PublishedAt(h)
+			if t == nil {
+				continue
+			}
+			if out[i].FirstReportAt == nil || t.Before(*out[i].FirstReportAt) {
+				out[i].FirstReportAt = t
+			}
+			if out[i].LastReportAt == nil || t.After(*out[i].LastReportAt) {
+				out[i].LastReportAt = t
+			}
+		}
 	}
 	return out, nil
 }

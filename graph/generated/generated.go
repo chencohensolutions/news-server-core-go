@@ -282,8 +282,10 @@ type ComplexityRoot struct {
 	}
 
 	ThreadStory struct {
+		FirstReportAt  func(childComplexity int) int
 		FirstWrittenAt func(childComplexity int) int
 		ID             func(childComplexity int) int
+		LastReportAt   func(childComplexity int) int
 		Sentences      func(childComplexity int) int
 		Title          func(childComplexity int) int
 		WrittenAt      func(childComplexity int) int
@@ -1354,6 +1356,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Thread.UpdatedAt(childComplexity), true
 
+	case "ThreadStory.firstReportAt":
+		if e.ComplexityRoot.ThreadStory.FirstReportAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ThreadStory.FirstReportAt(childComplexity), true
 	case "ThreadStory.firstWrittenAt":
 		if e.ComplexityRoot.ThreadStory.FirstWrittenAt == nil {
 			break
@@ -1366,6 +1374,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ThreadStory.ID(childComplexity), true
+	case "ThreadStory.lastReportAt":
+		if e.ComplexityRoot.ThreadStory.LastReportAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ThreadStory.LastReportAt(childComplexity), true
 	case "ThreadStory.sentences":
 		if e.ComplexityRoot.ThreadStory.Sentences == nil {
 			break
@@ -1998,6 +2012,12 @@ type ThreadStory {
   "When its first version was written: its place in the thread."
   firstWrittenAt: Time!
   writtenAt: Time!
+  """
+  When its earliest and its latest reports were published (the site's time, or when the server first saw it): the
+  span of the event, not of the writing. Null when the server no longer has its reports' headlines.
+  """
+  firstReportAt: Time
+  lastReportAt: Time
 }
 `, BuiltIn: false},
 }
@@ -2415,6 +2435,10 @@ func (ec *executionContext) childFields_ThreadStory(ctx context.Context, field g
 		return ec.fieldContext_ThreadStory_firstWrittenAt(ctx, field)
 	case "writtenAt":
 		return ec.fieldContext_ThreadStory_writtenAt(ctx, field)
+	case "firstReportAt":
+		return ec.fieldContext_ThreadStory_firstReportAt(ctx, field)
+	case "lastReportAt":
+		return ec.fieldContext_ThreadStory_lastReportAt(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ThreadStory", field.Name)
 }
@@ -7113,6 +7137,52 @@ func (ec *executionContext) fieldContext_ThreadStory_writtenAt(_ context.Context
 	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type Time does not have child fields"))
 }
 
+func (ec *executionContext) _ThreadStory_firstReportAt(ctx context.Context, field graphql.CollectedField, obj *model.ThreadStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ThreadStory_firstReportAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FirstReportAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ThreadStory_firstReportAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _ThreadStory_lastReportAt(ctx context.Context, field graphql.CollectedField, obj *model.ThreadStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ThreadStory_lastReportAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.LastReportAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ThreadStory_lastReportAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10366,6 +10436,10 @@ func (ec *executionContext) _ThreadStory(ctx context.Context, sel ast.SelectionS
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "firstReportAt":
+			out.Values[i] = ec._ThreadStory_firstReportAt(ctx, field, obj)
+		case "lastReportAt":
+			out.Values[i] = ec._ThreadStory_lastReportAt(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

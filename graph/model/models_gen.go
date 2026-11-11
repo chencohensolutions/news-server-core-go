@@ -271,6 +271,10 @@ type ThreadStory struct {
 	// When its first version was written: its place in the thread.
 	FirstWrittenAt time.Time `json:"firstWrittenAt"`
 	WrittenAt      time.Time `json:"writtenAt"`
+	// When its earliest and its latest reports were published (the site's time, or when the server first saw it): the
+	// span of the event, not of the writing. Null when the server no longer has its reports' headlines.
+	FirstReportAt *time.Time `json:"firstReportAt,omitempty"`
+	LastReportAt  *time.Time `json:"lastReportAt,omitempty"`
 }
 
 type EnrollmentRejectedReason string

@@ -41,4 +41,10 @@ type ThreadStory {
   "When its first version was written: its place in the thread."
   firstWrittenAt: Time!
   writtenAt: Time!
+  """
+  When its earliest and its latest reports were published (the site's time, or when the server first saw it): the
+  span of the event, not of the writing. Null when the server no longer has its reports' headlines.
+  """
+  firstReportAt: Time
+  lastReportAt: Time
 }

@@ -140,7 +140,7 @@ func SentencesOf(sentences []summary.Sentence, headlines map[string]store.Headli
 			note := &Footnote{URL: url}
 			if h, ok := headlines[url]; ok {
 				note.SourceID, note.Title, note.Video = optional(h.SourceID), optional(h.Title), h.Video
-				note.PublishedAt = publishedAt(h)
+				note.PublishedAt = PublishedAt(h)
 			}
 			sentence.Footnotes = append(sentence.Footnotes, note)
 		}
@@ -178,8 +178,8 @@ func ThreadsOf(threads []store.Thread) []*Thread {
 	return out
 }
 
-// publishedAt is when h was published: its site's time, or when it was first seen.
-func publishedAt(h store.Headline) *time.Time {
+// PublishedAt is when h was published: its site's time, or when it was first seen.
+func PublishedAt(h store.Headline) *time.Time {
 	if t, err := time.Parse(time.RFC3339, h.PublishedAt); err == nil {
 		return &t
 	}

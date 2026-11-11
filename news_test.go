@@ -350,7 +350,7 @@ func TestTheAppReadsTheThreads(t *testing.T) {
 	resp := mustQuery(t, env, `{
 		stories { stories { summary { threads { id name storyCount } } } }
 		threads { id }
-		thread(id: "th1") { name summary startedAt stories { title sentences { text footnotes { title } } firstWrittenAt } related { name } }
+		thread(id: "th1") { name summary startedAt stories { title sentences { text footnotes { title } } firstWrittenAt firstReportAt } related { name } }
 		none: thread(id: "nope") { id } }`, nil)
 	if got := string(resp.Data["stories"]); got != `{"stories":[{"summary":{"threads":[{"id":"th2","name":"הכבישים","storyCount":1},{"id":"th1","name":"החורף","storyCount":1}]}}]}` {
 		t.Fatalf("stories %s", got)
@@ -358,7 +358,7 @@ func TestTheAppReadsTheThreads(t *testing.T) {
 	if got := string(resp.Data["threads"]); got != `[{"id":"th2"},{"id":"th1"}]` {
 		t.Fatalf("threads %s", got)
 	}
-	want := fmt.Sprintf(`{"name":"החורף","summary":"גשם בצפון.","startedAt":%q,"stories":[{"title":"גשם","sentences":[{"text":"ירד גשם.","footnotes":[{"title":"Rain all day"}]}],"firstWrittenAt":%[1]q}],"related":[{"name":"הכבישים"}]}`, noon.Format(time.RFC3339))
+	want := fmt.Sprintf(`{"name":"החורף","summary":"גשם בצפון.","startedAt":%q,"stories":[{"title":"גשם","sentences":[{"text":"ירד גשם.","footnotes":[{"title":"Rain all day"}]}],"firstWrittenAt":%[1]q,"firstReportAt":"2026-11-10T07:30:00Z"}],"related":[{"name":"הכבישים"}]}`, noon.Format(time.RFC3339))
 	if got := string(resp.Data["thread"]); got != want {
 		t.Fatalf("thread\n got %s\nwant %s", got, want)
 	}
