@@ -8,11 +8,9 @@ package resolver
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/graph/generated"
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
-	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/summary"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
@@ -36,23 +34,6 @@ func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles 
 		return nil, err
 	}
 	return summarySettings(settings), nil
-}
-
-// Digest is the resolver for the digest field.
-func (r *queryResolver) Digest(ctx context.Context) (*model.Digest, error) {
-	digest, err := summary.LatestDigest(ctx, r.Store)
-	if err != nil || digest == nil {
-		return nil, err
-	}
-	stored, err := r.Store.Headlines(ctx, store.Recent(time.Now(), 0))
-	if err != nil {
-		return nil, err
-	}
-	byURL := make(map[string]store.Headline, len(stored))
-	for _, h := range stored {
-		byURL[h.URL] = h
-	}
-	return &model.Digest{Title: digest.Title, Sentences: model.SentencesOf(digest.Sentences, byURL), WrittenAt: digest.WrittenAt}, nil
 }
 
 // SummarySettings is the resolver for the summarySettings field.

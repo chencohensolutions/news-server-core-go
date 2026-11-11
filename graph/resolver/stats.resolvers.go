@@ -60,7 +60,7 @@ func (r *queryResolver) Stats(ctx context.Context) (*model.ServerStats, error) {
 		gemini.Days = append(gemini.Days, &model.GeminiDay{Day: d.Day, Requests: d.Requests, TokensIn: d.In, TokensCached: d.Cached, TokensOut: d.Out, TokensThinking: d.Thoughts})
 	}
 	if status := r.Gemini.Status(); !status.At.IsZero() {
-		run := &model.SummaryRun{At: status.At, Written: status.Written, Waiting: status.Waiting, Digest: status.Digest}
+		run := &model.SummaryRun{At: status.At, Written: status.Written, Waiting: status.Waiting}
 		if status.Error != "" {
 			run.Error = &status.Error
 		}

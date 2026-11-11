@@ -18,13 +18,6 @@ type EnrollmentPreviewResult interface {
 	IsEnrollmentPreviewResult()
 }
 
-// The front page: what is most covered in the last hour.
-type Digest struct {
-	Title     string      `json:"title"`
-	Sentences []*Sentence `json:"sentences"`
-	WrittenAt time.Time   `json:"writtenAt"`
-}
-
 type EnrollDeviceInput struct {
 	// As shown by `news-server enroll-code`; case, dashes and spaces are ignored.
 	Code string `json:"code"`
@@ -232,8 +225,6 @@ type SummaryRun struct {
 	// Story articles written, and changed stories left for later runs.
 	Written int `json:"written"`
 	Waiting int `json:"waiting"`
-	// Whether a new front page was written.
-	Digest bool `json:"digest"`
 	// Why the run stopped early (a 429, Gemini busy); null when it went through.
 	Error *string `json:"error,omitempty"`
 }

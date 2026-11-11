@@ -135,7 +135,7 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 			if err != nil {
 				log.Printf("summaries: %v", err)
 			}
-			log.Printf("summaries: %d written, %d waiting, digest %v, in %s", result.Written, result.Waiting, result.Digest, time.Since(start).Round(time.Millisecond))
+			log.Printf("summaries: %d written, %d waiting, in %s", result.Written, result.Waiting, time.Since(start).Round(time.Millisecond))
 		}
 	}
 	if config.ArchiveDir != "-" {

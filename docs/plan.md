@@ -17,7 +17,8 @@ decisions and milestones next to the code.
 - **Summaries: Gemini free tier only**, `gemini-3.5-flash-lite`. Every 10 minutes, one request with every story that
   changed in the last 12 hours, and one for the 12-hour digest built from the story summaries: 288 requests a day,
   under the free tier's ~500. A daily request budget (~400, configurable), 429s back off to the next run, the digest
-  goes first when the budget is short. Structured output (a JSON schema), thinking low.
+  goes first when the budget is short. Structured output (a JSON schema), thinking low. (Nov 11, 2026: hen dropped
+  the digest and its screen; the requests go to the stories and the daily thread linking.)
 - **The app connects like the journal app:** gqlgen schema-first GraphQL, Apollo Kotlin in the app with the schema
   copied by a Gradle task, mTLS with enrollment codes and QR codes.
 

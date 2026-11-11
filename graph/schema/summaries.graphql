@@ -1,11 +1,9 @@
 # --- Summaries ------------------------------------------------------------------
 # The personal newspaper Gemini writes after each grouping (summary_* in config.json): a short article for each story
-# that changed in the last hours, and a digest of what is most covered in the last hour. Hebrew, facts only, each
-# fact once; every sentence has footnotes, the articles it comes from.
+# that changed in the last hours. Hebrew, facts only, each fact once; every sentence has footnotes, the articles it
+# comes from. (The digest, a front page of the last hour, was dropped on Nov 11, 2026.)
 
 extend type Query {
-  "The latest digest; null before the first, or when summaries are off."
-  digest: Digest
   "How the summaries are written, which the app's settings change; null when summaries are off."
   summarySettings: SummarySettings
 }
@@ -72,13 +70,6 @@ type StorySummary {
 type StoryUpdate {
   at: Time!
   sentences: [Sentence!]!
-}
-
-"The front page: what is most covered in the last hour."
-type Digest {
-  title: String!
-  sentences: [Sentence!]!
-  writtenAt: Time!
 }
 
 type Sentence {

@@ -21,8 +21,8 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/stories"
 )
 
-// fakeGemini answers generateContent with the recorded answers in testdata: the digest's for the front page's
-// instructions, the stories' otherwise. It keeps every request.
+// fakeGemini answers generateContent with the recorded answers in testdata: by the instructions, the threads',
+// the grouping's, or the stories'. It keeps every request.
 type fakeGemini struct {
 	mu       sync.Mutex
 	requests []map[string]any
@@ -55,9 +55,6 @@ func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
 		}
 		system, _ := json.Marshal(body["systemInstruction"])
 		name := "stories-answer.json"
-		if strings.Contains(string(system), "front page") {
-			name = "digest-answer.json"
-		}
 		if strings.Contains(string(system), "threads of a personal newspaper") {
 			name = "threads-answer.json"
 		}
@@ -136,7 +133,7 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != (Result{Written: 2, Digest: true}) || fake.count() != 2 {
+	if result != (Result{Written: 2}) || fake.count() != 1 {
 		t.Fatalf("%+v, %d requests", result, fake.count())
 	}
 	// The request: structured output, thinking low; the stories of the last 12 hours with two reports or more, the
@@ -186,27 +183,15 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	if flags, err := w.Store.Unrelated(ctx, time.Time{}); err != nil || len(flags) != 1 || len(flags[budgetSiteg.URL]) != 1 || !flags[budgetSiteg.URL][budgetSited.URL] {
 		t.Fatalf("flags %v, %v", flags, err)
 	}
-	// The digest: the stories with reports in the last hour, from their summaries; its thoughts are not the answer.
-	if !strings.Contains(fake.prompts[1], "- גשם כבד ירד הבוקר בצפון. [a1,a2]") || strings.Contains(fake.prompts[1], "התקציב") {
-		t.Fatalf("digest prompt:\n%s", fake.prompts[1])
-	}
-	digest, err := LatestDigest(ctx, w.Store)
-	if err != nil || digest == nil {
-		t.Fatal(digest, err)
-	}
-	if digest.Title != "גשם בצפון והתקציב בכנסת" || len(digest.Sentences) != 1 || digest.Sentences[0].Sources[1] != rainSiteE.URL {
-		// a3 wasn't in the digest's request: that sentence is dropped.
-		t.Fatalf("%+v", digest)
-	}
-	if n, _ := w.Store.GeminiRequests(ctx, Day(now)); n != 2 {
+	if n, _ := w.Store.GeminiRequests(ctx, Day(now)); n != 1 {
 		t.Fatalf("%d requests counted", n)
 	}
-	// Both answers' tokens, by the free tier's day; and the run, for the statistics.
+	// The answer's tokens, by the free tier's day; and the run, for the statistics.
 	days, err := w.Store.GeminiDays(ctx, 7)
-	if err != nil || len(days) != 1 || days[0].Tokens != (store.Tokens{In: 1700, Cached: 800, Out: 380, Thoughts: 40}) {
+	if err != nil || len(days) != 1 || days[0].Tokens != (store.Tokens{In: 1200, Cached: 800, Out: 300, Thoughts: 40}) {
 		t.Fatalf("%+v %v", days, err)
 	}
-	if status := w.Status(); status.At != now || status.Written != 2 || !status.Digest || status.Error != "" {
+	if status := w.Status(); status.At != now || status.Written != 2 || status.Error != "" {
 		t.Fatalf("%+v", status)
 	}
 }
@@ -217,11 +202,11 @@ func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {
 	if _, err := w.Run(ctx, found); err != nil {
 		t.Fatal(err)
 	}
-	// Nothing changed: no request, not even the digest.
-	if result, err := w.Run(ctx, found); err != nil || result != (Result{}) || fake.count() != 2 {
+	// Nothing changed: no request.
+	if result, err := w.Run(ctx, found); err != nil || result != (Result{}) || fake.count() != 1 {
 		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
 	}
-	// A third site reports the rain: that story only, and a new digest.
+	// A third site reports the rain: that story only.
 	third := scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/rain", Title: "גשם"}
 	if err := w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{third}, now); err != nil {
 		t.Fatal(err)
@@ -230,12 +215,12 @@ func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {
 	if _, err := w.Run(ctx, found); err != nil {
 		t.Fatal(err)
 	}
-	if fake.count() != 4 || strings.Contains(fake.prompts[2], "s2") || !strings.Contains(fake.prompts[2], "https://siteg/rain") && !strings.Contains(fake.prompts[2], "[a3] siteg") {
-		t.Fatalf("%d requests; third:\n%s", fake.count(), fake.prompts[2])
+	if fake.count() != 2 || strings.Contains(fake.prompts[1], "s2") || !strings.Contains(fake.prompts[1], "https://siteg/rain") && !strings.Contains(fake.prompts[1], "[a3] siteg") {
+		t.Fatalf("%d requests; second:\n%s", fake.count(), fake.prompts[1])
 	}
 	// It is a later version of the rain story: Gemini sees the previous one, and what it adds unfolds the story.
-	if !strings.Contains(fake.prompts[2], "הגרסה הקודמת") || !strings.Contains(fake.prompts[2], "- גשם כבד ירד הבוקר בצפון.") {
-		t.Fatalf("no previous version:\n%s", fake.prompts[2])
+	if !strings.Contains(fake.prompts[1], "הגרסה הקודמת") || !strings.Contains(fake.prompts[1], "- גשם כבד ירד הבוקר בצפון.") {
+		t.Fatalf("no previous version:\n%s", fake.prompts[1])
 	}
 	saved, err := Summaries(ctx, w.Store)
 	if err != nil {
@@ -252,7 +237,7 @@ func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {
 	}
 }
 
-func TestTheDigestGoesFirstWhenTheBudgetIsShort(t *testing.T) {
+func TestTheDaysLastRequestGoesToStories(t *testing.T) {
 	w, fake, found := setup(t)
 	ctx := context.Background()
 	w.Budget = 3
@@ -263,7 +248,7 @@ func TestTheDigestGoesFirstWhenTheBudgetIsShort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != (Result{Waiting: 2, Digest: true}) || fake.count() != 1 {
+	if result != (Result{Written: 2}) || fake.count() != 1 {
 		t.Fatalf("%+v, %d requests", result, fake.count())
 	}
 	// None left: nothing is sent.
@@ -327,7 +312,7 @@ func TestABusyGeminiIsTriedAgain(t *testing.T) {
 	w, fake, found := setup(t)
 	fake.busy = 1
 	result, err := w.Run(context.Background(), found)
-	if err != nil || result.Written != 2 || fake.count() != 3 {
+	if err != nil || result.Written != 2 || fake.count() != 2 {
 		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
 	}
 	// Still busy after every wait: the run ends, the next one tries again.
@@ -378,14 +363,14 @@ func TestARunSendsMoreRequestsWhileTheBudgetHasRoom(t *testing.T) {
 	// Noon in Pacific time: 72 runs left in the day, 144 requests kept for them; 400 leaves room for all 3.
 	w, fake, _ := setup(t)
 	result, err := w.Run(ctx, thirty(w))
-	if err != nil || fake.count() != 4 || result != (Result{Written: 6, Waiting: 24, Digest: true}) {
+	if err != nil || fake.count() != 3 || result != (Result{Written: 6, Waiting: 24}) {
 		// 12, 12 and 6 stories asked; the recorded answer writes s1 and s2 of each.
 		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
 	}
-	// A tight budget: one story request, then the digest.
+	// A tight budget: one story request.
 	w2, fake2, _ := setup(t)
 	w2.Budget = 146
-	if _, err := w2.Run(ctx, thirty(w2)); err != nil || fake2.count() != 2 {
+	if _, err := w2.Run(ctx, thirty(w2)); err != nil || fake2.count() != 1 {
 		t.Fatalf("%v, %d requests", err, fake2.count())
 	}
 }
@@ -411,7 +396,7 @@ func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
 	if err := w.linkThreadsIfDue(ctx, Day(now), now); err != nil {
 		t.Fatal(err)
 	}
-	if fake.count() != 3 || !strings.Contains(fake.prompts[2], "(אין עדיין)") || !strings.Contains(fake.prompts[2], "[n2]") {
+	if fake.count() != 2 || !strings.Contains(fake.prompts[1], "(אין עדיין)") || !strings.Contains(fake.prompts[1], "[n2]") {
 		t.Fatalf("%d requests; linking:\n%s", fake.count(), fake.prompts[len(fake.prompts)-1])
 	}
 	threads, err := w.Store.Threads(ctx, 10)
@@ -452,7 +437,7 @@ func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
 		t.Fatalf("%d story-thread links", in)
 	}
 	// Not again within the day.
-	if err := w.linkThreadsIfDue(ctx, Day(now), now.Add(time.Hour)); err != nil || fake.count() != 3 {
+	if err := w.linkThreadsIfDue(ctx, Day(now), now.Add(time.Hour)); err != nil || fake.count() != 2 {
 		t.Fatalf("%v, %d requests", err, fake.count())
 	}
 	// A day later a new story is offered with the threads so far, and links to the latest updated (t1).
@@ -464,8 +449,8 @@ func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
 	if err := w.linkThreadsIfDue(ctx, Day(later), later); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(fake.prompts[3], "[t1]") || !strings.Contains(fake.prompts[3], "[t2]") || !strings.Contains(fake.prompts[3], "עוד גשם") {
-		t.Fatalf("second linking:\n%s", fake.prompts[3])
+	if !strings.Contains(fake.prompts[2], "[t1]") || !strings.Contains(fake.prompts[2], "[t2]") || !strings.Contains(fake.prompts[2], "עוד גשם") {
+		t.Fatalf("second linking:\n%s", fake.prompts[2])
 	}
 	ths, err := w.Store.StoryThreads(ctx, "x")
 	if err != nil || len(ths) == 0 {

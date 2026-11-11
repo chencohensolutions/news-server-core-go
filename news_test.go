@@ -133,7 +133,7 @@ func TestTheAppReadsTheStories(t *testing.T) {
 
 func TestTheNewsNeedsACertificate(t *testing.T) {
 	env := newTestEnv(t)
-	for _, q := range []string{`{ headlines { url } }`, `{ article(url: "x") { url } }`, `{ stories { groupedAt } }`, `{ digest { title } }`} {
+	for _, q := range []string{`{ headlines { url } }`, `{ article(url: "x") { url } }`, `{ stories { groupedAt } }`} {
 		_, resp := env.query(t, nil, q, nil)
 		if len(resp.Errors) != 1 || resp.Errors[0].Extensions["code"] != "UNAUTHORIZED" {
 			t.Fatalf("%s: %+v", q, resp.Errors)
@@ -182,9 +182,9 @@ func TestTheAppReadsTheGeneratedArticles(t *testing.T) {
 	env := newTestEnv(t)
 	_, noon := seed(t, env)
 	ctx := context.Background()
-	resp := mustQuery(t, env, `{ digest { title } serverInfo { summaries } }`, nil)
-	if got := string(resp.Data["digest"]); got != "null" {
-		t.Fatalf("before the first: %s", got)
+	resp := mustQuery(t, env, `{ serverInfo { summaries } }`, nil)
+	if got := string(resp.Data["serverInfo"]); got != `{"summaries":false}` {
+		t.Fatalf("summaries off: %s", got)
 	}
 	story := stories.Story{Reports: []scrape.ArticleSummary{
 		{SourceID: "siteh", URL: "https://siteh/1", Title: "Rain all day"},
@@ -197,25 +197,16 @@ func TestTheAppReadsTheGeneratedArticles(t *testing.T) {
 	if err := env.db.SaveSummary(ctx, summary.StoryKey(story), data, noon); err != nil {
 		t.Fatal(err)
 	}
-	data, _ = json.Marshal(summary.Digest{Title: "השעה", WrittenAt: noon, Sentences: []summary.Sentence{{Text: "הצבעה.", Sources: []string{"https://sitee/1"}}}})
-	if err := env.db.SaveDigest(ctx, data, noon); err != nil {
-		t.Fatal(err)
-	}
 	env.api.Stories = func() ([]stories.Story, time.Time) { return []stories.Story{story}, noon }
 	env.api.Summaries = true
 	resp = mustQuery(t, env, `{
 		stories { stories { summary { title sentences { text footnotes { url sourceId title video } } contradictions { text } writtenAt updates { at sentences { text } } } } }
-		digest { title sentences { text footnotes { url sourceId } } writtenAt }
 		serverInfo { summaries } }`, nil)
 	want := fmt.Sprintf(`{"stories":[{"summary":{"title":"גשם","sentences":[{"text":"ירד גשם.","footnotes":[`+
 		`{"url":"https://siteh/1","sourceId":"siteh","title":"Rain all day","video":true},{"url":"https://gone/1","sourceId":null,"title":null,"video":false}]}],`+
 		`"contradictions":[],"writtenAt":%q,"updates":[{"at":%[1]q,"sentences":[{"text":"ירד גשם."}]}]}}]}`, noon.Format(time.RFC3339))
 	if got := string(resp.Data["stories"]); got != want {
 		t.Fatalf("stories\n got %s\nwant %s", got, want)
-	}
-	want = fmt.Sprintf(`{"title":"השעה","sentences":[{"text":"הצבעה.","footnotes":[{"url":"https://sitee/1","sourceId":"sitee"}]}],"writtenAt":%q}`, noon.Format(time.RFC3339))
-	if got := string(resp.Data["digest"]); got != want {
-		t.Fatalf("digest\n got %s\nwant %s", got, want)
 	}
 	if got := string(resp.Data["serverInfo"]); got != `{"summaries":true}` {
 		t.Fatalf("serverInfo %s", got)
@@ -243,10 +234,10 @@ func TestTheAppReadsTheStatistics(t *testing.T) {
 	env.api.Gemini = &resolver.GeminiInfo{Model: "gemini-3.5-flash-lite", Budget: 400,
 		Status: func() summary.Status { return summary.Status{At: noon, Result: summary.Result{Written: 3, Waiting: 9}} }}
 	resp = mustQuery(t, env, `{ stats { gemini { model budget today days { day requests tokensIn tokensCached tokensOut tokensThinking }
-		lastRun { at written waiting digest error } } } }`, nil)
+		lastRun { at written waiting error } } } }`, nil)
 	want = fmt.Sprintf(`{"gemini":{"model":"gemini-3.5-flash-lite","budget":400,"today":%q,`+
 		`"days":[{"day":%q,"requests":1,"tokensIn":15000,"tokensCached":4000,"tokensOut":300,"tokensThinking":50}],`+
-		`"lastRun":{"at":%q,"written":3,"waiting":9,"digest":false,"error":null}}}`, day, day, noon.Format(time.RFC3339))
+		`"lastRun":{"at":%q,"written":3,"waiting":9,"error":null}}}`, day, day, noon.Format(time.RFC3339))
 	if got := string(resp.Data["stats"]); got != want {
 		t.Fatalf("on\n got %s\nwant %s", got, want)
 	}

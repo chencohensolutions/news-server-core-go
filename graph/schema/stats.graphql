@@ -68,8 +68,6 @@ type SummaryRun {
   "Story articles written, and changed stories left for later runs."
   written: Int!
   waiting: Int!
-  "Whether a new front page was written."
-  digest: Boolean!
   "Why the run stopped early (a 429, Gemini busy); null when it went through."
   error: String
 }

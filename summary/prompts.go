@@ -57,18 +57,6 @@ For every story, write:
 
 Answer for every story in the input, by its id ("s1"). A story's sentences cite only that story's articles.`
 
-const digestSystem = `You write the front page of a personal newspaper from Israeli news sites: what is most covered
-in the last hour. The input is the stories with the most new reports in the last hour, the most covered first, each
-with its new and total reports and either its summary sentences (with the article ids they cite) or its headlines.
-
-Write:
-- "title": a short Hebrew headline, in the style of a newspaper's main headline, about the most covered story only.
-- "sentences": 3 to 8 sentences, the most covered story first, one or two sentences per story, covering the stories in
-  order as space allows. Cite the article ids the input gives for each fact. Two stories may be about the same event:
-  then write it once.
-
-` + writingRules
-
 var contradictionSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
@@ -118,15 +106,6 @@ var storiesSchema = map[string]any{
 		},
 	},
 	"required": []string{"stories"},
-}
-
-var digestSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"title":     map[string]any{"type": "string"},
-		"sentences": map[string]any{"type": "array", "items": sentenceSchema},
-	},
-	"required": []string{"title", "sentences"},
 }
 
 const threadsSystem = `You keep the threads of a personal newspaper from Israeli news sites: affairs that run over weeks, months

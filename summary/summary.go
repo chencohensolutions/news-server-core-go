@@ -1,7 +1,6 @@
-// Package summary writes the personal newspaper with Gemini: a short Hebrew article for each story that changed in
-// the last hours, and a digest of what is most covered in the last hour. Every sentence carries footnotes, the
-// articles it comes from; facts only, each fact once. One request for the stories and one for the digest per run,
-// under a daily request budget.
+// Package summary writes the personal newspaper with Gemini: a Hebrew article for each story that changed in the
+// last hours. Every sentence carries footnotes, the articles it comes from; facts only, each fact once. A few requests
+// per run, under a daily request budget.
 package summary
 
 import (
@@ -36,7 +35,6 @@ const (
 	articleChars       = 600    // of each article's body
 	maxReports         = 8      // of a story's reports in the prompt, one per site first
 	maxFootnotes       = 5      // of one sentence: more can't all state it
-	digestStories      = 8
 )
 
 // Sentence is one sentence and the URLs of the articles it comes from: its footnotes.
@@ -138,15 +136,6 @@ func unfolded(prev *StorySummary, sentences, added []Sentence, now time.Time) []
 	return updates
 }
 
-// Digest is the front page: what is most covered in the last hour.
-type Digest struct {
-	Title     string     `json:"title"`
-	Sentences []Sentence `json:"sentences"`
-	WrittenAt time.Time  `json:"writtenAt"`
-	// Stories are the keys of the stories it was written from: the same ones next run means no new digest.
-	Stories []string `json:"stories"`
-}
-
 // Generator is Gemini (gemini.Client), or recorded answers in tests.
 type Generator interface {
 	Generate(ctx context.Context, req gemini.Request) (json.RawMessage, gemini.Usage, error)
@@ -199,7 +188,6 @@ func (w *Writer) Status() Status {
 type Result struct {
 	Written int // story summaries written
 	Waiting int // changed stories left for the next run
-	Digest  bool
 }
 
 // StoryKey names a story by its reports: a story that gains or loses a report is a new story to summarize.
@@ -291,8 +279,8 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		return result, err
 	}
 	left := orDefault(w.Budget, DefaultBudget) - used
-	// Story requests while stories wait: the first whenever two requests are left (the digest goes first when the
-	// budget is short), more only while the day's budget keeps two for each run left until Google's day ends.
+	// Story requests while stories wait: the first whenever a request is left, more only while the day's budget keeps
+	// two for each run left until Google's day ends.
 	budget := orDefault(w.Budget, DefaultBudget)
 	for sent := 0; len(changed) > 0 && sent < orDefault(w.MaxRequests, DefaultMaxRequests); sent++ {
 		used, err := w.Store.GeminiRequests(ctx, day)
@@ -300,7 +288,7 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 			return result, err
 		}
 		left = budget - used
-		if left < 2 || sent > 0 && left-1 <= 2*w.runsLeft(now) {
+		if left < 1 || sent > 0 && left-1 <= 2*w.runsLeft(now) {
 			break
 		}
 		written, asked, err := w.writeStories(ctx, changed, day, now)
@@ -313,21 +301,11 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		result.Waiting += asked - written
 	}
 	result.Waiting += len(changed)
-	if saved, err = w.Store.Summaries(ctx); err != nil {
-		return result, err
-	}
 	if used, err = w.Store.GeminiRequests(ctx, day); err != nil {
 		return result, err
 	}
-	left = budget - used
-	if left >= 1 {
-		wrote, err := w.writeDigest(ctx, window, saved, firstSeen, day, now)
-		result.Digest = wrote
-		if err != nil {
-			return result, err
-		}
-	} else {
-		w.logf("summaries: the day's %d Gemini requests are used", orDefault(w.Budget, DefaultBudget))
+	if budget-used < 1 {
+		w.logf("summaries: the day's %d Gemini requests are used", budget)
 	}
 	if err := w.linkThreadsIfDue(ctx, day, now); err != nil {
 		w.logf("threads: %v", err)
@@ -770,94 +748,6 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 	return written, asked, nil
 }
 
-// writeDigest writes the front page from the stories with the most reports first seen in the last hour, unless
-// they are the ones the latest digest was written from. It says whether it wrote one.
-func (w *Writer) writeDigest(ctx context.Context, window []stories.Story, saved map[string]json.RawMessage,
-	firstSeen map[string]time.Time, day string, now time.Time) (bool, error) {
-	hourAgo := now.Add(-time.Hour)
-	type hot struct {
-		story stories.Story
-		fresh int
-	}
-	var hots []hot
-	for _, s := range window {
-		fresh := 0
-		for _, r := range s.Reports {
-			if firstSeen[r.URL].After(hourAgo) {
-				fresh++
-			}
-		}
-		if fresh > 0 {
-			hots = append(hots, hot{s, fresh})
-		}
-	}
-	if len(hots) == 0 {
-		return false, nil
-	}
-	sort.SliceStable(hots, func(i, j int) bool {
-		if hots[i].fresh != hots[j].fresh {
-			return hots[i].fresh > hots[j].fresh
-		}
-		return len(hots[i].story.Reports) > len(hots[j].story.Reports)
-	})
-	hots = hots[:min(len(hots), digestStories)]
-	keys := make([]string, len(hots))
-	for i, h := range hots {
-		keys[i] = StoryKey(h.story)
-	}
-	if latest, err := LatestDigest(ctx, w.Store); err != nil {
-		return false, err
-	} else if latest != nil && strings.Join(latest.Stories, ",") == strings.Join(keys, ",") {
-		return false, nil
-	}
-
-	ids := newSources()
-	var prompt strings.Builder
-	for i, h := range hots {
-		fmt.Fprintf(&prompt, "=== סיפור %d: %d דיווחים בשעה האחרונה, %d בסך הכול ===\n", i+1, h.fresh, len(h.story.Reports))
-		var summary StorySummary
-		if data, ok := saved[keys[i]]; ok && json.Unmarshal(data, &summary) == nil {
-			fmt.Fprintf(&prompt, "כותרת: %s\n", summary.Title)
-			for _, s := range append(summary.Sentences, summary.Contradictions...) {
-				var refs []string
-				for _, url := range s.Sources {
-					refs = append(refs, ids.id(url))
-				}
-				fmt.Fprintf(&prompt, "- %s [%s]\n", s.Text, strings.Join(refs, ","))
-			}
-		} else {
-			for _, r := range h.story.Reports {
-				fmt.Fprintf(&prompt, "- [%s] %s: %s", ids.id(r.URL), w.siteName(r.SourceID), oneLine(r.Title))
-				if r.Subtitle != "" {
-					fmt.Fprintf(&prompt, ". %s", oneLine(r.Subtitle))
-				}
-				prompt.WriteString("\n")
-			}
-		}
-		prompt.WriteString("\n")
-	}
-	raw, err := w.send(ctx, day, gemini.Request{System: digestSystem, Prompt: prompt.String(), Schema: digestSchema})
-	if err != nil {
-		return false, err
-	}
-	var answer struct {
-		Title     string           `json:"title"`
-		Sentences []answerSentence `json:"sentences"`
-	}
-	if err := json.Unmarshal(raw, &answer); err != nil {
-		return false, fmt.Errorf("summaries: reading Gemini's digest: %w", err)
-	}
-	digest := Digest{Title: strings.TrimSpace(answer.Title), Sentences: ids.sentences(answer.Sentences, nil), WrittenAt: now, Stories: keys}
-	if len(digest.Sentences) == 0 {
-		return false, errors.New("summaries: Gemini's digest has no sentence with a source")
-	}
-	data, err := json.Marshal(digest)
-	if err != nil {
-		return false, err
-	}
-	return true, w.Store.SaveDigest(ctx, data, now)
-}
-
 // Summaries are every stored story summary, by StoryKey.
 func Summaries(ctx context.Context, db *store.Store) (map[string]StorySummary, error) {
 	saved, err := db.Summaries(ctx)
@@ -872,19 +762,6 @@ func Summaries(ctx context.Context, db *store.Store) (map[string]StorySummary, e
 		}
 	}
 	return out, nil
-}
-
-// LatestDigest is the latest digest, or nil.
-func LatestDigest(ctx context.Context, db *store.Store) (*Digest, error) {
-	data, err := db.Digest(ctx)
-	if err != nil || data == nil {
-		return nil, err
-	}
-	var d Digest
-	if err := json.Unmarshal(data, &d); err != nil {
-		return nil, err
-	}
-	return &d, nil
 }
 
 // israelTime is t as the prompt shows it: day, month and time in Israel.

@@ -41,7 +41,7 @@ func openSummaries(config auth.AppConfig, db *store.Store, found []sites.Source)
 }
 
 // summarizeCommand is the summarize command: group the stories now, summarize what changed, and print the
-// summaries and the digest.
+// summaries.
 func summarizeCommand(config auth.AppConfig, out io.Writer) error {
 	found, err := sites.Load(config.SourcesDir)
 	if err != nil {
@@ -70,15 +70,10 @@ func summarizeCommand(config auth.AppConfig, out io.Writer) error {
 	}
 	start := time.Now()
 	result, err := writer.Run(ctx, grouped)
-	fmt.Fprintf(out, "%d stories, %d summaries written, %d waiting, digest %v, in %s\n\n", len(grouped), result.Written,
-		result.Waiting, result.Digest, time.Since(start).Round(time.Millisecond))
+	fmt.Fprintf(out, "%d stories, %d summaries written, %d waiting, in %s\n\n", len(grouped), result.Written,
+		result.Waiting, time.Since(start).Round(time.Millisecond))
 	if err != nil {
 		return err
-	}
-	if digest, err := summary.LatestDigest(ctx, db); err == nil && digest != nil {
-		fmt.Fprintf(out, "## %s (%s)\n", digest.Title, digest.WrittenAt.Local().Format("15:04"))
-		printSentences(out, digest.Sentences)
-		fmt.Fprintln(out)
 	}
 	saved, err := summary.Summaries(ctx, db)
 	if err != nil {
