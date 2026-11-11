@@ -33,3 +33,18 @@ func TestTheMainPackageImportsEveryPack(t *testing.T) {
 		}
 	}
 }
+
+func TestPacksTxtListsModulesAndFoldersRelativeToIt(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "packs.txt"), []byte("# my packs\n../pack-a\n\nexample.com/b@v1 # pinned\n"), 0o644)
+	got, err := readPacksFile("", module{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != filepath.Join(dir, "..", "pack-a") || got[1] != "example.com/b@v1" {
+		t.Fatalf("%q", got)
+	}
+	if got, err := readPacksFile("", module{Dir: t.TempDir()}); err != nil || got != nil {
+		t.Fatalf("no packs.txt: %q %v", got, err)
+	}
+}

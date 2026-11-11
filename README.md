@@ -16,8 +16,8 @@ Milestone 1, the skeleton:
   `enrollmentPreview` and `enrollDevice` are `@public`, certificates renew with `renewCertificate`.
 - **Admin API** on loopback with a token rewritten on every start, and the commands that call it: `enroll-code`,
   `devices`, `revoke`.
-- **The site configs** are a folder of `<id>/config.json` (`sources_dir`): no sites ship with the server, you bring
-  them (a pack's `sources/`). The schema is [docs/source-config.md](docs/source-config.md); `sources/_example` shows
+- **The site configs** are folders of `<id>/config.json`, from `sources_dir` and from packs: no sites ship with the
+  server, you bring them. The schema is [docs/source-config.md](docs/source-config.md); `sources/_example` shows
   it. `sources` lists them.
 
 Milestone 2, the engine port (`scrape/`): the news app's scraper translated file by file. It reads a site's config
@@ -48,22 +48,32 @@ stories are on.
 
 ## Packs
 
-The core reads only what site configs describe. A pack is a Go module that adds to it from its `init` function:
+The core reads only what site configs describe, and ships no sites. A pack is a Go module that adds to it from its
+`init` function:
 
+- `scrape.RegisterSources(name, fsys)`: the pack's sites, a folder of `<id>/config.json` (usually its `sources/`,
+  embedded with `//go:embed sources/*/config.json` and `fs.Sub`). The server reads them beside `sources_dir`; a site
+  id in two places is an error.
 - `fetch.RegisterTransport(name, wrap)`: an HTTP transport wrapped around the core's, for the requests it handles.
   It gets every site (with the keys of its config's `http` object the core doesn't know, in `Site.Extra`) and its own
   settings from config.json's `"packs": { "<name>": {...} }`.
 - `video.Register(name, resolver)`: turns an embedded player into a stream the server can play.
 
-Build the server with packs with `newsbuild`, as `xcaddy` builds Caddy with plugins:
+List your packs in `packs.txt` (git-ignored; copy `packs.example.txt`), one a line: a module (`@latest` or a
+version) or a folder. Then build:
 
 ```bash
-go run ./cmd/newsbuild --with github.com/someone/news-sources-xx@latest --with ../my-pack -o news-server.exe
+./build.ps1                                  # Windows: news-server.exe with every pack in packs.txt
+./build.sh                                   # macOS/Linux
+./build.ps1 -o C:\path\to\news-server.exe   # written elsewhere, say beside your config.json
 ```
 
-A pack is a module path (`@latest` when no version is given; run newsbuild again to update) or a folder. Run inside
-this checkout, newsbuild builds this checkout's core (`--core` picks another). `news-server version` lists the packs
-built in. Without packs: `go build ./cmd/news-server`.
+Run it again after pulling the core or a pack. It runs `newsbuild` (`cmd/newsbuild`), which builds a server with
+packs the way `xcaddy` builds Caddy with plugins; `--with <pack>` names packs on the command line instead of
+`packs.txt`. `news-server version` lists what the packs added. Without packs: `go build ./cmd/news-server`.
+
+To work on the core and a pack together, put a `go.work` in the folder holding both (`go work init ./news-server-core-go
+./my-pack`), so each builds and tests against the other's checkout.
 
 ## Getting started
 
@@ -115,7 +125,7 @@ go tool gqlgen generate --config gqlgen.admin.yml
 main.go, serve.go, middleware.go   start-up, routing, identify / gzip / deadlines
 admin.go, admincli.go              the loopback admin API and the commands that call it
 auth/  enroll/                     config, request identity and @public, enrollment and issuing
-sites/                             reads <sources_dir>/<id>/config.json
+sites/                             the sites' configs (sources_dir and the packs') and settings
 scrape/                            the engine: configs, extraction, dates, URLs, politeness, downloading
 scrape/dom, jsonpath, rx           jsoup-compatible selectors and text, JSON paths, Java-like regex
 fetch/  video/                     the HTTP client and video resolvers, with the packs' registries

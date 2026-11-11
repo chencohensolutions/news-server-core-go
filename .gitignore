@@ -22,3 +22,8 @@ news.db-*
 
 # The Gemini API key (Google AI Studio, free tier)
 /gemini.key
+
+# Each checkout's own packs (packs.example.txt), and a go.work for working on the core and a pack together
+/packs.txt
+/go.work
+/go.work.sum

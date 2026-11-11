@@ -5,7 +5,7 @@
   "client_ca_key": "certs/ca-key.pem",
   "public_url": "https://myhome.example.org:56399",
   "port": "56399",
-  "sources_dir": "../news-sources-xx/sources",
+  "sources_dir": "sources",
   "users": [{ "username": "hen" }],
   "database_file": "news.db",
   "archive_dir": "archive",

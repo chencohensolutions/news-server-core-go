@@ -29,7 +29,7 @@ agreed decisions and the milestones.
 
 ```bash
 go run ./cmd/news-server                            # the server without packs
-go run ./cmd/newsbuild --with ../news-sources-xx/server  # a build with packs
+./build.ps1                                        # a build with the packs in packs.txt
 go test ./...
 NEWS_SOURCES=../news-sources-xx/sources go test ./scrape  # every site's golden fixtures
 go vet ./...

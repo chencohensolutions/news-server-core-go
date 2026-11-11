@@ -1,0 +1,7 @@
+# The packs ./build.ps1 (or ./build.sh) builds into news-server: copy this file to packs.txt (git-ignored) and list
+# yours, one a line. A line is a Go module, at a version or @latest (the default), or a folder holding a pack's
+# go.mod, relative to this file.
+#
+# github.com/someone/news-sources-xx@latest
+# github.com/someone/news-sources-yy@v1.2.0
+# ../my-private-pack

@@ -2,7 +2,11 @@
 // package registers transports (fetch.RegisterTransport) and video resolvers (video.Register) from its init
 // function; newsbuild writes a main package importing the core and every pack, and builds it.
 //
-//	newsbuild --with github.com/someone/news-sources-fr@v1.2.0 --with ../news-sources-xx/server -o news-server.exe
+//	newsbuild --with github.com/someone/news-sources-fr@v1.2.0 --with ../my-pack -o news-server.exe
+//
+// Without --with it builds the packs listed in packs.txt, one per line (# starts a comment), in the core checkout
+// it runs in (or the folder it runs in); a folder there is relative to packs.txt. packs.txt is git-ignored, so
+// each checkout lists its own packs; see packs.example.txt.
 //
 // Run it again to update: a pack named without a version, or with @latest, is fetched at its newest. A pack given
 // as a folder (a path starting with ".", "/" or a drive letter, or any folder that exists) is built from that
@@ -30,6 +34,7 @@ const pseudo = "v0.0.0-00010101000000-000000000000"
 const usage = `usage: newsbuild [flags]
 
   --with <pack>     a pack to build in, repeatable: module[@version] (default @latest) or a folder
+  --packs <file>    the list of packs used when there is no --with (default packs.txt in the core checkout)
   --core <core>     the core: module[@version] or a folder (default: this checkout when run inside one, else @latest)
   -o <file>         the program to write (default news-server, news-server.exe on Windows)
   --keep            keep the build folder, and print where it is
@@ -60,6 +65,7 @@ func run(args []string) error {
 	var with withFlag
 	flags.Var(&with, "with", "")
 	core := flags.String("core", "", "")
+	packsFile := flags.String("packs", "", "")
 	out := flags.String("o", "", "")
 	keep := flags.Bool("keep", false, "")
 	if err := flags.Parse(args); err != nil {
@@ -72,6 +78,13 @@ func run(args []string) error {
 	coreMod, err := coreModuleFor(*core)
 	if err != nil {
 		return err
+	}
+	if len(with) == 0 {
+		listed, err := readPacksFile(*packsFile, coreMod)
+		if err != nil {
+			return err
+		}
+		with = listed
 	}
 	var packs []module
 	for _, w := range with {
@@ -133,6 +146,43 @@ func run(args []string) error {
 	}
 	fmt.Println("built", output)
 	return nil
+}
+
+// readPacksFile is the packs listed in file (packs.txt in the core checkout, or the current folder, when file is
+// ""): one module[@version] or folder a line, folders relative to the file; blank lines and # comments skipped. No
+// default file is no packs.
+func readPacksFile(file string, core module) ([]string, error) {
+	if file == "" {
+		dir := core.Dir
+		if dir == "" {
+			dir = "."
+		}
+		file = filepath.Join(dir, "packs.txt")
+		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	base := filepath.Dir(file)
+	var specs []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, ".") && !filepath.IsAbs(line) {
+			line = filepath.Join(base, line)
+		}
+		specs = append(specs, line)
+	}
+	fmt.Printf("packs from %s: %s\n", file, strings.Join(specs, ", "))
+	return specs, nil
 }
 
 // mainSource is the main package: the core's Main, after every pack's init.
