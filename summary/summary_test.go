@@ -108,7 +108,7 @@ func setup(t *testing.T) (*Writer, *fakeGemini, []stories.Story) {
 	save(now.Add(-30*time.Minute), rainSiteh, rainSiteE, alone)
 	save(now.Add(-5*time.Hour), budgetSited, budgetSiteg)
 	save(now.Add(-13*time.Hour), old, oldToo)
-	article := &scrape.Article{SourceID: "siteh", URL: rainSiteh.URL, Title: rainSiteh.Title, Body: []string{"גשם כבד ירד הבוקר.", "שני כבישים נסגרו."}}
+	article := &scrape.Article{SourceID: "siteh", URL: rainSiteh.URL, Title: rainSiteh.Title, Body: []string{"גשם כבד ירד הבוקר.", "שני כבישים נסגרו.", rainBody}}
 	if err := db.SaveArticle(ctx, article, "<html/>", now); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 		t.Fatalf("generationConfig %v", config)
 	}
 	prompt := fake.prompts[0]
-	for _, want := range []string{"סיפור s1", "[a1] siteh", "גוף: גשם כבד ירד הבוקר. שני כבישים נסגרו.", "[a2] SiteE", "סיפור s2", "[a3] sited"} {
+	for _, want := range []string{"סיפור s1", "[a1] siteh", "גוף: גשם כבד ירד הבוקר. שני כבישים נסגרו. " + rainBody, "[a2] SiteE", "סיפור s2", "[a3] sited"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt lacks %q:\n%s", want, prompt)
 		}
@@ -524,3 +524,6 @@ func TestGeminiGroupsTheNewHeadlinesOnce(t *testing.T) {
 		t.Fatalf("no budget: %v", err)
 	}
 }
+
+// rainBody makes the test article's body longer than a paywall stub.
+var rainBody = strings.TrimSpace(strings.Repeat("המשטרה ביקשה מהנהגים להימנע מנסיעה באזור עד שהמים ייסוגו. ", 4))

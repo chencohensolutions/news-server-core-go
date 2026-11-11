@@ -6,6 +6,25 @@
 extend type Query {
   "The latest digest; null before the first, or when summaries are off."
   digest: Digest
+  "How the summaries are written, which the app's settings change; null when summaries are off."
+  summarySettings: SummarySettings
+}
+
+extend type Mutation {
+  """
+  Changes how the summaries are written; the fields left out keep their value. Stories written from now on follow
+  it. Summaries off fails with BAD_REQUEST in extensions.code.
+  """
+  setSummarySettings(fullArticles: Boolean): SummarySettings!
+}
+
+type SummarySettings {
+  """
+  Gemini reads each article's whole body (default): without the lines that aren't the article (promotions, "more on
+  this", other news), a paywall stub, or paragraphs another site of the story has word for word, and up to 4,000
+  characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
+  """
+  fullArticles: Boolean!
 }
 
 extend type ServerInfo {

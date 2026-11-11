@@ -13,7 +13,26 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/summary"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
+
+// SetSummarySettings is the resolver for the setSummarySettings field.
+func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles *bool) (*model.SummarySettings, error) {
+	if !r.Summaries {
+		return nil, &gqlerror.Error{Message: "summaries are off", Extensions: map[string]any{"code": CodeBadRequest}}
+	}
+	settings, err := summary.LoadSettings(ctx, r.Store)
+	if err != nil {
+		return nil, err
+	}
+	if fullArticles != nil {
+		settings.FullArticles = *fullArticles
+	}
+	if err := summary.SaveSettings(ctx, r.Store, settings); err != nil {
+		return nil, err
+	}
+	return &model.SummarySettings{FullArticles: settings.FullArticles}, nil
+}
 
 // Digest is the resolver for the digest field.
 func (r *queryResolver) Digest(ctx context.Context) (*model.Digest, error) {
@@ -30,6 +49,18 @@ func (r *queryResolver) Digest(ctx context.Context) (*model.Digest, error) {
 		byURL[h.URL] = h
 	}
 	return &model.Digest{Title: digest.Title, Sentences: model.SentencesOf(digest.Sentences, byURL), WrittenAt: digest.WrittenAt}, nil
+}
+
+// SummarySettings is the resolver for the summarySettings field.
+func (r *queryResolver) SummarySettings(ctx context.Context) (*model.SummarySettings, error) {
+	if !r.Summaries {
+		return nil, nil
+	}
+	settings, err := summary.LoadSettings(ctx, r.Store)
+	if err != nil {
+		return nil, err
+	}
+	return &model.SummarySettings{FullArticles: settings.FullArticles}, nil
 }
 
 // StorySummary returns generated.StorySummaryResolver implementation.

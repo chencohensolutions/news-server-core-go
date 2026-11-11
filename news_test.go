@@ -366,3 +366,29 @@ func TestTheAppReadsTheThreads(t *testing.T) {
 		t.Fatalf("none %s", got)
 	}
 }
+
+func TestTheAppChangesTheSummarySettings(t *testing.T) {
+	env := newTestEnv(t)
+	resp := mustQuery(t, env, `{ summarySettings { fullArticles } }`, nil)
+	if got := string(resp.Data["summarySettings"]); got != "null" {
+		t.Fatalf("summaries off: %s", got)
+	}
+	cert, _ := env.enrollDevice(t, "hen")
+	_, resp = env.query(t, cert, `mutation { setSummarySettings(fullArticles: false) { fullArticles } }`, nil)
+	if len(resp.Errors) != 1 || resp.Errors[0].Extensions["code"] != resolver.CodeBadRequest {
+		t.Fatalf("summaries off: %+v", resp.Errors)
+	}
+	env.api.Summaries = true
+	resp = mustQuery(t, env, `{ summarySettings { fullArticles } }`, nil)
+	if got := string(resp.Data["summarySettings"]); got != `{"fullArticles":true}` {
+		t.Fatalf("default: %s", got)
+	}
+	resp = mustQuery(t, env, `mutation { setSummarySettings(fullArticles: false) { fullArticles } }`, nil)
+	if got := string(resp.Data["setSummarySettings"]); got != `{"fullArticles":false}` {
+		t.Fatalf("set: %s %+v", got, resp.Errors)
+	}
+	settings, err := summary.LoadSettings(context.Background(), env.db)
+	if err != nil || settings.FullArticles {
+		t.Fatalf("saved: %+v %v", settings, err)
+	}
+}

@@ -154,10 +154,11 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		EnrollDevice     func(childComplexity int, input model.EnrollDeviceInput) int
-		RenewCertificate func(childComplexity int, csr string, keyProtection model.KeyProtection) int
-		SetGrouping      func(childComplexity int, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) int
-		SetSource        func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
+		EnrollDevice       func(childComplexity int, input model.EnrollDeviceInput) int
+		RenewCertificate   func(childComplexity int, csr string, keyProtection model.KeyProtection) int
+		SetGrouping        func(childComplexity int, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) int
+		SetSource          func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
+		SetSummarySettings func(childComplexity int, fullArticles *bool) int
 	}
 
 	Query struct {
@@ -171,6 +172,7 @@ type ComplexityRoot struct {
 		Sources           func(childComplexity int) int
 		Stats             func(childComplexity int) int
 		Stories           func(childComplexity int) int
+		SummarySettings   func(childComplexity int) int
 		Thread            func(childComplexity int, id string) int
 		Threads           func(childComplexity int, first *int) int
 	}
@@ -261,6 +263,10 @@ type ComplexityRoot struct {
 		Written func(childComplexity int) int
 	}
 
+	SummarySettings struct {
+		FullArticles func(childComplexity int) int
+	}
+
 	Thread struct {
 		ID         func(childComplexity int) int
 		Name       func(childComplexity int) int
@@ -286,6 +292,7 @@ type MutationResolver interface {
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
 	SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) (*model.Grouping, error)
 	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
+	SetSummarySettings(ctx context.Context, fullArticles *bool) (*model.SummarySettings, error)
 }
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
@@ -298,6 +305,7 @@ type QueryResolver interface {
 	Sources(ctx context.Context) ([]*sites.Source, error)
 	Stats(ctx context.Context) (*model.ServerStats, error)
 	Digest(ctx context.Context) (*model.Digest, error)
+	SummarySettings(ctx context.Context) (*model.SummarySettings, error)
 	Threads(ctx context.Context, first *int) ([]*model.Thread, error)
 	Thread(ctx context.Context, id string) (*model.Thread, error)
 }
@@ -818,6 +826,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.SetSource(childComplexity, args["id"].(string), args["enabled"].(*bool), args["feed"].(*bool), args["waitMs"].(*int)), true
+	case "Mutation.setSummarySettings":
+		if e.ComplexityRoot.Mutation.SetSummarySettings == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setSummarySettings_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SetSummarySettings(childComplexity, args["fullArticles"].(*bool)), true
 
 	case "Query.article":
 		if e.ComplexityRoot.Query.Article == nil {
@@ -900,6 +919,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Stories(childComplexity), true
+	case "Query.summarySettings":
+		if e.ComplexityRoot.Query.SummarySettings == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.SummarySettings(childComplexity), true
 	case "Query.thread":
 		if e.ComplexityRoot.Query.Thread == nil {
 			break
@@ -1251,6 +1276,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SummaryRun.Written(childComplexity), true
+
+	case "SummarySettings.fullArticles":
+		if e.ComplexityRoot.SummarySettings.FullArticles == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummarySettings.FullArticles(childComplexity), true
 
 	case "Thread.id":
 		if e.ComplexityRoot.Thread.ID == nil {
@@ -1805,6 +1837,25 @@ type SiteStats {
 extend type Query {
   "The latest digest; null before the first, or when summaries are off."
   digest: Digest
+  "How the summaries are written, which the app's settings change; null when summaries are off."
+  summarySettings: SummarySettings
+}
+
+extend type Mutation {
+  """
+  Changes how the summaries are written; the fields left out keep their value. Stories written from now on follow
+  it. Summaries off fails with BAD_REQUEST in extensions.code.
+  """
+  setSummarySettings(fullArticles: Boolean): SummarySettings!
+}
+
+type SummarySettings {
+  """
+  Gemini reads each article's whole body (default): without the lines that aren't the article (promotions, "more on
+  this", other news), a paywall stub, or paragraphs another site of the story has word for word, and up to 4,000
+  characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
+  """
+  fullArticles: Boolean!
 }
 
 extend type ServerInfo {
@@ -2274,6 +2325,14 @@ func (ec *executionContext) childFields_SummaryRun(ctx context.Context, field gr
 	return nil, fmt.Errorf("no field named %q was found under type SummaryRun", field.Name)
 }
 
+func (ec *executionContext) childFields_SummarySettings(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "fullArticles":
+		return ec.fieldContext_SummarySettings_fullArticles(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SummarySettings", field.Name)
+}
+
 func (ec *executionContext) childFields_Thread(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -2537,6 +2596,20 @@ func (ec *executionContext) field_Mutation_setSource_args(ctx context.Context, r
 		return nil, err
 	}
 	args["waitMs"] = arg3
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setSummarySettings_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "fullArticles",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["fullArticles"] = arg0
 	return args, nil
 }
 
@@ -4600,6 +4673,50 @@ func (ec *executionContext) fieldContext_Mutation_setSource(ctx context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_setSummarySettings(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setSummarySettings(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetSummarySettings(ctx, fc.Args["fullArticles"].(*bool))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
+			return ec.marshalNSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setSummarySettings(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SummarySettings(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setSummarySettings_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_enrollmentPreview(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4976,6 +5093,38 @@ func (ec *executionContext) fieldContext_Query_digest(_ context.Context, field g
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_Digest(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_summarySettings(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_summarySettings(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().SummarySettings(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
+			return ec.marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_summarySettings(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SummarySettings(ctx, field)
 		},
 	}
 	return fc, nil
@@ -6479,6 +6628,29 @@ func (ec *executionContext) _SummaryRun_error(ctx context.Context, field graphql
 }
 func (ec *executionContext) fieldContext_SummaryRun_error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SummaryRun", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _SummarySettings_fullArticles(ctx context.Context, field graphql.CollectedField, obj *model.SummarySettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummarySettings_fullArticles(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FullArticles, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummarySettings_fullArticles(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type Boolean does not have child fields"))
 }
 
 func (ec *executionContext) _Thread_id(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
@@ -8759,6 +8931,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "setSummarySettings":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setSummarySettings(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9003,6 +9182,25 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_digest(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "summarySettings":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_summarySettings(ctx, field)
 				return res
 			}
 
@@ -9791,6 +9989,45 @@ func (ec *executionContext) _SummaryRun(ctx context.Context, sel ast.SelectionSe
 			}
 		case "error":
 			out.Values[i] = ec._SummaryRun_error(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var summarySettingsImplementors = []string{"SummarySettings"}
+
+func (ec *executionContext) _SummarySettings(ctx context.Context, sel ast.SelectionSet, obj *model.SummarySettings) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, summarySettingsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SummarySettings")
+		case "fullArticles":
+			out.Values[i] = ec._SummarySettings_fullArticles(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -10839,6 +11076,20 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 	return ret
 }
 
+func (ec *executionContext) marshalNSummarySettings2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v model.SummarySettings) graphql.Marshaler {
+	return ec._SummarySettings(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SummarySettings(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -11260,6 +11511,13 @@ func (ec *executionContext) marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensoluti
 		return graphql.Null
 	}
 	return ec._SummaryRun(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SummarySettings(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx context.Context, sel ast.SelectionSet, v *model.Thread) graphql.Marshaler {

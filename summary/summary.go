@@ -574,8 +574,9 @@ func (w *Writer) siteName(id string) string {
 	return id
 }
 
-// report is one article as the prompt shows it: its id, site, time, title, subtitle and the start of its body.
-func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSummary) string {
+// report is one article as the prompt shows it: its id, site, time, title, subtitle and its body (articleText: the
+// first bodyChars characters, without what isn't the article or what the story's earlier reports sent).
+func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSummary, bodyChars int, seen map[string]bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%s] %s", ids.id(r.URL), w.siteName(r.SourceID))
 	if r.PublishedAt != "" {
@@ -587,8 +588,10 @@ func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSumma
 	} else if r.Summary != "" {
 		fmt.Fprintf(&b, "תקציר: %s\n", oneLine(r.Summary))
 	}
-	if article, err := w.Store.Article(ctx, r.URL); err == nil && article != nil && len(article.Body) > 0 {
-		fmt.Fprintf(&b, "גוף: %s\n", cut(oneLine(strings.Join(article.Body, " ")), articleChars))
+	if article, err := w.Store.Article(ctx, r.URL); err == nil && article != nil {
+		if body := articleText(article.Body, seen, bodyChars); body != "" {
+			fmt.Fprintf(&b, "גוף: %s\n", body)
+		}
 	}
 	return b.String()
 }
@@ -633,12 +636,21 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 	prevOf := map[string]*StorySummary{}
 	var prompt strings.Builder
 	limit := orDefault(w.MaxChars, DefaultMaxChars)
+	settings, err := LoadSettings(ctx, w.Store)
+	if err != nil {
+		return 0, 0, err
+	}
+	bodyChars := articleChars
+	if settings.FullArticles {
+		bodyChars = fullArticleChars
+	}
 	for i, s := range changed {
 		var b strings.Builder
+		seen := map[string]bool{}
 		id := fmt.Sprintf("s%d", i+1)
 		fmt.Fprintf(&b, "=== סיפור %s ===\n", id)
 		for _, r := range shown(s) {
-			b.WriteString(w.report(ctx, ids, r))
+			b.WriteString(w.report(ctx, ids, r, bodyChars, seen))
 			b.WriteString("\n")
 		}
 		prev := previous(s, saved)
