@@ -14,7 +14,7 @@ extend type Mutation {
   it. Summaries off fails with BAD_REQUEST in extensions.code.
   """
   setSummarySettings(fullArticles: Boolean, length: StoryLength, rewriteMinutes: Int, rewriteOnNewSite: Boolean,
-    reserveAfter: Int): SummarySettings!
+    reserveAfter: Int): SummarySettings! @admin
 }
 
 type SummarySettings {

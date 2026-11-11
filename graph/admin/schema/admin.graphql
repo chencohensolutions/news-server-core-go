@@ -9,8 +9,11 @@ type Query {
 }
 
 type Mutation {
-  "Creates a one-time enrollment code for a user listed in config.json."
-  createEnrollmentCode(user: String!): EnrollmentCode!
+  """
+  Creates a one-time enrollment code for user. A new name makes the user, with role (user when omitted); a user that
+  exists keeps their role unless role is given.
+  """
+  createEnrollmentCode(user: String!, role: String): EnrollmentCode!
   "Revokes an enrolled device's certificate; the server rejects it from then on."
   revokeDevice(serial: String!): Device!
 }
@@ -18,6 +21,8 @@ type Mutation {
 type EnrollmentCode {
   code: String!
   user: String!
+  "admin or user."
+  role: String!
   expiresAt: Time!
   "public_url from config.json, else the router's outside address when the server maps its port; null without either."
   serverUrl: String

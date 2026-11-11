@@ -23,7 +23,9 @@ var version = "dev"
 const usage = `usage:
   news-server                      run the server
   news-server version              the version
-  news-server enroll-code <user>   create a one-time enrollment code (and its QR code) for a phone
+  news-server enroll-code <user> [--admin|--user]
+                                   create a one-time enrollment code (and its QR code) for a phone; a new user is
+                                   made as a user unless --admin (an admin changes the server's settings in the app)
   news-server devices [user]       list enrolled devices
   news-server revoke <serial>      revoke an enrolled device
   news-server refresh              read every site once now (the server does it every refresh_minutes)

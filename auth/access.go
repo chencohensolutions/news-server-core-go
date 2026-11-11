@@ -10,14 +10,26 @@ import (
 // PublicDirective marks root fields that anonymous clients (no client certificate) may call.
 const PublicDirective = "public"
 
+// AdminDirective marks root fields only admins may call: what changes the server for everyone.
+const AdminDirective = "admin"
+
 // RequireUserUnlessPublic is a gqlgen root field middleware: anonymous requests may only reach
 // root fields marked @public. Everything else, including introspection, needs a client certificate,
 // so a new field is protected unless it opts out.
+//
+// A root field marked @admin answers admins only; anyone else gets FORBIDDEN.
 func RequireUserUnlessPublic(ctx context.Context, next graphql.RootResolver) graphql.Marshaler {
-	if FromContext(ctx) != nil {
+	field := graphql.GetRootFieldContext(ctx).Field
+	if user := FromContext(ctx); user != nil {
+		if field.Definition != nil && field.Definition.Directives.ForName(AdminDirective) != nil && !user.IsAdmin() {
+			graphql.AddError(ctx, &gqlerror.Error{
+				Message:    field.Name + " is for the server's admins",
+				Extensions: map[string]any{"code": "FORBIDDEN"}, // resolver.CodeForbidden
+			})
+			return graphql.Null
+		}
 		return next(ctx)
 	}
-	field := graphql.GetRootFieldContext(ctx).Field
 	if field.Definition != nil && field.Definition.Directives.ForName(PublicDirective) != nil {
 		return next(ctx)
 	}

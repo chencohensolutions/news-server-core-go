@@ -15,6 +15,9 @@ resolver:
 models:
   Source:
     model: github.com/chencohensolutions/news-server-core-go/sites.Source
+    fields:
+      hidden:
+        resolver: true
   Headline:
     model: github.com/chencohensolutions/news-server-core-go/graph/model.Headline
   Article:

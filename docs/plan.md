@@ -15,8 +15,12 @@ decisions and milestones next to the code.
   the 123 `regex` fields uses lookarounds or backreferences, so Go's RE2 reads them all.
 - **Packs** (Nov 11, 2026): the core goes public and stays source-agnostic: a plain client that names itself, no
   site-specific code. Packs (Go modules, built in with `cmd/newsbuild`, as xcaddy does for Caddy) register HTTP
-  transports (`fetch.RegisterTransport`) and video resolvers (`video.Register`). Site-specific code lives in packs; the server streams a pack-resolved video to the app as an option,
-  the app's web-view player staying the default.
+  transports (`fetch.RegisterTransport`) and video resolvers (`video.Register`). Site-specific code lives in packs. The server relays a pack-resolved video to the app
+  (`videoStream`, then `/video/…`: HLS playlists rewritten to come back through the server, MP4 with Range), so the
+  app talks to no site; a video no resolver knows plays its embed in the app's web view.
+- **Users and roles** (Nov 11, 2026): many people on one server, each an admin or a user (`users.json`,
+  [authentication.md](authentication.md)). Admins change what the server does for everyone (`@admin` fields) and
+  invite people from the app; users keep only their own choices (hidden sites, reads) on the server.
 - **Stories:** the same average-link clustering as the app, with `bge-m3` by default (too big for the phone), on ONNX
   Runtime through purego like the journal server.
 - **Summaries: Gemini free tier only**, `gemini-3.5-flash-lite`. Every 10 minutes, one request with every story that

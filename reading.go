@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -23,21 +24,7 @@ import (
 // openRefresher sets up reading the sites: their configs, the engine on the fetch client (with any packs'
 // transports), the database, and the sites' settings (found are the sites as the API lists them).
 func openRefresher(config auth.AppConfig, found []sites.Source) (*refresh.Refresher, *sites.Settings, error) {
-	files, err := scrape.ReadSources(config.SourcesDir)
-	if err != nil {
-		return nil, nil, fmt.Errorf("sites: %w", err)
-	}
-	var sources []*scrape.SourceConfig
-	var fetchSites []fetch.Site
-	for _, f := range files {
-		c, err := scrape.ParseConfig(f.Data)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s (%s): %w", f.ID, f.Origin, err)
-		}
-		sources = append(sources, c)
-		fetchSites = append(fetchSites, fetch.Site{ID: c.ID, Host: fetch.HostOf(c.BaseURL), Extra: c.HTTP.Extra})
-	}
-	client, err := fetch.NewClient(fetch.Options{EngineDefault: scrape.DefaultUserAgent, Sites: fetchSites, Packs: config.Packs})
+	sources, client, err := openFetch(config)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -63,6 +50,42 @@ func openRefresher(config auth.AppConfig, found []sites.Source) (*refresh.Refres
 	settings.OnChange = setWaits
 	return &refresh.Refresher{Engine: engine, Store: db, Sources: sources, Settings: settings.Get,
 		Keep: time.Duration(config.KeepDays) * 24 * time.Hour}, settings, nil
+}
+
+var fetchOnce struct {
+	sync.Mutex
+	sources []*scrape.SourceConfig
+	client  *http.Client
+}
+
+// openFetch reads the site configs and makes the fetch client (with the packs' transports) the first time; then it
+// gives the same ones, so reading the sites and relaying videos share one client.
+func openFetch(config auth.AppConfig) ([]*scrape.SourceConfig, *http.Client, error) {
+	fetchOnce.Lock()
+	defer fetchOnce.Unlock()
+	if fetchOnce.client != nil {
+		return fetchOnce.sources, fetchOnce.client, nil
+	}
+	files, err := scrape.ReadSources(config.SourcesDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sites: %w", err)
+	}
+	var sources []*scrape.SourceConfig
+	var fetchSites []fetch.Site
+	for _, f := range files {
+		c, err := scrape.ParseConfig(f.Data)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s (%s): %w", f.ID, f.Origin, err)
+		}
+		sources = append(sources, c)
+		fetchSites = append(fetchSites, fetch.Site{ID: c.ID, Host: fetch.HostOf(c.BaseURL), Extra: c.HTTP.Extra})
+	}
+	client, err := fetch.NewClient(fetch.Options{EngineDefault: scrape.DefaultUserAgent, Sites: fetchSites, Packs: config.Packs})
+	if err != nil {
+		return nil, nil, err
+	}
+	fetchOnce.sources, fetchOnce.client = sources, client
+	return sources, client, nil
 }
 
 // openSettings opens the database and the sites' settings in it.

@@ -15,7 +15,7 @@ import (
 // identify attaches the client IP and, when the client presented a certificate, its user and device.
 // Requests without a certificate pass through anonymously only when allowAnonymous is set;
 // a certificate that is unknown or revoked is always rejected.
-func identify(config auth.AppConfig, registry *enroll.Registry, allowAnonymous bool, next http.Handler) http.Handler {
+func identify(users *auth.Users, registry *enroll.Registry, allowAnonymous bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
@@ -35,7 +35,7 @@ func identify(config auth.AppConfig, registry *enroll.Registry, allowAnonymous b
 
 		clientCert := r.TLS.PeerCertificates[0]
 		commonName := clientCert.Subject.CommonName
-		currentUser := config.FindUser(commonName)
+		currentUser := users.Find(commonName)
 		if currentUser == nil {
 			log.Printf("Failed login: unknown client (cert CN '%s') from %s", commonName, r.RemoteAddr)
 			http.Error(w, "unauthorized client certificate", http.StatusUnauthorized)

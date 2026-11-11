@@ -123,6 +123,18 @@ CREATE TABLE IF NOT EXISTS site_settings (
 	feed INTEGER NOT NULL,
 	wait_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS user_hidden_sources (
+	user TEXT NOT NULL,       -- a user's own choice: the site stays out of their feed
+	source_id TEXT NOT NULL,
+	PRIMARY KEY (user, source_id)
+);
+CREATE TABLE IF NOT EXISTS user_reads (
+	user TEXT NOT NULL,       -- what a user read, on any of their devices
+	url TEXT NOT NULL,
+	read_at INTEGER NOT NULL, -- unix ms
+	PRIMARY KEY (user, url)
+);
+CREATE INDEX IF NOT EXISTS user_reads_at ON user_reads (user, read_at);
 `
 
 // Store is the database. Safe for concurrent use.

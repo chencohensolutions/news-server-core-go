@@ -24,7 +24,9 @@ import (
 func runAdminCommand(config auth.AppConfig, command string, args []string) error {
 	switch {
 	case command == "enroll-code" && len(args) == 1:
-		return enrollCodeCommand(config, args[0])
+		return enrollCodeCommand(config, args[0], "")
+	case command == "enroll-code" && len(args) == 2 && (args[1] == "--admin" || args[1] == "--user"):
+		return enrollCodeCommand(config, args[0], strings.TrimPrefix(args[1], "--"))
 	case command == "devices" && len(args) <= 1:
 		return devicesCommand(config, args)
 	case command == "revoke" && len(args) == 1:
@@ -47,11 +49,12 @@ type adminDevice struct {
 
 const deviceFields = "serial user name keyProtection registeredAt expiresAt revokedAt"
 
-func enrollCodeCommand(config auth.AppConfig, user string) error {
+func enrollCodeCommand(config auth.AppConfig, user, role string) error {
 	var data struct {
 		CreateEnrollmentCode struct {
 			Code        string    `json:"code"`
 			User        string    `json:"user"`
+			Role        string    `json:"role"`
 			ExpiresAt   time.Time `json:"expiresAt"`
 			ServerURL   *string   `json:"serverUrl"`
 			Fingerprint *string   `json:"fingerprint"`
@@ -59,9 +62,13 @@ func enrollCodeCommand(config auth.AppConfig, user string) error {
 			Addresses   []string  `json:"addresses"`
 		} `json:"createEnrollmentCode"`
 	}
-	err := adminQuery(config, `mutation($user: String!) {
-		createEnrollmentCode(user: $user) { code user expiresAt serverUrl fingerprint dhtKey addresses }
-	}`, map[string]any{"user": user}, &data)
+	vars := map[string]any{"user": user}
+	if role != "" {
+		vars["role"] = role
+	}
+	err := adminQuery(config, `mutation($user: String!, $role: String) {
+		createEnrollmentCode(user: $user, role: $role) { code user role expiresAt serverUrl fingerprint dhtKey addresses }
+	}`, vars, &data)
 	if err != nil {
 		return err
 	}
@@ -69,7 +76,7 @@ func enrollCodeCommand(config auth.AppConfig, user string) error {
 	if code.ServerURL == nil && len(code.Addresses) > 0 {
 		code.ServerURL = &code.Addresses[0]
 	}
-	fmt.Printf("Enrollment code for user %q\n\n", code.User)
+	fmt.Printf("Enrollment code for user %q (%s)\n\n", code.User, code.Role)
 	if code.ServerURL != nil {
 		fmt.Printf("  Server   %s\n", *code.ServerURL)
 	} else {

@@ -2,16 +2,20 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/enroll"
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
 	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/stories"
 	"github.com/chencohensolutions/news-server-core-go/summary"
+	"github.com/chencohensolutions/news-server-core-go/video"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 // This file will not be regenerated automatically.
@@ -21,6 +25,11 @@ import (
 
 type Resolver struct {
 	Enrollment *enroll.Service
+	// The people who may enroll devices, with their roles.
+	Accounts *auth.Users
+	// InviteLink is the enrollment link (news://enroll?code=…) for code, with the server's address and key; nil
+	// gives the bare code's link.
+	InviteLink func(code string) string
 	// The sites the server reads.
 	Sites []sites.Source
 	// Each site's settings: whether the server reads it, from its feed, and its wait.
@@ -29,6 +38,8 @@ type Resolver struct {
 	Version string
 	// What the server read from the sites.
 	Store *store.Store
+	// Videos relays articles' videos to the app (videoStream); nil: none.
+	Videos *video.Relay
 	// The stories last grouped and when; nil when stories are off.
 	Stories func() ([]stories.Story, time.Time)
 	// Grouping is how the stories are grouped, which the app changes; nil when stories are off.
@@ -48,9 +59,16 @@ type Resolver struct {
 // Codes in extensions.code that a device acts on.
 const (
 	CodeUnauthorized = "UNAUTHORIZED"
+	// An @admin field from a user (auth.RequireUserUnlessPublic).
+	CodeForbidden = "FORBIDDEN"
 	// The request asks for more than a field allows (articles' 200 urls).
 	CodeBadRequest = "BAD_REQUEST"
 )
+
+// badRequest is a BAD_REQUEST error.
+func badRequest(format string, args ...any) error {
+	return &gqlerror.Error{Message: fmt.Sprintf(format, args...), Extensions: map[string]any{"code": CodeBadRequest}}
+}
 
 // MaxArticles is how many urls one articles query may ask for.
 const MaxArticles = 200

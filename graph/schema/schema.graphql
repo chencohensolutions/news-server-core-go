@@ -2,12 +2,16 @@
 # Every root field requires a client certificate unless it is marked @public.
 # See docs/authentication.md.
 #
-# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED, BAD_REQUEST (more than a field allows).
+# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED, FORBIDDEN (an @admin field from a user),
+# BAD_REQUEST (more than a field allows).
 
 scalar Time
 
 "Root field that clients may call without a client certificate."
 directive @public on FIELD_DEFINITION
+
+"Root field only the server's admins may call (users.graphql); anyone else gets FORBIDDEN in extensions.code."
+directive @admin on FIELD_DEFINITION
 
 type Query {
   "Which account an enrollment code belongs to. Does not use up the code."

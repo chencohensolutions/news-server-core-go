@@ -7,21 +7,31 @@ package resolver
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/enroll"
 	"github.com/chencohensolutions/news-server-core-go/graph/admin/generated"
 	"github.com/chencohensolutions/news-server-core-go/graph/admin/model"
 )
 
 // CreateEnrollmentCode is the resolver for the createEnrollmentCode field.
-func (r *mutationResolver) CreateEnrollmentCode(ctx context.Context, user string) (*model.EnrollmentCode, error) {
-	if r.Config.FindUser(user) == nil {
-		return nil, fmt.Errorf("unknown user %q: add it to config.json first", user)
+func (r *mutationResolver) CreateEnrollmentCode(ctx context.Context, user string, role *string) (*model.EnrollmentCode, error) {
+	newRole := auth.RoleUser
+	if role != nil {
+		newRole = *role
 	}
-	code, expiresAt := r.Enrollment.Codes.Create(user)
-	result := &model.EnrollmentCode{Code: code, User: user, ExpiresAt: expiresAt}
+	u, added, err := r.Users.Add(user, newRole)
+	if err != nil {
+		return nil, err
+	}
+	if !added && role != nil && u.Role != *role {
+		if u, err = r.Users.SetRole(u.Username, *role); err != nil {
+			return nil, err
+		}
+	}
+	code, expiresAt := r.Enrollment.Codes.Create(u.Username)
+	result := &model.EnrollmentCode{Code: code, User: u.Username, Role: u.Role, ExpiresAt: expiresAt}
 	if r.Config.PublicURL != "" {
 		result.ServerURL = &r.Config.PublicURL
 	} else if r.Mapped != nil {

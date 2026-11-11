@@ -12,6 +12,8 @@ import (
 type UserConfig struct {
 	// Also the common name (CN) of the user's client certificates: enrollment signs CN=<username>.
 	Username string `json:"username"`
+	// RoleAdmin or RoleUser; config.json's users are admins unless they say "user". See Users.
+	Role string `json:"role,omitempty"`
 }
 
 // AppConfig is config.json. Relative paths are relative to the folder the server runs in.
@@ -27,6 +29,8 @@ type AppConfig struct {
 	Port      string `json:"port"`
 	// Enrolled devices, revocations and renewals.
 	DevicesFile string `json:"devices_file"`
+	// The users and their roles: config.json's users the first time, then the people admins invite in the app.
+	UsersFile string `json:"users_file"`
 	// The loopback-only admin API, and the file holding its token (rewritten on every start).
 	AdminAddr      string `json:"admin_addr"`
 	AdminTokenFile string `json:"admin_token_file"`
@@ -96,6 +100,7 @@ const (
 	// DefaultPort is one above the journal server's 56398, so both can run on one PC.
 	DefaultPort           = "56399"
 	DefaultDevicesFile    = "devices.json"
+	DefaultUsersFile      = "users.json"
 	DefaultAdminAddr      = "127.0.0.1:8082"
 	DefaultAdminTokenFile = "admin.token"
 	DefaultSourcesDir     = "sources"
@@ -130,6 +135,9 @@ func LoadConfig(path string) (AppConfig, error) {
 		if seen[user.Username] {
 			return AppConfig{}, fmt.Errorf("%s: user %q appears twice", path, user.Username)
 		}
+		if user.Role != "" && user.Role != RoleAdmin && user.Role != RoleUser {
+			return AppConfig{}, fmt.Errorf("%s: user %q has the role %q; it is admin or user", path, user.Username, user.Role)
+		}
 		seen[user.Username] = true
 	}
 	return config.WithDefaults(), nil
@@ -142,6 +150,9 @@ func (c AppConfig) WithDefaults() AppConfig {
 	}
 	if c.DevicesFile == "" {
 		c.DevicesFile = DefaultDevicesFile
+	}
+	if c.UsersFile == "" {
+		c.UsersFile = DefaultUsersFile
 	}
 	if c.AdminAddr == "" {
 		c.AdminAddr = DefaultAdminAddr

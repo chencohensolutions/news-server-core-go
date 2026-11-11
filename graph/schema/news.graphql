@@ -11,6 +11,13 @@ extend type Query {
   headlines(since: Time, sourceIds: [String!]): [Headline!]!
   "url's article as the server read it; null when it isn't downloaded (not yet, or it failed)."
   article(url: String!): Article
+  """
+  Opens url's video for playing through the server (GET path on this server, with the device's certificate): the
+  stream its page gave, else the one a video resolver (from a pack) finds behind its player. The server reads the
+  video and passes it on, so the app talks to no other site. null when the article has no video or no resolver knows
+  its player: the app then plays video.embed in a web view. A path stays playable for 6 hours.
+  """
+  videoStream(url: String!): VideoStream
   "The articles of urls the server has, in the order asked; the others are left out. At most 200 urls."
   articles(urls: [String!]!): [Article!]!
   "The stories the server grouped after its last read of the sites; none until the first grouping, or when stories are off."
@@ -61,6 +68,12 @@ type ArticleBlock {
   text: String
   url: String
   caption: String
+}
+
+type VideoStream {
+  "/video/…/index.m3u8 (HLS) or /video/…/file (an MP4, which answers Range requests)."
+  path: String!
+  hls: Boolean!
 }
 
 type ArticleVideo {

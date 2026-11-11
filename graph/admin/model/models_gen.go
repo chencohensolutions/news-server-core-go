@@ -7,8 +7,10 @@ import (
 )
 
 type EnrollmentCode struct {
-	Code      string    `json:"code"`
-	User      string    `json:"user"`
+	Code string `json:"code"`
+	User string `json:"user"`
+	// admin or user.
+	Role      string    `json:"role"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	// public_url from config.json, else the router's outside address when the server maps its port; null without either.
 	ServerURL *string `json:"serverUrl,omitempty"`

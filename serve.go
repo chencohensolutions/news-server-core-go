@@ -26,6 +26,7 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/summary"
+	"github.com/chencohensolutions/news-server-core-go/video"
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
@@ -44,6 +45,10 @@ func serve(config auth.AppConfig) {
 	enrollment, err := openEnrollment(config)
 	if err != nil {
 		log.Fatal(err)
+	}
+	users, err := auth.OpenUsers(config.UsersFile, config.Users)
+	if err != nil {
+		log.Fatalf("failed to open the users: %v", err)
 	}
 	found, err := sites.Load(config.SourcesDir)
 	if err != nil {
@@ -66,9 +71,14 @@ func serve(config auth.AppConfig) {
 		}
 		os.Exit(0)
 	}()
-	go serveAdmin(config, enrollment)
+	go serveAdmin(config, enrollment, users)
 	db, settings, job, summaries := startReading(config, found)
-	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones, Loop: loop.stats}
+	api := &resolver.Resolver{Enrollment: enrollment, Accounts: users, InviteLink: func(code string) string { return inviteLink(config, code) }, Sites: found, Settings: settings, Version: version, Store: db, Discovery: forPhones, Loop: loop.stats}
+	if _, client, err := openFetch(config); err != nil {
+		log.Printf("Videos aren't relayed: %v", err)
+	} else {
+		api.Videos = &video.Relay{Client: client}
+	}
 	if job != nil {
 		api.Stories = job.Stories
 		api.Grouping, api.StoryModel = job, job.model.ID
@@ -140,19 +150,47 @@ func openEnrollment(config auth.AppConfig) (*enroll.Service, error) {
 	return enroll.NewService(issuer, registry, time.Now), nil
 }
 
+// inviteLink is the enrollment link for code, as `news-server enroll-code` prints it: the server's address, key and
+// DHT key as the running server knows them.
+func inviteLink(config auth.AppConfig, code string) string {
+	var server *string
+	if config.PublicURL != "" {
+		server = &config.PublicURL
+	} else if mapped := mappedURL(); mapped != "" {
+		server = &mapped
+	}
+	var found enrollDiscovery
+	found.Fingerprint, found.Key, found.Addresses = runningDiscovery()
+	if found.Fingerprint == "" {
+		found.Fingerprint, _ = serverFingerprint(config.TLSCert)
+	}
+	if server == nil && len(found.Addresses) > 0 {
+		server = &found.Addresses[0]
+	}
+	return enrollmentLink(code, server, found)
+}
+
 // newMux is the routing table. /query lets anonymous clients in only for the @public enrollment fields.
 func newMux(config auth.AppConfig, api *resolver.Resolver) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/", playground.Handler("GraphQL playground", "/query"))
 	mux.Handle("/query", withDeadlines(queryReadTimeout, queryWriteTimeout,
-		gzipped(identify(config, api.Enrollment.Registry, true, newGraphQLServer(api)))))
+		gzipped(identify(api.Accounts, api.Enrollment.Registry, true, newGraphQLServer(api)))))
+	// No write deadline: a video plays for as long as it plays. Only enrolled devices.
+	mux.Handle(video.Prefix, identify(api.Accounts, api.Enrollment.Registry, false, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if api.Videos == nil {
+			http.NotFound(w, r)
+			return
+		}
+		api.Videos.ServeHTTP(w, r)
+	})))
 	return mux
 }
 
 func newGraphQLServer(api *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
 		Resolvers:  api,
-		Directives: generated.DirectiveRoot{Public: auth.PassThroughDirective},
+		Directives: generated.DirectiveRoot{Public: auth.PassThroughDirective, Admin: auth.PassThroughDirective},
 	}))
 	srv.AddTransport(transport.Options{})
 	srv.AddTransport(transport.GET{})

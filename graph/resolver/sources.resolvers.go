@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/graph/generated"
 	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -50,6 +51,19 @@ func (r *mutationResolver) SetSource(ctx context.Context, id string, enabled *bo
 	return site, nil
 }
 
+// SetSourceHidden is the resolver for the setSourceHidden field.
+func (r *mutationResolver) SetSourceHidden(ctx context.Context, id string, hidden bool) (*sites.Source, error) {
+	for i := range r.Sites {
+		if r.Sites[i].ID == id {
+			if err := r.Store.SetSourceHidden(ctx, auth.FromContext(ctx).Username, id, hidden); err != nil {
+				return nil, err
+			}
+			return &r.Sites[i], nil
+		}
+	}
+	return nil, badRequest("no site %q", id)
+}
+
 // Sources is the resolver for the sources field.
 func (r *queryResolver) Sources(ctx context.Context) ([]*sites.Source, error) {
 	found := make([]*sites.Source, len(r.Sites))
@@ -72,6 +86,16 @@ func (r *sourceResolver) Feed(ctx context.Context, obj *sites.Source) (bool, err
 // WaitMs is the resolver for the waitMs field.
 func (r *sourceResolver) WaitMs(ctx context.Context, obj *sites.Source) (int, error) {
 	return r.setting(obj).WaitMs, nil
+}
+
+// Hidden is the resolver for the hidden field.
+func (r *sourceResolver) Hidden(ctx context.Context, obj *sites.Source) (bool, error) {
+	user := auth.FromContext(ctx)
+	if user == nil || r.Store == nil {
+		return false, nil
+	}
+	hidden, err := r.Store.HiddenSources(ctx, user.Username)
+	return hidden[obj.ID], err
 }
 
 // Source returns generated.SourceResolver implementation.

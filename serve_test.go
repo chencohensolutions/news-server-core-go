@@ -86,7 +86,11 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	api := &resolver.Resolver{Enrollment: enrollment, Sites: found, Settings: settings, Version: version, Store: db}
+	users, err := auth.OpenUsers(filepath.Join(dir, "users.json"), append(config.Users, auth.UserConfig{Username: "dana", Role: auth.RoleUser}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &resolver.Resolver{Enrollment: enrollment, Accounts: users, Sites: found, Settings: settings, Version: version, Store: db}
 
 	pool := x509.NewCertPool()
 	pool.AddCert(caCert)

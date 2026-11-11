@@ -54,12 +54,13 @@ type ComplexityRoot struct {
 		DhtKey      func(childComplexity int) int
 		ExpiresAt   func(childComplexity int) int
 		Fingerprint func(childComplexity int) int
+		Role        func(childComplexity int) int
 		ServerURL   func(childComplexity int) int
 		User        func(childComplexity int) int
 	}
 
 	Mutation struct {
-		CreateEnrollmentCode func(childComplexity int, user string) int
+		CreateEnrollmentCode func(childComplexity int, user string, role *string) int
 		RevokeDevice         func(childComplexity int, serial string) int
 	}
 
@@ -69,7 +70,7 @@ type ComplexityRoot struct {
 }
 
 type MutationResolver interface {
-	CreateEnrollmentCode(ctx context.Context, user string) (*model.EnrollmentCode, error)
+	CreateEnrollmentCode(ctx context.Context, user string, role *string) (*model.EnrollmentCode, error)
 	RevokeDevice(ctx context.Context, serial string) (*enroll.Device, error)
 }
 type QueryResolver interface {
@@ -163,6 +164,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.EnrollmentCode.Fingerprint(childComplexity), true
+	case "EnrollmentCode.role":
+		if e.ComplexityRoot.EnrollmentCode.Role == nil {
+			break
+		}
+
+		return e.ComplexityRoot.EnrollmentCode.Role(childComplexity), true
 	case "EnrollmentCode.serverUrl":
 		if e.ComplexityRoot.EnrollmentCode.ServerURL == nil {
 			break
@@ -186,7 +193,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Mutation.CreateEnrollmentCode(childComplexity, args["user"].(string)), true
+		return e.ComplexityRoot.Mutation.CreateEnrollmentCode(childComplexity, args["user"].(string), args["role"].(*string)), true
 	case "Mutation.revokeDevice":
 		if e.ComplexityRoot.Mutation.RevokeDevice == nil {
 			break
@@ -304,8 +311,11 @@ type Query {
 }
 
 type Mutation {
-  "Creates a one-time enrollment code for a user listed in config.json."
-  createEnrollmentCode(user: String!): EnrollmentCode!
+  """
+  Creates a one-time enrollment code for user. A new name makes the user, with role (user when omitted); a user that
+  exists keeps their role unless role is given.
+  """
+  createEnrollmentCode(user: String!, role: String): EnrollmentCode!
   "Revokes an enrolled device's certificate; the server rejects it from then on."
   revokeDevice(serial: String!): Device!
 }
@@ -313,6 +323,8 @@ type Mutation {
 type EnrollmentCode {
   code: String!
   user: String!
+  "admin or user."
+  role: String!
   expiresAt: Time!
   "public_url from config.json, else the router's outside address when the server maps its port; null without either."
   serverUrl: String
@@ -367,6 +379,8 @@ func (ec *executionContext) childFields_EnrollmentCode(ctx context.Context, fiel
 		return ec.fieldContext_EnrollmentCode_code(ctx, field)
 	case "user":
 		return ec.fieldContext_EnrollmentCode_user(ctx, field)
+	case "role":
+		return ec.fieldContext_EnrollmentCode_role(ctx, field)
 	case "expiresAt":
 		return ec.fieldContext_EnrollmentCode_expiresAt(ctx, field)
 	case "serverUrl":
@@ -508,6 +522,14 @@ func (ec *executionContext) field_Mutation_createEnrollmentCode_args(ctx context
 		return nil, err
 	}
 	args["user"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "role",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["role"] = arg1
 	return args, nil
 }
 
@@ -824,6 +846,29 @@ func (ec *executionContext) fieldContext_EnrollmentCode_user(_ context.Context, 
 	return graphql.NewScalarFieldContext("EnrollmentCode", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _EnrollmentCode_role(ctx context.Context, field graphql.CollectedField, obj *model.EnrollmentCode) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_EnrollmentCode_role(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Role, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_EnrollmentCode_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("EnrollmentCode", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _EnrollmentCode_expiresAt(ctx context.Context, field graphql.CollectedField, obj *model.EnrollmentCode) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -949,11 +994,11 @@ func (ec *executionContext) _Mutation_createEnrollmentCode(ctx context.Context, 
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateEnrollmentCode(ctx, fc.Args["user"].(string))
+			return ec.Resolvers.Mutation().CreateEnrollmentCode(ctx, fc.Args["user"].(string), fc.Args["role"].(*string))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.EnrollmentCode) graphql.Marshaler {
-			return ec.marshalNEnrollmentCode2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋadminᚋmodelᚐEnrollmentCode(ctx, selections, v)
+			return ec.marshalNEnrollmentCode2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋadminᚋmodelᚐEnrollmentCode(ctx, selections, v)
 		},
 		true,
 		true,
@@ -997,7 +1042,7 @@ func (ec *executionContext) _Mutation_revokeDevice(ctx context.Context, field gr
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *enroll.Device) graphql.Marshaler {
-			return ec.marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋenrollᚐDevice(ctx, selections, v)
+			return ec.marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋenrollᚐDevice(ctx, selections, v)
 		},
 		true,
 		true,
@@ -1041,7 +1086,7 @@ func (ec *executionContext) _Query_devices(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*enroll.Device) graphql.Marshaler {
-			return ec.marshalNDevice2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋenrollᚐDeviceᚄ(ctx, selections, v)
+			return ec.marshalNDevice2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋenrollᚐDeviceᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -2301,6 +2346,11 @@ func (ec *executionContext) _EnrollmentCode(ctx context.Context, sel ast.Selecti
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "role":
+			out.Values[i] = ec._EnrollmentCode_role(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "expiresAt":
 			out.Values[i] = ec._EnrollmentCode_expiresAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -2819,15 +2869,15 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) marshalNDevice2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋenrollᚐDevice(ctx context.Context, sel ast.SelectionSet, v enroll.Device) graphql.Marshaler {
+func (ec *executionContext) marshalNDevice2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋenrollᚐDevice(ctx context.Context, sel ast.SelectionSet, v enroll.Device) graphql.Marshaler {
 	return ec._Device(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNDevice2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋenrollᚐDeviceᚄ(ctx context.Context, sel ast.SelectionSet, v []*enroll.Device) graphql.Marshaler {
+func (ec *executionContext) marshalNDevice2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋenrollᚐDeviceᚄ(ctx context.Context, sel ast.SelectionSet, v []*enroll.Device) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋenrollᚐDevice(ctx, sel, v[i])
+		return ec.marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋenrollᚐDevice(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -2839,7 +2889,7 @@ func (ec *executionContext) marshalNDevice2ᚕᚖgithubᚗcomᚋchencohensolutio
 	return ret
 }
 
-func (ec *executionContext) marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋenrollᚐDevice(ctx context.Context, sel ast.SelectionSet, v *enroll.Device) graphql.Marshaler {
+func (ec *executionContext) marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋenrollᚐDevice(ctx context.Context, sel ast.SelectionSet, v *enroll.Device) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -2849,11 +2899,11 @@ func (ec *executionContext) marshalNDevice2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Device(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNEnrollmentCode2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋadminᚋmodelᚐEnrollmentCode(ctx context.Context, sel ast.SelectionSet, v model.EnrollmentCode) graphql.Marshaler {
+func (ec *executionContext) marshalNEnrollmentCode2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋadminᚋmodelᚐEnrollmentCode(ctx context.Context, sel ast.SelectionSet, v model.EnrollmentCode) graphql.Marshaler {
 	return ec._EnrollmentCode(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEnrollmentCode2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋadminᚋmodelᚐEnrollmentCode(ctx context.Context, sel ast.SelectionSet, v *model.EnrollmentCode) graphql.Marshaler {
+func (ec *executionContext) marshalNEnrollmentCode2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋadminᚋmodelᚐEnrollmentCode(ctx context.Context, sel ast.SelectionSet, v *model.EnrollmentCode) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")

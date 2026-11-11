@@ -7,13 +7,16 @@ package resolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/stories"
 	"github.com/chencohensolutions/news-server-core-go/summary"
+	"github.com/chencohensolutions/news-server-core-go/video"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
@@ -47,6 +50,26 @@ func (r *queryResolver) Article(ctx context.Context, url string) (*model.Article
 		return nil, err
 	}
 	return model.ArticleOf(a), nil
+}
+
+// VideoStream is the resolver for the videoStream field.
+func (r *queryResolver) VideoStream(ctx context.Context, url string) (*model.VideoStream, error) {
+	if r.Videos == nil {
+		return nil, nil
+	}
+	a, err := r.Store.Article(ctx, url)
+	if err != nil || a == nil || a.Video == nil {
+		return nil, err
+	}
+	opened, err := r.Videos.Open(ctx, a.Video.Stream, a.Video.Embed)
+	if errors.Is(err, video.ErrNoStream) {
+		return nil, nil
+	}
+	if err != nil {
+		log.Printf("Video of %s: %v", url, err)
+		return nil, nil
+	}
+	return &model.VideoStream{Path: opened.Path, Hls: opened.HLS}, nil
 }
 
 // Articles is the resolver for the articles field.

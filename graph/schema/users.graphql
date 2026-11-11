@@ -1,0 +1,74 @@
+# --- Users and roles ------------------------------------------------------------
+# Many people use one server. An admin changes what the server does for everyone (the sites it reads, how it groups
+# and summarizes: the fields marked @admin), invites people and revokes devices. A user reads, and keeps their own
+# choices (setSourceHidden, markRead). config.json's users start as admins; see docs/authentication.md.
+
+extend type Query {
+  "Who is asking: the calling device's user, role and device."
+  me: Me!
+  "Every user, by name, with their devices."
+  users: [User!]! @admin
+  "The articles the calling user read since (all they read when omitted), from any of their devices."
+  readArticles(since: Time): [ReadArticle!]!
+}
+
+extend type Mutation {
+  """
+  A one-time enrollment code (10 minutes) for user's next device, and the link its QR code holds. A new name makes the
+  user, with role (USER when omitted); a user that exists keeps their role (setUserRole changes it). A name that
+  isn't allowed fails with BAD_REQUEST.
+  """
+  createInvite(user: String!, role: Role): Invite! @admin
+  "Changes a user's role. The server's last admin stays one (BAD_REQUEST)."
+  setUserRole(user: String!, role: Role!): User! @admin
+  "Revokes one device's certificate: the server refuses it from then on."
+  revokeDevice(serial: String!): Device! @admin
+  "Removes a user and revokes every device of theirs. The server's last admin stays (BAD_REQUEST)."
+  removeUser(user: String!): Boolean! @admin
+  "Marks articles read for the calling user, on all their devices; at most 500 urls (BAD_REQUEST). Returns how many."
+  markRead(urls: [String!]!): Int!
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+type Me {
+  user: String!
+  role: Role!
+  "The device's name as it enrolled; null for a certificate made outside enrollment."
+  deviceName: String
+}
+
+type User {
+  name: String!
+  role: Role!
+  "Oldest first, revoked ones too."
+  devices: [Device!]!
+}
+
+type Device {
+  serial: String!
+  name: String!
+  keyProtection: String!
+  registeredAt: Time!
+  expiresAt: Time!
+  revokedAt: Time
+  "The device asking."
+  current: Boolean!
+}
+
+type Invite {
+  code: String!
+  user: String!
+  role: Role!
+  expiresAt: Time!
+  "news://enroll?code=…: what the QR code holds, as news-server enroll-code prints it."
+  link: String!
+}
+
+type ReadArticle {
+  url: String!
+  readAt: Time!
+}

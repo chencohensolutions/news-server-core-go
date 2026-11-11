@@ -18,6 +18,17 @@ type EnrollmentPreviewResult interface {
 	IsEnrollmentPreviewResult()
 }
 
+type Device struct {
+	Serial        string     `json:"serial"`
+	Name          string     `json:"name"`
+	KeyProtection string     `json:"keyProtection"`
+	RegisteredAt  time.Time  `json:"registeredAt"`
+	ExpiresAt     time.Time  `json:"expiresAt"`
+	RevokedAt     *time.Time `json:"revokedAt,omitempty"`
+	// The device asking.
+	Current bool `json:"current"`
+}
+
 type EnrollDeviceInput struct {
 	// As shown by `news-server enroll-code`; case, dashes and spaces are ignored.
 	Code string `json:"code"`
@@ -107,6 +118,15 @@ type Grouping struct {
 	Threshold float64 `json:"threshold"`
 }
 
+type Invite struct {
+	Code      string    `json:"code"`
+	User      string    `json:"user"`
+	Role      Role      `json:"role"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	// news://enroll?code=…: what the QR code holds, as news-server enroll-code prints it.
+	Link string `json:"link"`
+}
+
 // One round of the server's loop. A round starts every everyMinutes, or a minute after the last one ends if it ran longer.
 type LoopStats struct {
 	StartedAt    time.Time `json:"startedAt"`
@@ -124,10 +144,22 @@ type LoopStats struct {
 	TotalSeconds float64 `json:"totalSeconds"`
 }
 
+type Me struct {
+	User string `json:"user"`
+	Role Role   `json:"role"`
+	// The device's name as it enrolled; null for a certificate made outside enrollment.
+	DeviceName *string `json:"deviceName,omitempty"`
+}
+
 type Mutation struct {
 }
 
 type Query struct {
+}
+
+type ReadArticle struct {
+	URL    string    `json:"url"`
+	ReadAt time.Time `json:"readAt"`
 }
 
 type Sentence struct {
@@ -279,6 +311,19 @@ type ThreadStory struct {
 	// span of the event, not of the writing. Null when the server no longer has its reports' headlines.
 	FirstReportAt *time.Time `json:"firstReportAt,omitempty"`
 	LastReportAt  *time.Time `json:"lastReportAt,omitempty"`
+}
+
+type User struct {
+	Name string `json:"name"`
+	Role Role   `json:"role"`
+	// Oldest first, revoked ones too.
+	Devices []*Device `json:"devices"`
+}
+
+type VideoStream struct {
+	// /video/…/index.m3u8 (HLS) or /video/…/file (an MP4, which answers Range requests).
+	Path string `json:"path"`
+	Hls  bool   `json:"hls"`
 }
 
 type EnrollmentRejectedReason string
@@ -462,6 +507,61 @@ func (e *KeyProtection) UnmarshalJSON(b []byte) error {
 }
 
 func (e KeyProtection) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type Role string
+
+const (
+	RoleAdmin Role = "ADMIN"
+	RoleUser  Role = "USER"
+)
+
+var AllRole = []Role{
+	RoleAdmin,
+	RoleUser,
+}
+
+func (e Role) IsValid() bool {
+	switch e {
+	case RoleAdmin, RoleUser:
+		return true
+	}
+	return false
+}
+
+func (e Role) String() string {
+	return string(e)
+}
+
+func (e *Role) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = Role(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid Role", str)
+	}
+	return nil
+}
+
+func (e Role) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *Role) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e Role) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

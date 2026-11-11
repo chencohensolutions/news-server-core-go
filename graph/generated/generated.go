@@ -38,6 +38,7 @@ type ResolverRoot interface {
 }
 
 type DirectiveRoot struct {
+	Admin  func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error)
 	Public func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error)
 }
 
@@ -68,6 +69,16 @@ type ComplexityRoot struct {
 		Embed    func(childComplexity int) int
 		Poster   func(childComplexity int) int
 		Stream   func(childComplexity int) int
+	}
+
+	Device struct {
+		Current       func(childComplexity int) int
+		ExpiresAt     func(childComplexity int) int
+		KeyProtection func(childComplexity int) int
+		Name          func(childComplexity int) int
+		RegisteredAt  func(childComplexity int) int
+		RevokedAt     func(childComplexity int) int
+		Serial        func(childComplexity int) int
 	}
 
 	EnrolledDevice struct {
@@ -136,6 +147,14 @@ type ComplexityRoot struct {
 		Video       func(childComplexity int) int
 	}
 
+	Invite struct {
+		Code      func(childComplexity int) int
+		ExpiresAt func(childComplexity int) int
+		Link      func(childComplexity int) int
+		Role      func(childComplexity int) int
+		User      func(childComplexity int) int
+	}
+
 	LoopStats struct {
 		EveryMinutes   func(childComplexity int) int
 		FailedSites    func(childComplexity int) int
@@ -148,12 +167,24 @@ type ComplexityRoot struct {
 		TotalSeconds   func(childComplexity int) int
 	}
 
+	Me struct {
+		DeviceName func(childComplexity int) int
+		Role       func(childComplexity int) int
+		User       func(childComplexity int) int
+	}
+
 	Mutation struct {
+		CreateInvite       func(childComplexity int, user string, role *model.Role) int
 		EnrollDevice       func(childComplexity int, input model.EnrollDeviceInput) int
+		MarkRead           func(childComplexity int, urls []string) int
+		RemoveUser         func(childComplexity int, user string) int
 		RenewCertificate   func(childComplexity int, csr string, keyProtection model.KeyProtection) int
+		RevokeDevice       func(childComplexity int, serial string) int
 		SetGrouping        func(childComplexity int, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) int
 		SetSource          func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
+		SetSourceHidden    func(childComplexity int, id string, hidden bool) int
 		SetSummarySettings func(childComplexity int, fullArticles *bool, length *model.StoryLength, rewriteMinutes *int, rewriteOnNewSite *bool, reserveAfter *int) int
+		SetUserRole        func(childComplexity int, user string, role model.Role) int
 	}
 
 	Query struct {
@@ -162,6 +193,8 @@ type ComplexityRoot struct {
 		EnrollmentPreview func(childComplexity int, code string) int
 		Grouping          func(childComplexity int) int
 		Headlines         func(childComplexity int, since *time.Time, sourceIds []string) int
+		Me                func(childComplexity int) int
+		ReadArticles      func(childComplexity int, since *time.Time) int
 		ServerInfo        func(childComplexity int) int
 		Sources           func(childComplexity int) int
 		Stats             func(childComplexity int) int
@@ -169,6 +202,13 @@ type ComplexityRoot struct {
 		SummarySettings   func(childComplexity int) int
 		Thread            func(childComplexity int, id string) int
 		Threads           func(childComplexity int, first *int) int
+		Users             func(childComplexity int) int
+		VideoStream       func(childComplexity int, url string) int
+	}
+
+	ReadArticle struct {
+		ReadAt func(childComplexity int) int
+		URL    func(childComplexity int) int
 	}
 
 	Sentence struct {
@@ -217,6 +257,7 @@ type ComplexityRoot struct {
 		Enabled  func(childComplexity int) int
 		Feed     func(childComplexity int) int
 		HasFeed  func(childComplexity int) int
+		Hidden   func(childComplexity int) int
 		ID       func(childComplexity int) int
 		Language func(childComplexity int) int
 		Name     func(childComplexity int) int
@@ -287,6 +328,17 @@ type ComplexityRoot struct {
 		Title          func(childComplexity int) int
 		WrittenAt      func(childComplexity int) int
 	}
+
+	User struct {
+		Devices func(childComplexity int) int
+		Name    func(childComplexity int) int
+		Role    func(childComplexity int) int
+	}
+
+	VideoStream struct {
+		Hls  func(childComplexity int) int
+		Path func(childComplexity int) int
+	}
 }
 
 type MutationResolver interface {
@@ -294,7 +346,13 @@ type MutationResolver interface {
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
 	SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) (*model.Grouping, error)
 	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
+	SetSourceHidden(ctx context.Context, id string, hidden bool) (*sites.Source, error)
 	SetSummarySettings(ctx context.Context, fullArticles *bool, length *model.StoryLength, rewriteMinutes *int, rewriteOnNewSite *bool, reserveAfter *int) (*model.SummarySettings, error)
+	CreateInvite(ctx context.Context, user string, role *model.Role) (*model.Invite, error)
+	SetUserRole(ctx context.Context, user string, role model.Role) (*model.User, error)
+	RevokeDevice(ctx context.Context, serial string) (*model.Device, error)
+	RemoveUser(ctx context.Context, user string) (bool, error)
+	MarkRead(ctx context.Context, urls []string) (int, error)
 }
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
@@ -302,6 +360,7 @@ type QueryResolver interface {
 	Grouping(ctx context.Context) (*model.Grouping, error)
 	Headlines(ctx context.Context, since *time.Time, sourceIds []string) ([]*model.Headline, error)
 	Article(ctx context.Context, url string) (*model.Article, error)
+	VideoStream(ctx context.Context, url string) (*model.VideoStream, error)
 	Articles(ctx context.Context, urls []string) ([]*model.Article, error)
 	Stories(ctx context.Context) (*model.StoryList, error)
 	Sources(ctx context.Context) ([]*sites.Source, error)
@@ -309,12 +368,16 @@ type QueryResolver interface {
 	SummarySettings(ctx context.Context) (*model.SummarySettings, error)
 	Threads(ctx context.Context, first *int) ([]*model.Thread, error)
 	Thread(ctx context.Context, id string) (*model.Thread, error)
+	Me(ctx context.Context) (*model.Me, error)
+	Users(ctx context.Context) ([]*model.User, error)
+	ReadArticles(ctx context.Context, since *time.Time) ([]*model.ReadArticle, error)
 }
 type SourceResolver interface {
 	Enabled(ctx context.Context, obj *sites.Source) (bool, error)
 
 	Feed(ctx context.Context, obj *sites.Source) (bool, error)
 	WaitMs(ctx context.Context, obj *sites.Source) (int, error)
+	Hidden(ctx context.Context, obj *sites.Source) (bool, error)
 }
 type StorySummaryResolver interface {
 	Threads(ctx context.Context, obj *model.StorySummary) ([]*model.Thread, error)
@@ -454,6 +517,49 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ArticleVideo.Stream(childComplexity), true
+
+	case "Device.current":
+		if e.ComplexityRoot.Device.Current == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.Current(childComplexity), true
+	case "Device.expiresAt":
+		if e.ComplexityRoot.Device.ExpiresAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.ExpiresAt(childComplexity), true
+	case "Device.keyProtection":
+		if e.ComplexityRoot.Device.KeyProtection == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.KeyProtection(childComplexity), true
+	case "Device.name":
+		if e.ComplexityRoot.Device.Name == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.Name(childComplexity), true
+	case "Device.registeredAt":
+		if e.ComplexityRoot.Device.RegisteredAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.RegisteredAt(childComplexity), true
+	case "Device.revokedAt":
+		if e.ComplexityRoot.Device.RevokedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.RevokedAt(childComplexity), true
+	case "Device.serial":
+		if e.ComplexityRoot.Device.Serial == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.Serial(childComplexity), true
 
 	case "EnrolledDevice.certificate":
 		if e.ComplexityRoot.EnrolledDevice.Certificate == nil {
@@ -715,6 +821,37 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Headline.Video(childComplexity), true
 
+	case "Invite.code":
+		if e.ComplexityRoot.Invite.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Invite.Code(childComplexity), true
+	case "Invite.expiresAt":
+		if e.ComplexityRoot.Invite.ExpiresAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Invite.ExpiresAt(childComplexity), true
+	case "Invite.link":
+		if e.ComplexityRoot.Invite.Link == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Invite.Link(childComplexity), true
+	case "Invite.role":
+		if e.ComplexityRoot.Invite.Role == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Invite.Role(childComplexity), true
+	case "Invite.user":
+		if e.ComplexityRoot.Invite.User == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Invite.User(childComplexity), true
+
 	case "LoopStats.everyMinutes":
 		if e.ComplexityRoot.LoopStats.EveryMinutes == nil {
 			break
@@ -770,6 +907,36 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.LoopStats.TotalSeconds(childComplexity), true
 
+	case "Me.deviceName":
+		if e.ComplexityRoot.Me.DeviceName == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Me.DeviceName(childComplexity), true
+	case "Me.role":
+		if e.ComplexityRoot.Me.Role == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Me.Role(childComplexity), true
+	case "Me.user":
+		if e.ComplexityRoot.Me.User == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Me.User(childComplexity), true
+
+	case "Mutation.createInvite":
+		if e.ComplexityRoot.Mutation.CreateInvite == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createInvite_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.CreateInvite(childComplexity, args["user"].(string), args["role"].(*model.Role)), true
 	case "Mutation.enrollDevice":
 		if e.ComplexityRoot.Mutation.EnrollDevice == nil {
 			break
@@ -781,6 +948,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.EnrollDevice(childComplexity, args["input"].(model.EnrollDeviceInput)), true
+	case "Mutation.markRead":
+		if e.ComplexityRoot.Mutation.MarkRead == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_markRead_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.MarkRead(childComplexity, args["urls"].([]string)), true
+	case "Mutation.removeUser":
+		if e.ComplexityRoot.Mutation.RemoveUser == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_removeUser_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RemoveUser(childComplexity, args["user"].(string)), true
 	case "Mutation.renewCertificate":
 		if e.ComplexityRoot.Mutation.RenewCertificate == nil {
 			break
@@ -792,6 +981,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RenewCertificate(childComplexity, args["csr"].(string), args["keyProtection"].(model.KeyProtection)), true
+	case "Mutation.revokeDevice":
+		if e.ComplexityRoot.Mutation.RevokeDevice == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_revokeDevice_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RevokeDevice(childComplexity, args["serial"].(string)), true
 	case "Mutation.setGrouping":
 		if e.ComplexityRoot.Mutation.SetGrouping == nil {
 			break
@@ -814,6 +1014,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.SetSource(childComplexity, args["id"].(string), args["enabled"].(*bool), args["feed"].(*bool), args["waitMs"].(*int)), true
+	case "Mutation.setSourceHidden":
+		if e.ComplexityRoot.Mutation.SetSourceHidden == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setSourceHidden_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SetSourceHidden(childComplexity, args["id"].(string), args["hidden"].(bool)), true
 	case "Mutation.setSummarySettings":
 		if e.ComplexityRoot.Mutation.SetSummarySettings == nil {
 			break
@@ -825,6 +1036,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.SetSummarySettings(childComplexity, args["fullArticles"].(*bool), args["length"].(*model.StoryLength), args["rewriteMinutes"].(*int), args["rewriteOnNewSite"].(*bool), args["reserveAfter"].(*int)), true
+	case "Mutation.setUserRole":
+		if e.ComplexityRoot.Mutation.SetUserRole == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setUserRole_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SetUserRole(childComplexity, args["user"].(string), args["role"].(model.Role)), true
 
 	case "Query.article":
 		if e.ComplexityRoot.Query.Article == nil {
@@ -877,6 +1099,23 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Query.Headlines(childComplexity, args["since"].(*time.Time), args["sourceIds"].([]string)), true
 
+	case "Query.me":
+		if e.ComplexityRoot.Query.Me == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.Me(childComplexity), true
+	case "Query.readArticles":
+		if e.ComplexityRoot.Query.ReadArticles == nil {
+			break
+		}
+
+		args, err := ec.field_Query_readArticles_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.ReadArticles(childComplexity, args["since"].(*time.Time)), true
 	case "Query.serverInfo":
 		if e.ComplexityRoot.Query.ServerInfo == nil {
 			break
@@ -929,6 +1168,36 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Threads(childComplexity, args["first"].(*int)), true
+	case "Query.users":
+		if e.ComplexityRoot.Query.Users == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.Users(childComplexity), true
+	case "Query.videoStream":
+		if e.ComplexityRoot.Query.VideoStream == nil {
+			break
+		}
+
+		args, err := ec.field_Query_videoStream_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.VideoStream(childComplexity, args["url"].(string)), true
+
+	case "ReadArticle.readAt":
+		if e.ComplexityRoot.ReadArticle.ReadAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ReadArticle.ReadAt(childComplexity), true
+	case "ReadArticle.url":
+		if e.ComplexityRoot.ReadArticle.URL == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ReadArticle.URL(childComplexity), true
 
 	case "Sentence.footnotes":
 		if e.ComplexityRoot.Sentence.Footnotes == nil {
@@ -1115,6 +1384,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Source.HasFeed(childComplexity), true
+	case "Source.hidden":
+		if e.ComplexityRoot.Source.Hidden == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Source.Hidden(childComplexity), true
 	case "Source.id":
 		if e.ComplexityRoot.Source.ID == nil {
 			break
@@ -1394,6 +1669,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ThreadStory.WrittenAt(childComplexity), true
 
+	case "User.devices":
+		if e.ComplexityRoot.User.Devices == nil {
+			break
+		}
+
+		return e.ComplexityRoot.User.Devices(childComplexity), true
+	case "User.name":
+		if e.ComplexityRoot.User.Name == nil {
+			break
+		}
+
+		return e.ComplexityRoot.User.Name(childComplexity), true
+	case "User.role":
+		if e.ComplexityRoot.User.Role == nil {
+			break
+		}
+
+		return e.ComplexityRoot.User.Role(childComplexity), true
+
+	case "VideoStream.hls":
+		if e.ComplexityRoot.VideoStream.Hls == nil {
+			break
+		}
+
+		return e.ComplexityRoot.VideoStream.Hls(childComplexity), true
+	case "VideoStream.path":
+		if e.ComplexityRoot.VideoStream.Path == nil {
+			break
+		}
+
+		return e.ComplexityRoot.VideoStream.Path(childComplexity), true
+
 	}
 	return 0, false
 }
@@ -1518,7 +1825,7 @@ extend type Mutation {
   (stories shows them a few seconds later), and summaries are written for the changed stories in the next round.
   A value out of range, or stories off, fails with BAD_REQUEST in extensions.code.
   """
-  setGrouping(strictness: Int, text: StoryText, days: Int, method: GroupingMethod): Grouping!
+  setGrouping(strictness: Int, text: StoryText, days: Int, method: GroupingMethod): Grouping! @admin
 }
 
 "What a headline is grouped by: the app's StoryText."
@@ -1568,6 +1875,13 @@ extend type Query {
   headlines(since: Time, sourceIds: [String!]): [Headline!]!
   "url's article as the server read it; null when it isn't downloaded (not yet, or it failed)."
   article(url: String!): Article
+  """
+  Opens url's video for playing through the server (GET path on this server, with the device's certificate): the
+  stream its page gave, else the one a video resolver (from a pack) finds behind its player. The server reads the
+  video and passes it on, so the app talks to no other site. null when the article has no video or no resolver knows
+  its player: the app then plays video.embed in a web view. A path stays playable for 6 hours.
+  """
+  videoStream(url: String!): VideoStream
   "The articles of urls the server has, in the order asked; the others are left out. At most 200 urls."
   articles(urls: [String!]!): [Article!]!
   "The stories the server grouped after its last read of the sites; none until the first grouping, or when stories are off."
@@ -1620,6 +1934,12 @@ type ArticleBlock {
   caption: String
 }
 
+type VideoStream {
+  "/video/…/index.m3u8 (HLS) or /video/…/file (an MP4, which answers Range requests)."
+  path: String!
+  hls: Boolean!
+}
+
 type ArticleVideo {
   poster: String
   stream: String
@@ -1643,12 +1963,16 @@ type Story {
 # Every root field requires a client certificate unless it is marked @public.
 # See docs/authentication.md.
 #
-# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED, BAD_REQUEST (more than a field allows).
+# Errors a device acts on carry a code in extensions.code: UNAUTHORIZED, FORBIDDEN (an @admin field from a user),
+# BAD_REQUEST (more than a field allows).
 
 scalar Time
 
 "Root field that clients may call without a client certificate."
 directive @public on FIELD_DEFINITION
+
+"Root field only the server's admins may call (users.graphql); anyone else gets FORBIDDEN in extensions.code."
+directive @admin on FIELD_DEFINITION
 
 type Query {
   "Which account an enrollment code belongs to. Does not use up the code."
@@ -1750,7 +2074,12 @@ extend type Mutation {
   sites. A site switched off is not read, and its headlines leave headlines and stories at once. An unknown id or a
   waitMs out of range fails with BAD_REQUEST in extensions.code.
   """
-  setSource(id: String!, enabled: Boolean, feed: Boolean, waitMs: Int): Source!
+  setSource(id: String!, enabled: Boolean, feed: Boolean, waitMs: Int): Source! @admin
+  """
+  Hides a site from the calling user's feed, or shows it again: their choice alone, kept on the server for all their
+  devices. The server goes on reading it for the others. An unknown id fails with BAD_REQUEST.
+  """
+  setSourceHidden(id: String!, hidden: Boolean!): Source!
 }
 
 type Source {
@@ -1769,6 +2098,8 @@ type Source {
   feed: Boolean!
   "The site's wait between two of its requests, in milliseconds (0 to 60000; 250 unless set)."
   waitMs: Int!
+  "Whether the calling user hid the site from their feed (setSourceHidden)."
+  hidden: Boolean!
 }
 `, BuiltIn: false},
 	{Name: "../schema/stats.graphql", Input: `# --- Statistics -----------------------------------------------------------------
@@ -1873,7 +2204,7 @@ extend type Mutation {
   it. Summaries off fails with BAD_REQUEST in extensions.code.
   """
   setSummarySettings(fullArticles: Boolean, length: StoryLength, rewriteMinutes: Int, rewriteOnNewSite: Boolean,
-    reserveAfter: Int): SummarySettings!
+    reserveAfter: Int): SummarySettings! @admin
 }
 
 type SummarySettings {
@@ -2024,6 +2355,81 @@ type ThreadStory {
   lastReportAt: Time
 }
 `, BuiltIn: false},
+	{Name: "../schema/users.graphql", Input: `# --- Users and roles ------------------------------------------------------------
+# Many people use one server. An admin changes what the server does for everyone (the sites it reads, how it groups
+# and summarizes: the fields marked @admin), invites people and revokes devices. A user reads, and keeps their own
+# choices (setSourceHidden, markRead). config.json's users start as admins; see docs/authentication.md.
+
+extend type Query {
+  "Who is asking: the calling device's user, role and device."
+  me: Me!
+  "Every user, by name, with their devices."
+  users: [User!]! @admin
+  "The articles the calling user read since (all they read when omitted), from any of their devices."
+  readArticles(since: Time): [ReadArticle!]!
+}
+
+extend type Mutation {
+  """
+  A one-time enrollment code (10 minutes) for user's next device, and the link its QR code holds. A new name makes the
+  user, with role (USER when omitted); a user that exists keeps their role (setUserRole changes it). A name that
+  isn't allowed fails with BAD_REQUEST.
+  """
+  createInvite(user: String!, role: Role): Invite! @admin
+  "Changes a user's role. The server's last admin stays one (BAD_REQUEST)."
+  setUserRole(user: String!, role: Role!): User! @admin
+  "Revokes one device's certificate: the server refuses it from then on."
+  revokeDevice(serial: String!): Device! @admin
+  "Removes a user and revokes every device of theirs. The server's last admin stays (BAD_REQUEST)."
+  removeUser(user: String!): Boolean! @admin
+  "Marks articles read for the calling user, on all their devices; at most 500 urls (BAD_REQUEST). Returns how many."
+  markRead(urls: [String!]!): Int!
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+type Me {
+  user: String!
+  role: Role!
+  "The device's name as it enrolled; null for a certificate made outside enrollment."
+  deviceName: String
+}
+
+type User {
+  name: String!
+  role: Role!
+  "Oldest first, revoked ones too."
+  devices: [Device!]!
+}
+
+type Device {
+  serial: String!
+  name: String!
+  keyProtection: String!
+  registeredAt: Time!
+  expiresAt: Time!
+  revokedAt: Time
+  "The device asking."
+  current: Boolean!
+}
+
+type Invite {
+  code: String!
+  user: String!
+  role: Role!
+  expiresAt: Time!
+  "news://enroll?code=…: what the QR code holds, as news-server enroll-code prints it."
+  link: String!
+}
+
+type ReadArticle {
+  url: String!
+  readAt: Time!
+}
+`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
@@ -2085,6 +2491,26 @@ func (ec *executionContext) childFields_ArticleVideo(ctx context.Context, field 
 		return ec.fieldContext_ArticleVideo_duration(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ArticleVideo", field.Name)
+}
+
+func (ec *executionContext) childFields_Device(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "serial":
+		return ec.fieldContext_Device_serial(ctx, field)
+	case "name":
+		return ec.fieldContext_Device_name(ctx, field)
+	case "keyProtection":
+		return ec.fieldContext_Device_keyProtection(ctx, field)
+	case "registeredAt":
+		return ec.fieldContext_Device_registeredAt(ctx, field)
+	case "expiresAt":
+		return ec.fieldContext_Device_expiresAt(ctx, field)
+	case "revokedAt":
+		return ec.fieldContext_Device_revokedAt(ctx, field)
+	case "current":
+		return ec.fieldContext_Device_current(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Device", field.Name)
 }
 
 func (ec *executionContext) childFields_Footnote(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -2185,6 +2611,22 @@ func (ec *executionContext) childFields_Headline(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Headline", field.Name)
 }
 
+func (ec *executionContext) childFields_Invite(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "code":
+		return ec.fieldContext_Invite_code(ctx, field)
+	case "user":
+		return ec.fieldContext_Invite_user(ctx, field)
+	case "role":
+		return ec.fieldContext_Invite_role(ctx, field)
+	case "expiresAt":
+		return ec.fieldContext_Invite_expiresAt(ctx, field)
+	case "link":
+		return ec.fieldContext_Invite_link(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Invite", field.Name)
+}
+
 func (ec *executionContext) childFields_LoopStats(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "startedAt":
@@ -2207,6 +2649,28 @@ func (ec *executionContext) childFields_LoopStats(ctx context.Context, field gra
 		return ec.fieldContext_LoopStats_totalSeconds(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type LoopStats", field.Name)
+}
+
+func (ec *executionContext) childFields_Me(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "user":
+		return ec.fieldContext_Me_user(ctx, field)
+	case "role":
+		return ec.fieldContext_Me_role(ctx, field)
+	case "deviceName":
+		return ec.fieldContext_Me_deviceName(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type Me", field.Name)
+}
+
+func (ec *executionContext) childFields_ReadArticle(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "url":
+		return ec.fieldContext_ReadArticle_url(ctx, field)
+	case "readAt":
+		return ec.fieldContext_ReadArticle_readAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ReadArticle", field.Name)
 }
 
 func (ec *executionContext) childFields_Sentence(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -2309,6 +2773,8 @@ func (ec *executionContext) childFields_Source(ctx context.Context, field graphq
 		return ec.fieldContext_Source_feed(ctx, field)
 	case "waitMs":
 		return ec.fieldContext_Source_waitMs(ctx, field)
+	case "hidden":
+		return ec.fieldContext_Source_hidden(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Source", field.Name)
 }
@@ -2443,6 +2909,28 @@ func (ec *executionContext) childFields_ThreadStory(ctx context.Context, field g
 	return nil, fmt.Errorf("no field named %q was found under type ThreadStory", field.Name)
 }
 
+func (ec *executionContext) childFields_User(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "name":
+		return ec.fieldContext_User_name(ctx, field)
+	case "role":
+		return ec.fieldContext_User_role(ctx, field)
+	case "devices":
+		return ec.fieldContext_User_devices(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+}
+
+func (ec *executionContext) childFields_VideoStream(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "path":
+		return ec.fieldContext_VideoStream_path(ctx, field)
+	case "hls":
+		return ec.fieldContext_VideoStream_hls(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type VideoStream", field.Name)
+}
+
 func (ec *executionContext) childFields___Directive(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "name":
@@ -2559,17 +3047,67 @@ func (ec *executionContext) childFields___Type(ctx context.Context, field graphq
 
 // region    ***************************** args.gotpl *****************************
 
+func (ec *executionContext) field_Mutation_createInvite_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "user",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["user"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "role",
+		func(ctx context.Context, v any) (*model.Role, error) {
+			return ec.unmarshalORole2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["role"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_enrollDevice_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.EnrollDeviceInput, error) {
-			return ec.unmarshalNEnrollDeviceInput2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollDeviceInput(ctx, v)
+			return ec.unmarshalNEnrollDeviceInput2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollDeviceInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_markRead_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "urls",
+		func(ctx context.Context, v any) ([]string, error) {
+			return ec.unmarshalNString2ᚕstringᚄ(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["urls"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_removeUser_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "user",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["user"] = arg0
 	return args, nil
 }
 
@@ -2586,12 +3124,26 @@ func (ec *executionContext) field_Mutation_renewCertificate_args(ctx context.Con
 	args["csr"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "keyProtection",
 		func(ctx context.Context, v any) (model.KeyProtection, error) {
-			return ec.unmarshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx, v)
+			return ec.unmarshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["keyProtection"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_revokeDevice_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "serial",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["serial"] = arg0
 	return args, nil
 }
 
@@ -2608,7 +3160,7 @@ func (ec *executionContext) field_Mutation_setGrouping_args(ctx context.Context,
 	args["strictness"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "text",
 		func(ctx context.Context, v any) (*model.StoryText, error) {
-			return ec.unmarshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx, v)
+			return ec.unmarshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryText(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -2624,12 +3176,34 @@ func (ec *executionContext) field_Mutation_setGrouping_args(ctx context.Context,
 	args["days"] = arg2
 	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "method",
 		func(ctx context.Context, v any) (*model.GroupingMethod, error) {
-			return ec.unmarshalOGroupingMethod2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx, v)
+			return ec.unmarshalOGroupingMethod2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["method"] = arg3
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setSourceHidden_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "hidden",
+		func(ctx context.Context, v any) (bool, error) {
+			return ec.unmarshalNBoolean2bool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["hidden"] = arg1
 	return args, nil
 }
 
@@ -2684,7 +3258,7 @@ func (ec *executionContext) field_Mutation_setSummarySettings_args(ctx context.C
 	args["fullArticles"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "length",
 		func(ctx context.Context, v any) (*model.StoryLength, error) {
-			return ec.unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx, v)
+			return ec.unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryLength(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -2714,6 +3288,28 @@ func (ec *executionContext) field_Mutation_setSummarySettings_args(ctx context.C
 		return nil, err
 	}
 	args["reserveAfter"] = arg4
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setUserRole_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "user",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["user"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "role",
+		func(ctx context.Context, v any) (model.Role, error) {
+			return ec.unmarshalNRole2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["role"] = arg1
 	return args, nil
 }
 
@@ -2795,6 +3391,20 @@ func (ec *executionContext) field_Query_headlines_args(ctx context.Context, rawA
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_readArticles_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "since",
+		func(ctx context.Context, v any) (*time.Time, error) {
+			return ec.unmarshalOTime2ᚖtimeᚐTime(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["since"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Query_thread_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2820,6 +3430,20 @@ func (ec *executionContext) field_Query_threads_args(ctx context.Context, rawArg
 		return nil, err
 	}
 	args["first"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_videoStream_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "url",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["url"] = arg0
 	return args, nil
 }
 
@@ -3107,7 +3731,7 @@ func (ec *executionContext) _Article_blocks(ctx context.Context, field graphql.C
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.ArticleBlock) graphql.Marshaler {
-			return ec.marshalNArticleBlock2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlockᚄ(ctx, selections, v)
+			return ec.marshalNArticleBlock2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleBlockᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -3139,7 +3763,7 @@ func (ec *executionContext) _Article_video(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.ArticleVideo) graphql.Marshaler {
-			return ec.marshalOArticleVideo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleVideo(ctx, selections, v)
+			return ec.marshalOArticleVideo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleVideo(ctx, selections, v)
 		},
 		true,
 		false,
@@ -3342,6 +3966,167 @@ func (ec *executionContext) fieldContext_ArticleVideo_duration(_ context.Context
 	return graphql.NewScalarFieldContext("ArticleVideo", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _Device_serial(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Device_serial(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Serial, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Device_serial(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Device", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Device_name(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Device_name(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Device_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Device", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Device_keyProtection(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Device_keyProtection(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.KeyProtection, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Device_keyProtection(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Device", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Device_registeredAt(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Device_registeredAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RegisteredAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Device_registeredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Device", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Device_expiresAt(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Device_expiresAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ExpiresAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Device_expiresAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Device", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Device_revokedAt(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Device_revokedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RevokedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *time.Time) graphql.Marshaler {
+			return ec.marshalOTime2ᚖtimeᚐTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Device_revokedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Device", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Device_current(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Device_current(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Current, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Device_current(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Device", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
 func (ec *executionContext) _EnrolledDevice_user(ctx context.Context, field graphql.CollectedField, obj *model.EnrolledDevice) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3516,7 +4301,7 @@ func (ec *executionContext) _EnrollmentRejected_reason(ctx context.Context, fiel
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v model.EnrollmentRejectedReason) graphql.Marshaler {
-			return ec.marshalNEnrollmentRejectedReason2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollmentRejectedReason(ctx, selections, v)
+			return ec.marshalNEnrollmentRejectedReason2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollmentRejectedReason(ctx, selections, v)
 		},
 		true,
 		true,
@@ -3861,7 +4646,7 @@ func (ec *executionContext) _GeminiStats_days(ctx context.Context, field graphql
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.GeminiDay) graphql.Marshaler {
-			return ec.marshalNGeminiDay2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDayᚄ(ctx, selections, v)
+			return ec.marshalNGeminiDay2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGeminiDayᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -3893,7 +4678,7 @@ func (ec *executionContext) _GeminiStats_lastRun(ctx context.Context, field grap
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.SummaryRun) graphql.Marshaler {
-			return ec.marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummaryRun(ctx, selections, v)
+			return ec.marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummaryRun(ctx, selections, v)
 		},
 		true,
 		false,
@@ -3925,7 +4710,7 @@ func (ec *executionContext) _Grouping_method(ctx context.Context, field graphql.
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v model.GroupingMethod) graphql.Marshaler {
-			return ec.marshalNGroupingMethod2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx, selections, v)
+			return ec.marshalNGroupingMethod2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx, selections, v)
 		},
 		true,
 		true,
@@ -3994,7 +4779,7 @@ func (ec *executionContext) _Grouping_text(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v model.StoryText) graphql.Marshaler {
-			return ec.marshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx, selections, v)
+			return ec.marshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryText(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4326,6 +5111,121 @@ func (ec *executionContext) fieldContext_Headline_lastSeen(_ context.Context, fi
 	return graphql.NewScalarFieldContext("Headline", field, false, false, errors.New("field of type Time does not have child fields"))
 }
 
+func (ec *executionContext) _Invite_code(ctx context.Context, field graphql.CollectedField, obj *model.Invite) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Invite_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Invite_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Invite", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Invite_user(ctx context.Context, field graphql.CollectedField, obj *model.Invite) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Invite_user(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.User, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Invite_user(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Invite", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Invite_role(ctx context.Context, field graphql.CollectedField, obj *model.Invite) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Invite_role(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Role, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Role) graphql.Marshaler {
+			return ec.marshalNRole2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Invite_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Invite", field, false, false, errors.New("field of type Role does not have child fields"))
+}
+
+func (ec *executionContext) _Invite_expiresAt(ctx context.Context, field graphql.CollectedField, obj *model.Invite) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Invite_expiresAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ExpiresAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Invite_expiresAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Invite", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _Invite_link(ctx context.Context, field graphql.CollectedField, obj *model.Invite) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Invite_link(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Link, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Invite_link(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Invite", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _LoopStats_startedAt(ctx context.Context, field graphql.CollectedField, obj *model.LoopStats) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4533,6 +5433,75 @@ func (ec *executionContext) fieldContext_LoopStats_totalSeconds(_ context.Contex
 	return graphql.NewScalarFieldContext("LoopStats", field, false, false, errors.New("field of type Float does not have child fields"))
 }
 
+func (ec *executionContext) _Me_user(ctx context.Context, field graphql.CollectedField, obj *model.Me) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Me_user(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.User, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Me_user(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Me", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Me_role(ctx context.Context, field graphql.CollectedField, obj *model.Me) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Me_role(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Role, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Role) graphql.Marshaler {
+			return ec.marshalNRole2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Me_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Me", field, false, false, errors.New("field of type Role does not have child fields"))
+}
+
+func (ec *executionContext) _Me_deviceName(ctx context.Context, field graphql.CollectedField, obj *model.Me) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Me_deviceName(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.DeviceName, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Me_deviceName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Me", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _Mutation_enrollDevice(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4560,7 +5529,7 @@ func (ec *executionContext) _Mutation_enrollDevice(ctx context.Context, field gr
 			return next
 		},
 		func(ctx context.Context, selections ast.SelectionSet, v model.EnrollDeviceResult) graphql.Marshaler {
-			return ec.marshalNEnrollDeviceResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollDeviceResult(ctx, selections, v)
+			return ec.marshalNEnrollDeviceResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollDeviceResult(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4604,7 +5573,7 @@ func (ec *executionContext) _Mutation_renewCertificate(ctx context.Context, fiel
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v model.EnrollDeviceResult) graphql.Marshaler {
-			return ec.marshalNEnrollDeviceResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollDeviceResult(ctx, selections, v)
+			return ec.marshalNEnrollDeviceResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollDeviceResult(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4646,9 +5615,22 @@ func (ec *executionContext) _Mutation_setGrouping(ctx context.Context, field gra
 			fc := graphql.GetFieldContext(ctx)
 			return ec.Resolvers.Mutation().SetGrouping(ctx, fc.Args["strictness"].(*int), fc.Args["text"].(*model.StoryText), fc.Args["days"].(*int), fc.Args["method"].(*model.GroupingMethod))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal *model.Grouping
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
 		func(ctx context.Context, selections ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
-			return ec.marshalNGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx, selections, v)
+			return ec.marshalNGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGrouping(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4690,9 +5672,22 @@ func (ec *executionContext) _Mutation_setSource(ctx context.Context, field graph
 			fc := graphql.GetFieldContext(ctx)
 			return ec.Resolvers.Mutation().SetSource(ctx, fc.Args["id"].(string), fc.Args["enabled"].(*bool), fc.Args["feed"].(*bool), fc.Args["waitMs"].(*int))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal *sites.Source
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
 		func(ctx context.Context, selections ast.SelectionSet, v *sites.Source) graphql.Marshaler {
-			return ec.marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx, selections, v)
+			return ec.marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋsitesᚐSource(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4722,6 +5717,50 @@ func (ec *executionContext) fieldContext_Mutation_setSource(ctx context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_setSourceHidden(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setSourceHidden(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetSourceHidden(ctx, fc.Args["id"].(string), fc.Args["hidden"].(bool))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *sites.Source) graphql.Marshaler {
+			return ec.marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋsitesᚐSource(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setSourceHidden(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Source(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setSourceHidden_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_setSummarySettings(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4734,9 +5773,22 @@ func (ec *executionContext) _Mutation_setSummarySettings(ctx context.Context, fi
 			fc := graphql.GetFieldContext(ctx)
 			return ec.Resolvers.Mutation().SetSummarySettings(ctx, fc.Args["fullArticles"].(*bool), fc.Args["length"].(*model.StoryLength), fc.Args["rewriteMinutes"].(*int), fc.Args["rewriteOnNewSite"].(*bool), fc.Args["reserveAfter"].(*int))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal *model.SummarySettings
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
 		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
-			return ec.marshalNSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
+			return ec.marshalNSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4760,6 +5812,278 @@ func (ec *executionContext) fieldContext_Mutation_setSummarySettings(ctx context
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_setSummarySettings_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createInvite(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createInvite(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateInvite(ctx, fc.Args["user"].(string), fc.Args["role"].(*model.Role))
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal *model.Invite
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Invite) graphql.Marshaler {
+			return ec.marshalNInvite2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐInvite(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createInvite(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Invite(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createInvite_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_setUserRole(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setUserRole(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetUserRole(ctx, fc.Args["user"].(string), fc.Args["role"].(model.Role))
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal *model.User
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		func(ctx context.Context, selections ast.SelectionSet, v *model.User) graphql.Marshaler {
+			return ec.marshalNUser2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐUser(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setUserRole(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_User(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setUserRole_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_revokeDevice(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_revokeDevice(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RevokeDevice(ctx, fc.Args["serial"].(string))
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal *model.Device
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Device) graphql.Marshaler {
+			return ec.marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐDevice(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_revokeDevice(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Device(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_revokeDevice_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_removeUser(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_removeUser(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RemoveUser(ctx, fc.Args["user"].(string))
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal bool
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_removeUser(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_removeUser_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_markRead(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_markRead(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().MarkRead(ctx, fc.Args["urls"].([]string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_markRead(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_markRead_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -4793,7 +6117,7 @@ func (ec *executionContext) _Query_enrollmentPreview(ctx context.Context, field 
 			return next
 		},
 		func(ctx context.Context, selections ast.SelectionSet, v model.EnrollmentPreviewResult) graphql.Marshaler {
-			return ec.marshalNEnrollmentPreviewResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollmentPreviewResult(ctx, selections, v)
+			return ec.marshalNEnrollmentPreviewResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollmentPreviewResult(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4836,7 +6160,7 @@ func (ec *executionContext) _Query_serverInfo(ctx context.Context, field graphql
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.ServerInfo) graphql.Marshaler {
-			return ec.marshalNServerInfo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerInfo(ctx, selections, v)
+			return ec.marshalNServerInfo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerInfo(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4868,7 +6192,7 @@ func (ec *executionContext) _Query_grouping(ctx context.Context, field graphql.C
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
-			return ec.marshalOGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx, selections, v)
+			return ec.marshalOGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGrouping(ctx, selections, v)
 		},
 		true,
 		false,
@@ -4901,7 +6225,7 @@ func (ec *executionContext) _Query_headlines(ctx context.Context, field graphql.
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
-			return ec.marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx, selections, v)
+			return ec.marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -4945,7 +6269,7 @@ func (ec *executionContext) _Query_article(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.Article) graphql.Marshaler {
-			return ec.marshalOArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx, selections, v)
+			return ec.marshalOArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticle(ctx, selections, v)
 		},
 		true,
 		false,
@@ -4975,6 +6299,50 @@ func (ec *executionContext) fieldContext_Query_article(ctx context.Context, fiel
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_videoStream(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_videoStream(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().VideoStream(ctx, fc.Args["url"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.VideoStream) graphql.Marshaler {
+			return ec.marshalOVideoStream2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐVideoStream(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_videoStream(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_VideoStream(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_videoStream_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_articles(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4989,7 +6357,7 @@ func (ec *executionContext) _Query_articles(ctx context.Context, field graphql.C
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Article) graphql.Marshaler {
-			return ec.marshalNArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleᚄ(ctx, selections, v)
+			return ec.marshalNArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -5032,7 +6400,7 @@ func (ec *executionContext) _Query_stories(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.StoryList) graphql.Marshaler {
-			return ec.marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryList(ctx, selections, v)
+			return ec.marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryList(ctx, selections, v)
 		},
 		true,
 		true,
@@ -5064,7 +6432,7 @@ func (ec *executionContext) _Query_sources(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*sites.Source) graphql.Marshaler {
-			return ec.marshalNSource2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSourceᚄ(ctx, selections, v)
+			return ec.marshalNSource2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋsitesᚐSourceᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -5096,7 +6464,7 @@ func (ec *executionContext) _Query_stats(ctx context.Context, field graphql.Coll
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.ServerStats) graphql.Marshaler {
-			return ec.marshalNServerStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerStats(ctx, selections, v)
+			return ec.marshalNServerStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerStats(ctx, selections, v)
 		},
 		true,
 		true,
@@ -5128,7 +6496,7 @@ func (ec *executionContext) _Query_summarySettings(ctx context.Context, field gr
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
-			return ec.marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
+			return ec.marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
 		},
 		true,
 		false,
@@ -5161,7 +6529,7 @@ func (ec *executionContext) _Query_threads(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
-			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
+			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -5205,7 +6573,7 @@ func (ec *executionContext) _Query_thread(ctx context.Context, field graphql.Col
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.Thread) graphql.Marshaler {
-			return ec.marshalOThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx, selections, v)
+			return ec.marshalOThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThread(ctx, selections, v)
 		},
 		true,
 		false,
@@ -5229,6 +6597,127 @@ func (ec *executionContext) fieldContext_Query_thread(ctx context.Context, field
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_thread_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_me(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_me(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().Me(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Me) graphql.Marshaler {
+			return ec.marshalNMe2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐMe(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_me(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Me(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_users(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_users(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().Users(ctx)
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.Directives.Admin == nil {
+					var zeroVal []*model.User
+					return zeroVal, errors.New("directive admin is not implemented")
+				}
+				return ec.Directives.Admin(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.User) graphql.Marshaler {
+			return ec.marshalNUser2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐUserᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_users(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_User(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_readArticles(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_readArticles(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().ReadArticles(ctx, fc.Args["since"].(*time.Time))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.ReadArticle) graphql.Marshaler {
+			return ec.marshalNReadArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐReadArticleᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_readArticles(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ReadArticle(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_readArticles_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5311,6 +6800,52 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _ReadArticle_url(ctx context.Context, field graphql.CollectedField, obj *model.ReadArticle) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ReadArticle_url(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.URL, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ReadArticle_url(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ReadArticle", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ReadArticle_readAt(ctx context.Context, field graphql.CollectedField, obj *model.ReadArticle) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ReadArticle_readAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ReadAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ReadArticle_readAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ReadArticle", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
 func (ec *executionContext) _Sentence_text(ctx context.Context, field graphql.CollectedField, obj *model.Sentence) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -5347,7 +6882,7 @@ func (ec *executionContext) _Sentence_footnotes(ctx context.Context, field graph
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {
-			return ec.marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx, selections, v)
+			return ec.marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -5563,7 +7098,7 @@ func (ec *executionContext) _ServerInfo_discovery(ctx context.Context, field gra
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {
-			return ec.marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx, selections, v)
+			return ec.marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx, selections, v)
 		},
 		true,
 		false,
@@ -5733,7 +7268,7 @@ func (ec *executionContext) _ServerStats_gemini(ctx context.Context, field graph
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.GeminiStats) graphql.Marshaler {
-			return ec.marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiStats(ctx, selections, v)
+			return ec.marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGeminiStats(ctx, selections, v)
 		},
 		true,
 		false,
@@ -5765,7 +7300,7 @@ func (ec *executionContext) _ServerStats_sites(ctx context.Context, field graphq
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.SiteStats) graphql.Marshaler {
-			return ec.marshalNSiteStats2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStatsᚄ(ctx, selections, v)
+			return ec.marshalNSiteStats2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSiteStatsᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -5797,7 +7332,7 @@ func (ec *executionContext) _ServerStats_lastLoop(ctx context.Context, field gra
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.LoopStats) graphql.Marshaler {
-			return ec.marshalOLoopStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐLoopStats(ctx, selections, v)
+			return ec.marshalOLoopStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐLoopStats(ctx, selections, v)
 		},
 		true,
 		false,
@@ -6138,6 +7673,29 @@ func (ec *executionContext) fieldContext_Source_waitMs(_ context.Context, field 
 	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Int does not have child fields"))
 }
 
+func (ec *executionContext) _Source_hidden(ctx context.Context, field graphql.CollectedField, obj *sites.Source) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Source_hidden(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Source().Hidden(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Source_hidden(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Source", field, true, true, errors.New("field of type Boolean does not have child fields"))
+}
+
 func (ec *executionContext) _Story_reports(ctx context.Context, field graphql.CollectedField, obj *model.Story) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -6151,7 +7709,7 @@ func (ec *executionContext) _Story_reports(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
-			return ec.marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx, selections, v)
+			return ec.marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6183,7 +7741,7 @@ func (ec *executionContext) _Story_summary(ctx context.Context, field graphql.Co
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.StorySummary) graphql.Marshaler {
-			return ec.marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStorySummary(ctx, selections, v)
+			return ec.marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStorySummary(ctx, selections, v)
 		},
 		true,
 		false,
@@ -6238,7 +7796,7 @@ func (ec *executionContext) _StoryList_stories(ctx context.Context, field graphq
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Story) graphql.Marshaler {
-			return ec.marshalNStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryᚄ(ctx, selections, v)
+			return ec.marshalNStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6293,7 +7851,7 @@ func (ec *executionContext) _StorySummary_sentences(ctx context.Context, field g
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
-			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6325,7 +7883,7 @@ func (ec *executionContext) _StorySummary_contradictions(ctx context.Context, fi
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
-			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6403,7 +7961,7 @@ func (ec *executionContext) _StorySummary_updates(ctx context.Context, field gra
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.StoryUpdate) graphql.Marshaler {
-			return ec.marshalNStoryUpdate2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryUpdateᚄ(ctx, selections, v)
+			return ec.marshalNStoryUpdate2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryUpdateᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6481,7 +8039,7 @@ func (ec *executionContext) _StorySummary_writtenWith(ctx context.Context, field
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
-			return ec.marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
+			return ec.marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
 		},
 		true,
 		false,
@@ -6536,7 +8094,7 @@ func (ec *executionContext) _StorySummary_threads(ctx context.Context, field gra
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
-			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
+			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6591,7 +8149,7 @@ func (ec *executionContext) _StoryUpdate_sentences(ctx context.Context, field gr
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
-			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6738,7 +8296,7 @@ func (ec *executionContext) _SummarySettings_length(ctx context.Context, field g
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v model.StoryLength) graphql.Marshaler {
-			return ec.marshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx, selections, v)
+			return ec.marshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryLength(ctx, selections, v)
 		},
 		true,
 		true,
@@ -6968,7 +8526,7 @@ func (ec *executionContext) _Thread_stories(ctx context.Context, field graphql.C
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.ThreadStory) graphql.Marshaler {
-			return ec.marshalNThreadStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStoryᚄ(ctx, selections, v)
+			return ec.marshalNThreadStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadStoryᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -7000,7 +8558,7 @@ func (ec *executionContext) _Thread_related(ctx context.Context, field graphql.C
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
-			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
+			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -7078,7 +8636,7 @@ func (ec *executionContext) _ThreadStory_sentences(ctx context.Context, field gr
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
-			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
 		},
 		true,
 		true,
@@ -7187,6 +8745,130 @@ func (ec *executionContext) _ThreadStory_lastReportAt(ctx context.Context, field
 }
 func (ec *executionContext) fieldContext_ThreadStory_lastReportAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("ThreadStory", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _User_name(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_User_name(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_User_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("User", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _User_role(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_User_role(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Role, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Role) graphql.Marshaler {
+			return ec.marshalNRole2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_User_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("User", field, false, false, errors.New("field of type Role does not have child fields"))
+}
+
+func (ec *executionContext) _User_devices(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_User_devices(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Devices, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Device) graphql.Marshaler {
+			return ec.marshalNDevice2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐDeviceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_User_devices(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Device(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _VideoStream_path(ctx context.Context, field graphql.CollectedField, obj *model.VideoStream) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_VideoStream_path(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Path, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_VideoStream_path(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("VideoStream", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _VideoStream_hls(ctx context.Context, field graphql.CollectedField, obj *model.VideoStream) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_VideoStream_hls(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Hls, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_VideoStream_hls(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("VideoStream", field, false, false, errors.New("field of type Boolean does not have child fields"))
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -8289,7 +9971,7 @@ func (ec *executionContext) unmarshalInputEnrollDeviceInput(ctx context.Context,
 			it.Csr = data
 		case "keyProtection":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("keyProtection"))
-			data, err := ec.unmarshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx, v)
+			data, err := ec.unmarshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -8496,6 +10178,72 @@ func (ec *executionContext) _ArticleVideo(ctx context.Context, sel ast.Selection
 			out.Values[i] = ec._ArticleVideo_embed(ctx, field, obj)
 		case "duration":
 			out.Values[i] = ec._ArticleVideo_duration(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var deviceImplementors = []string{"Device"}
+
+func (ec *executionContext) _Device(ctx context.Context, sel ast.SelectionSet, obj *model.Device) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, deviceImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Device")
+		case "serial":
+			out.Values[i] = ec._Device_serial(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "name":
+			out.Values[i] = ec._Device_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "keyProtection":
+			out.Values[i] = ec._Device_keyProtection(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "registeredAt":
+			out.Values[i] = ec._Device_registeredAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "expiresAt":
+			out.Values[i] = ec._Device_expiresAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "revokedAt":
+			out.Values[i] = ec._Device_revokedAt(ctx, field, obj)
+		case "current":
+			out.Values[i] = ec._Device_current(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8974,6 +10722,65 @@ func (ec *executionContext) _Headline(ctx context.Context, sel ast.SelectionSet,
 	return out
 }
 
+var inviteImplementors = []string{"Invite"}
+
+func (ec *executionContext) _Invite(ctx context.Context, sel ast.SelectionSet, obj *model.Invite) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, inviteImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Invite")
+		case "code":
+			out.Values[i] = ec._Invite_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "user":
+			out.Values[i] = ec._Invite_user(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "role":
+			out.Values[i] = ec._Invite_role(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "expiresAt":
+			out.Values[i] = ec._Invite_expiresAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "link":
+			out.Values[i] = ec._Invite_link(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var loopStatsImplementors = []string{"LoopStats"}
 
 func (ec *executionContext) _LoopStats(ctx context.Context, sel ast.SelectionSet, obj *model.LoopStats) graphql.Marshaler {
@@ -9047,6 +10854,52 @@ func (ec *executionContext) _LoopStats(ctx context.Context, sel ast.SelectionSet
 	return out
 }
 
+var meImplementors = []string{"Me"}
+
+func (ec *executionContext) _Me(ctx context.Context, sel ast.SelectionSet, obj *model.Me) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, meImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Me")
+		case "user":
+			out.Values[i] = ec._Me_user(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "role":
+			out.Values[i] = ec._Me_role(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "deviceName":
+			out.Values[i] = ec._Me_deviceName(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -9094,9 +10947,51 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "setSourceHidden":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setSourceHidden(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "setSummarySettings":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_setSummarySettings(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createInvite":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createInvite(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "setUserRole":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setUserRole(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "revokeDevice":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_revokeDevice(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "removeUser":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_removeUser(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "markRead":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_markRead(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -9238,6 +11133,25 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_article(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "videoStream":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_videoStream(ctx, field)
 				return res
 			}
 
@@ -9395,6 +11309,72 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "me":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_me(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "users":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_users(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "readArticles":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_readArticles(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -9403,6 +11383,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___schema(ctx, field)
 			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var readArticleImplementors = []string{"ReadArticle"}
+
+func (ec *executionContext) _ReadArticle(ctx context.Context, sel ast.SelectionSet, obj *model.ReadArticle) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, readArticleImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ReadArticle")
+		case "url":
+			out.Values[i] = ec._ReadArticle_url(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "readAt":
+			out.Values[i] = ec._ReadArticle_readAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9820,6 +11844,42 @@ func (ec *executionContext) _Source(ctx context.Context, sel ast.SelectionSet, o
 					}
 				}()
 				res = ec._Source_waitMs(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "hidden":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Source_hidden(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -10421,6 +12481,99 @@ func (ec *executionContext) _ThreadStory(ctx context.Context, sel ast.SelectionS
 	return out
 }
 
+var userImplementors = []string{"User"}
+
+func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj *model.User) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, userImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("User")
+		case "name":
+			out.Values[i] = ec._User_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "role":
+			out.Values[i] = ec._User_role(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "devices":
+			out.Values[i] = ec._User_devices(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var videoStreamImplementors = []string{"VideoStream"}
+
+func (ec *executionContext) _VideoStream(ctx context.Context, sel ast.SelectionSet, obj *model.VideoStream) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, videoStreamImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("VideoStream")
+		case "path":
+			out.Values[i] = ec._VideoStream_path(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "hls":
+			out.Values[i] = ec._VideoStream_hls(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var __DirectiveImplementors = []string{"__Directive"}
 
 func (ec *executionContext) ___Directive(ctx context.Context, sel ast.SelectionSet, obj *introspection.Directive) graphql.Marshaler {
@@ -10756,11 +12909,11 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
-func (ec *executionContext) marshalNArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Article) graphql.Marshaler {
+func (ec *executionContext) marshalNArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Article) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx, sel, v[i])
+		return ec.marshalNArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticle(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -10772,7 +12925,7 @@ func (ec *executionContext) marshalNArticle2ᚕᚖgithubᚗcomᚋchencohensoluti
 	return ret
 }
 
-func (ec *executionContext) marshalNArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx context.Context, sel ast.SelectionSet, v *model.Article) graphql.Marshaler {
+func (ec *executionContext) marshalNArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticle(ctx context.Context, sel ast.SelectionSet, v *model.Article) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -10782,11 +12935,11 @@ func (ec *executionContext) marshalNArticle2ᚖgithubᚗcomᚋchencohensolutions
 	return ec._Article(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNArticleBlock2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlockᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ArticleBlock) graphql.Marshaler {
+func (ec *executionContext) marshalNArticleBlock2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleBlockᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ArticleBlock) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNArticleBlock2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlock(ctx, sel, v[i])
+		return ec.marshalNArticleBlock2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleBlock(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -10798,7 +12951,7 @@ func (ec *executionContext) marshalNArticleBlock2ᚕᚖgithubᚗcomᚋchencohens
 	return ret
 }
 
-func (ec *executionContext) marshalNArticleBlock2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleBlock(ctx context.Context, sel ast.SelectionSet, v *model.ArticleBlock) graphql.Marshaler {
+func (ec *executionContext) marshalNArticleBlock2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleBlock(ctx context.Context, sel ast.SelectionSet, v *model.ArticleBlock) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -10824,12 +12977,42 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) unmarshalNEnrollDeviceInput2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollDeviceInput(ctx context.Context, v any) (model.EnrollDeviceInput, error) {
+func (ec *executionContext) marshalNDevice2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐDevice(ctx context.Context, sel ast.SelectionSet, v model.Device) graphql.Marshaler {
+	return ec._Device(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNDevice2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐDeviceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Device) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐDevice(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDevice2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐDevice(ctx context.Context, sel ast.SelectionSet, v *model.Device) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Device(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNEnrollDeviceInput2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollDeviceInput(ctx context.Context, v any) (model.EnrollDeviceInput, error) {
 	res, err := ec.unmarshalInputEnrollDeviceInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNEnrollDeviceResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollDeviceResult(ctx context.Context, sel ast.SelectionSet, v model.EnrollDeviceResult) graphql.Marshaler {
+func (ec *executionContext) marshalNEnrollDeviceResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollDeviceResult(ctx context.Context, sel ast.SelectionSet, v model.EnrollDeviceResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -10839,7 +13022,7 @@ func (ec *executionContext) marshalNEnrollDeviceResult2githubᚗcomᚋchencohens
 	return ec._EnrollDeviceResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNEnrollmentPreviewResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollmentPreviewResult(ctx context.Context, sel ast.SelectionSet, v model.EnrollmentPreviewResult) graphql.Marshaler {
+func (ec *executionContext) marshalNEnrollmentPreviewResult2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollmentPreviewResult(ctx context.Context, sel ast.SelectionSet, v model.EnrollmentPreviewResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -10849,13 +13032,13 @@ func (ec *executionContext) marshalNEnrollmentPreviewResult2githubᚗcomᚋchenc
 	return ec._EnrollmentPreviewResult(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNEnrollmentRejectedReason2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollmentRejectedReason(ctx context.Context, v any) (model.EnrollmentRejectedReason, error) {
+func (ec *executionContext) unmarshalNEnrollmentRejectedReason2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollmentRejectedReason(ctx context.Context, v any) (model.EnrollmentRejectedReason, error) {
 	var res model.EnrollmentRejectedReason
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNEnrollmentRejectedReason2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐEnrollmentRejectedReason(ctx context.Context, sel ast.SelectionSet, v model.EnrollmentRejectedReason) graphql.Marshaler {
+func (ec *executionContext) marshalNEnrollmentRejectedReason2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐEnrollmentRejectedReason(ctx context.Context, sel ast.SelectionSet, v model.EnrollmentRejectedReason) graphql.Marshaler {
 	return v
 }
 
@@ -10875,11 +13058,11 @@ func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.S
 	return graphql.WrapContextMarshaler(ctx, res)
 }
 
-func (ec *executionContext) marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {
+func (ec *executionContext) marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNFootnote2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnote(ctx, sel, v[i])
+		return ec.marshalNFootnote2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFootnote(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -10891,7 +13074,7 @@ func (ec *executionContext) marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolut
 	return ret
 }
 
-func (ec *executionContext) marshalNFootnote2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐFootnote(ctx context.Context, sel ast.SelectionSet, v *model.Footnote) graphql.Marshaler {
+func (ec *executionContext) marshalNFootnote2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFootnote(ctx context.Context, sel ast.SelectionSet, v *model.Footnote) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -10901,11 +13084,11 @@ func (ec *executionContext) marshalNFootnote2ᚖgithubᚗcomᚋchencohensolution
 	return ec._Footnote(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNGeminiDay2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDayᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.GeminiDay) graphql.Marshaler {
+func (ec *executionContext) marshalNGeminiDay2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGeminiDayᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.GeminiDay) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDay(ctx, sel, v[i])
+		return ec.marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGeminiDay(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -10917,7 +13100,7 @@ func (ec *executionContext) marshalNGeminiDay2ᚕᚖgithubᚗcomᚋchencohensolu
 	return ret
 }
 
-func (ec *executionContext) marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiDay(ctx context.Context, sel ast.SelectionSet, v *model.GeminiDay) graphql.Marshaler {
+func (ec *executionContext) marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGeminiDay(ctx context.Context, sel ast.SelectionSet, v *model.GeminiDay) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -10927,11 +13110,11 @@ func (ec *executionContext) marshalNGeminiDay2ᚖgithubᚗcomᚋchencohensolutio
 	return ec._GeminiDay(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNGrouping2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v model.Grouping) graphql.Marshaler {
+func (ec *executionContext) marshalNGrouping2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v model.Grouping) graphql.Marshaler {
 	return ec._Grouping(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
+func (ec *executionContext) marshalNGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -10941,21 +13124,21 @@ func (ec *executionContext) marshalNGrouping2ᚖgithubᚗcomᚋchencohensolution
 	return ec._Grouping(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNGroupingMethod2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, v any) (model.GroupingMethod, error) {
+func (ec *executionContext) unmarshalNGroupingMethod2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, v any) (model.GroupingMethod, error) {
 	var res model.GroupingMethod
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNGroupingMethod2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, sel ast.SelectionSet, v model.GroupingMethod) graphql.Marshaler {
+func (ec *executionContext) marshalNGroupingMethod2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, sel ast.SelectionSet, v model.GroupingMethod) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
+func (ec *executionContext) marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐHeadlineᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Headline) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNHeadline2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadline(ctx, sel, v[i])
+		return ec.marshalNHeadline2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐHeadline(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -10967,7 +13150,7 @@ func (ec *executionContext) marshalNHeadline2ᚕᚖgithubᚗcomᚋchencohensolut
 	return ret
 }
 
-func (ec *executionContext) marshalNHeadline2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐHeadline(ctx context.Context, sel ast.SelectionSet, v *model.Headline) graphql.Marshaler {
+func (ec *executionContext) marshalNHeadline2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐHeadline(ctx context.Context, sel ast.SelectionSet, v *model.Headline) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11009,21 +13192,49 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	return res
 }
 
-func (ec *executionContext) unmarshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx context.Context, v any) (model.KeyProtection, error) {
+func (ec *executionContext) marshalNInvite2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐInvite(ctx context.Context, sel ast.SelectionSet, v model.Invite) graphql.Marshaler {
+	return ec._Invite(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNInvite2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐInvite(ctx context.Context, sel ast.SelectionSet, v *model.Invite) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Invite(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx context.Context, v any) (model.KeyProtection, error) {
 	var res model.KeyProtection
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx context.Context, sel ast.SelectionSet, v model.KeyProtection) graphql.Marshaler {
+func (ec *executionContext) marshalNKeyProtection2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐKeyProtection(ctx context.Context, sel ast.SelectionSet, v model.KeyProtection) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+func (ec *executionContext) marshalNMe2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐMe(ctx context.Context, sel ast.SelectionSet, v model.Me) graphql.Marshaler {
+	return ec._Me(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNMe2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐMe(ctx context.Context, sel ast.SelectionSet, v *model.Me) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Me(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNReadArticle2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐReadArticleᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ReadArticle) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNSentence2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentence(ctx, sel, v[i])
+		return ec.marshalNReadArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐReadArticle(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -11035,7 +13246,43 @@ func (ec *executionContext) marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolut
 	return ret
 }
 
-func (ec *executionContext) marshalNSentence2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSentence(ctx context.Context, sel ast.SelectionSet, v *model.Sentence) graphql.Marshaler {
+func (ec *executionContext) marshalNReadArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐReadArticle(ctx context.Context, sel ast.SelectionSet, v *model.ReadArticle) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ReadArticle(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNRole2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx context.Context, v any) (model.Role, error) {
+	var res model.Role
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNRole2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx context.Context, sel ast.SelectionSet, v model.Role) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSentence2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentence(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSentence2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentence(ctx context.Context, sel ast.SelectionSet, v *model.Sentence) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11045,11 +13292,11 @@ func (ec *executionContext) marshalNSentence2ᚖgithubᚗcomᚋchencohensolution
 	return ec._Sentence(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNServerInfo2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v model.ServerInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNServerInfo2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v model.ServerInfo) graphql.Marshaler {
 	return ec._ServerInfo(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v *model.ServerInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v *model.ServerInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11059,11 +13306,11 @@ func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋchencohensoluti
 	return ec._ServerInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNServerStats2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerStats(ctx context.Context, sel ast.SelectionSet, v model.ServerStats) graphql.Marshaler {
+func (ec *executionContext) marshalNServerStats2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerStats(ctx context.Context, sel ast.SelectionSet, v model.ServerStats) graphql.Marshaler {
 	return ec._ServerStats(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNServerStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerStats(ctx context.Context, sel ast.SelectionSet, v *model.ServerStats) graphql.Marshaler {
+func (ec *executionContext) marshalNServerStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerStats(ctx context.Context, sel ast.SelectionSet, v *model.ServerStats) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11073,11 +13320,11 @@ func (ec *executionContext) marshalNServerStats2ᚖgithubᚗcomᚋchencohensolut
 	return ec._ServerStats(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNSiteStats2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStatsᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SiteStats) graphql.Marshaler {
+func (ec *executionContext) marshalNSiteStats2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSiteStatsᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SiteStats) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNSiteStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStats(ctx, sel, v[i])
+		return ec.marshalNSiteStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSiteStats(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -11089,7 +13336,7 @@ func (ec *executionContext) marshalNSiteStats2ᚕᚖgithubᚗcomᚋchencohensolu
 	return ret
 }
 
-func (ec *executionContext) marshalNSiteStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSiteStats(ctx context.Context, sel ast.SelectionSet, v *model.SiteStats) graphql.Marshaler {
+func (ec *executionContext) marshalNSiteStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSiteStats(ctx context.Context, sel ast.SelectionSet, v *model.SiteStats) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11099,15 +13346,15 @@ func (ec *executionContext) marshalNSiteStats2ᚖgithubᚗcomᚋchencohensolutio
 	return ec._SiteStats(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNSource2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx context.Context, sel ast.SelectionSet, v sites.Source) graphql.Marshaler {
+func (ec *executionContext) marshalNSource2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋsitesᚐSource(ctx context.Context, sel ast.SelectionSet, v sites.Source) graphql.Marshaler {
 	return ec._Source(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNSource2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSourceᚄ(ctx context.Context, sel ast.SelectionSet, v []*sites.Source) graphql.Marshaler {
+func (ec *executionContext) marshalNSource2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋsitesᚐSourceᚄ(ctx context.Context, sel ast.SelectionSet, v []*sites.Source) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx, sel, v[i])
+		return ec.marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋsitesᚐSource(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -11119,7 +13366,7 @@ func (ec *executionContext) marshalNSource2ᚕᚖgithubᚗcomᚋchencohensolutio
 	return ret
 }
 
-func (ec *executionContext) marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋsitesᚐSource(ctx context.Context, sel ast.SelectionSet, v *sites.Source) graphql.Marshaler {
+func (ec *executionContext) marshalNSource2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋsitesᚐSource(ctx context.Context, sel ast.SelectionSet, v *sites.Source) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11129,11 +13376,11 @@ func (ec *executionContext) marshalNSource2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Source(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Story) graphql.Marshaler {
+func (ec *executionContext) marshalNStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Story) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStory(ctx, sel, v[i])
+		return ec.marshalNStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStory(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -11145,7 +13392,7 @@ func (ec *executionContext) marshalNStory2ᚕᚖgithubᚗcomᚋchencohensolution
 	return ret
 }
 
-func (ec *executionContext) marshalNStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStory(ctx context.Context, sel ast.SelectionSet, v *model.Story) graphql.Marshaler {
+func (ec *executionContext) marshalNStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStory(ctx context.Context, sel ast.SelectionSet, v *model.Story) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11155,21 +13402,21 @@ func (ec *executionContext) marshalNStory2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Story(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, v any) (model.StoryLength, error) {
+func (ec *executionContext) unmarshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, v any) (model.StoryLength, error) {
 	var res model.StoryLength
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, sel ast.SelectionSet, v model.StoryLength) graphql.Marshaler {
+func (ec *executionContext) marshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, sel ast.SelectionSet, v model.StoryLength) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNStoryList2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryList(ctx context.Context, sel ast.SelectionSet, v model.StoryList) graphql.Marshaler {
+func (ec *executionContext) marshalNStoryList2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryList(ctx context.Context, sel ast.SelectionSet, v model.StoryList) graphql.Marshaler {
 	return ec._StoryList(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryList(ctx context.Context, sel ast.SelectionSet, v *model.StoryList) graphql.Marshaler {
+func (ec *executionContext) marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryList(ctx context.Context, sel ast.SelectionSet, v *model.StoryList) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11179,21 +13426,21 @@ func (ec *executionContext) marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutio
 	return ec._StoryList(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, v any) (model.StoryText, error) {
+func (ec *executionContext) unmarshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, v any) (model.StoryText, error) {
 	var res model.StoryText
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, sel ast.SelectionSet, v model.StoryText) graphql.Marshaler {
+func (ec *executionContext) marshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, sel ast.SelectionSet, v model.StoryText) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNStoryUpdate2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryUpdateᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.StoryUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNStoryUpdate2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryUpdateᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.StoryUpdate) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNStoryUpdate2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryUpdate(ctx, sel, v[i])
+		return ec.marshalNStoryUpdate2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryUpdate(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -11205,7 +13452,7 @@ func (ec *executionContext) marshalNStoryUpdate2ᚕᚖgithubᚗcomᚋchencohenso
 	return ret
 }
 
-func (ec *executionContext) marshalNStoryUpdate2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryUpdate(ctx context.Context, sel ast.SelectionSet, v *model.StoryUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNStoryUpdate2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryUpdate(ctx context.Context, sel ast.SelectionSet, v *model.StoryUpdate) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11261,11 +13508,11 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 	return ret
 }
 
-func (ec *executionContext) marshalNSummarySettings2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v model.SummarySettings) graphql.Marshaler {
+func (ec *executionContext) marshalNSummarySettings2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v model.SummarySettings) graphql.Marshaler {
 	return ec._SummarySettings(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
+func (ec *executionContext) marshalNSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11275,11 +13522,11 @@ func (ec *executionContext) marshalNSummarySettings2ᚖgithubᚗcomᚋchencohens
 	return ec._SummarySettings(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
+func (ec *executionContext) marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx, sel, v[i])
+		return ec.marshalNThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThread(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -11291,7 +13538,7 @@ func (ec *executionContext) marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutio
 	return ret
 }
 
-func (ec *executionContext) marshalNThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx context.Context, sel ast.SelectionSet, v *model.Thread) graphql.Marshaler {
+func (ec *executionContext) marshalNThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThread(ctx context.Context, sel ast.SelectionSet, v *model.Thread) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11301,11 +13548,11 @@ func (ec *executionContext) marshalNThread2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Thread(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNThreadStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ThreadStory) graphql.Marshaler {
+func (ec *executionContext) marshalNThreadStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadStoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ThreadStory) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNThreadStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStory(ctx, sel, v[i])
+		return ec.marshalNThreadStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadStory(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -11317,7 +13564,7 @@ func (ec *executionContext) marshalNThreadStory2ᚕᚖgithubᚗcomᚋchencohenso
 	return ret
 }
 
-func (ec *executionContext) marshalNThreadStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThreadStory(ctx context.Context, sel ast.SelectionSet, v *model.ThreadStory) graphql.Marshaler {
+func (ec *executionContext) marshalNThreadStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadStory(ctx context.Context, sel ast.SelectionSet, v *model.ThreadStory) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -11341,6 +13588,36 @@ func (ec *executionContext) marshalNTime2timeᚐTime(ctx context.Context, sel as
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNUser2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v model.User) graphql.Marshaler {
+	return ec._User(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNUser2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐUserᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.User) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNUser2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐUser(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNUser2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model.User) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._User(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
@@ -11484,14 +13761,14 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 	return res
 }
 
-func (ec *executionContext) marshalOArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticle(ctx context.Context, sel ast.SelectionSet, v *model.Article) graphql.Marshaler {
+func (ec *executionContext) marshalOArticle2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticle(ctx context.Context, sel ast.SelectionSet, v *model.Article) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Article(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOArticleVideo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐArticleVideo(ctx context.Context, sel ast.SelectionSet, v *model.ArticleVideo) graphql.Marshaler {
+func (ec *executionContext) marshalOArticleVideo2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐArticleVideo(ctx context.Context, sel ast.SelectionSet, v *model.ArticleVideo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -11545,21 +13822,21 @@ func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel as
 	return graphql.WrapContextMarshaler(ctx, res)
 }
 
-func (ec *executionContext) marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGeminiStats(ctx context.Context, sel ast.SelectionSet, v *model.GeminiStats) graphql.Marshaler {
+func (ec *executionContext) marshalOGeminiStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGeminiStats(ctx context.Context, sel ast.SelectionSet, v *model.GeminiStats) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._GeminiStats(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
+func (ec *executionContext) marshalOGrouping2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGrouping(ctx context.Context, sel ast.SelectionSet, v *model.Grouping) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Grouping(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOGroupingMethod2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, v any) (*model.GroupingMethod, error) {
+func (ec *executionContext) unmarshalOGroupingMethod2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, v any) (*model.GroupingMethod, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -11568,7 +13845,7 @@ func (ec *executionContext) unmarshalOGroupingMethod2ᚖgithubᚗcomᚋchencohen
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOGroupingMethod2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, sel ast.SelectionSet, v *model.GroupingMethod) graphql.Marshaler {
+func (ec *executionContext) marshalOGroupingMethod2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐGroupingMethod(ctx context.Context, sel ast.SelectionSet, v *model.GroupingMethod) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -11593,21 +13870,37 @@ func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.Sele
 	return res
 }
 
-func (ec *executionContext) marshalOLoopStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐLoopStats(ctx context.Context, sel ast.SelectionSet, v *model.LoopStats) graphql.Marshaler {
+func (ec *executionContext) marshalOLoopStats2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐLoopStats(ctx context.Context, sel ast.SelectionSet, v *model.LoopStats) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._LoopStats(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx context.Context, sel ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {
+func (ec *executionContext) unmarshalORole2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx context.Context, v any) (*model.Role, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.Role)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalORole2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐRole(ctx context.Context, sel ast.SelectionSet, v *model.Role) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
+func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerDiscovery(ctx context.Context, sel ast.SelectionSet, v *model.ServerDiscovery) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._ServerDiscovery(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, v any) (*model.StoryLength, error) {
+func (ec *executionContext) unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, v any) (*model.StoryLength, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -11616,21 +13909,21 @@ func (ec *executionContext) unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensol
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, sel ast.SelectionSet, v *model.StoryLength) graphql.Marshaler {
+func (ec *executionContext) marshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, sel ast.SelectionSet, v *model.StoryLength) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return v
 }
 
-func (ec *executionContext) marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStorySummary(ctx context.Context, sel ast.SelectionSet, v *model.StorySummary) graphql.Marshaler {
+func (ec *executionContext) marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStorySummary(ctx context.Context, sel ast.SelectionSet, v *model.StorySummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._StorySummary(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, v any) (*model.StoryText, error) {
+func (ec *executionContext) unmarshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, v any) (*model.StoryText, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -11639,7 +13932,7 @@ func (ec *executionContext) unmarshalOStoryText2ᚖgithubᚗcomᚋchencohensolut
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, sel ast.SelectionSet, v *model.StoryText) graphql.Marshaler {
+func (ec *executionContext) marshalOStoryText2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, sel ast.SelectionSet, v *model.StoryText) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -11700,21 +13993,21 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return res
 }
 
-func (ec *executionContext) marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummaryRun(ctx context.Context, sel ast.SelectionSet, v *model.SummaryRun) graphql.Marshaler {
+func (ec *executionContext) marshalOSummaryRun2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummaryRun(ctx context.Context, sel ast.SelectionSet, v *model.SummaryRun) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._SummaryRun(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
+func (ec *executionContext) marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx context.Context, sel ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._SummarySettings(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐThread(ctx context.Context, sel ast.SelectionSet, v *model.Thread) graphql.Marshaler {
+func (ec *executionContext) marshalOThread2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThread(ctx context.Context, sel ast.SelectionSet, v *model.Thread) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -11737,6 +14030,13 @@ func (ec *executionContext) marshalOTime2ᚖtimeᚐTime(ctx context.Context, sel
 	_ = ctx
 	res := graphql.MarshalTime(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOVideoStream2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐVideoStream(ctx context.Context, sel ast.SelectionSet, v *model.VideoStream) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._VideoStream(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {

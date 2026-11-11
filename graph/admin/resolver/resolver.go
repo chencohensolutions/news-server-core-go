@@ -13,7 +13,9 @@ import (
 // here.
 
 type Resolver struct {
-	Config     auth.AppConfig
+	Config auth.AppConfig
+	// The people who may enroll, with their roles.
+	Users      *auth.Users
 	Enrollment *enroll.Service
 	Now        func() time.Time
 	// Mapped is the router's outside address for the server's port (https://ip:port), "" when there is none; the
