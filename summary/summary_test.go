@@ -154,7 +154,10 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	rain := saved[StoryKey(found[0])]
 	want := StorySummary{Title: "גשם כבד בצפון", WrittenAt: now,
 		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}},
-		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}}}
+		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}},
+		Reports:        []string{rainSiteh.URL, rainSiteE.URL}}
+	// A new story unfolds from its first version.
+	want.Updates = []Update{{At: now, Sentences: want.Sentences}}
 	if got, _ := json.Marshal(rain); string(got) != mustJSON(want) {
 		t.Fatalf("rain\n got %s\nwant %s", got, mustJSON(want))
 	}
@@ -217,6 +220,19 @@ func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {
 	}
 	if fake.count() != 4 || strings.Contains(fake.prompts[2], "s2") || !strings.Contains(fake.prompts[2], "https://siteg/rain") && !strings.Contains(fake.prompts[2], "[a3] siteg") {
 		t.Fatalf("%d requests; third:\n%s", fake.count(), fake.prompts[2])
+	}
+	// It is a later version of the rain story: Gemini sees the previous one, and what it adds unfolds the story.
+	if !strings.Contains(fake.prompts[2], "הגרסה הקודמת") || !strings.Contains(fake.prompts[2], "- גשם כבד ירד הבוקר בצפון.") {
+		t.Fatalf("no previous version:\n%s", fake.prompts[2])
+	}
+	saved, err := Summaries(ctx, w.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rain := saved[StoryKey(found[0])]
+	if len(rain.Updates) != 2 || len(rain.Updates[0].Sentences) != 2 || len(rain.Updates[1].Sentences) != 1 ||
+		rain.Updates[1].Sentences[0].Text != "גשם ירד גם בגליל." || rain.Updates[1].Sentences[0].Sources[0] != third.URL {
+		t.Fatalf("updates %+v", rain.Updates)
 	}
 }
 

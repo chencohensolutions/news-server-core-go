@@ -54,6 +54,81 @@ type StorySummary struct {
 	// footnotes. The grouping put them in the story by mistake.
 	Unrelated []string  `json:"unrelated,omitempty"`
 	WrittenAt time.Time `json:"writtenAt"`
+	// Reports are the URLs of the story's reports it was written from: how the next version finds it.
+	Reports []string `json:"reports,omitempty"`
+	// Updates are how the story unfolded, oldest first: the first version's sentences, then each later version's new
+	// facts, carried from version to version.
+	Updates []Update `json:"updates,omitempty"`
+}
+
+// Update is what a version of a story added, and when it was written.
+type Update struct {
+	At        time.Time  `json:"at"`
+	Sentences []Sentence `json:"sentences"`
+}
+
+// maxUpdates is how many updates a story keeps: the first and the latest.
+const maxUpdates = 30
+
+// reportsOf is the URLs a summary was written from; for one written before it kept them, its footnotes.
+func reportsOf(s StorySummary) []string {
+	if len(s.Reports) > 0 {
+		return s.Reports
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, sentence := range s.Sentences {
+		for _, url := range sentence.Sources {
+			if !seen[url] {
+				seen[url] = true
+				out = append(out, url)
+			}
+		}
+	}
+	return out
+}
+
+// previous is the saved summary story is a later version of: the one that shares the most reports with it, at
+// least half of its own; nil for a new story.
+func previous(story stories.Story, saved map[string]StorySummary) *StorySummary {
+	urls := map[string]bool{}
+	for _, r := range story.Reports {
+		urls[r.URL] = true
+	}
+	var best *StorySummary
+	bestShared := 0
+	for _, s := range saved {
+		reports := reportsOf(s)
+		shared := 0
+		for _, url := range reports {
+			if urls[url] {
+				shared++
+			}
+		}
+		if shared > 0 && 2*shared >= len(reports) && (shared > bestShared || shared == bestShared && best != nil && s.WrittenAt.After(best.WrittenAt)) {
+			s := s
+			best, bestShared = &s, shared
+		}
+	}
+	return best
+}
+
+// unfolded is the updates of a story written now with sentences, whose new facts since prev are added.
+func unfolded(prev *StorySummary, sentences, added []Sentence, now time.Time) []Update {
+	if prev == nil {
+		return []Update{{At: now, Sentences: sentences}}
+	}
+	updates := append([]Update{}, prev.Updates...)
+	if len(updates) == 0 {
+		updates = []Update{{At: prev.WrittenAt, Sentences: prev.Sentences}}
+	}
+	if len(added) > 0 {
+		updates = append(updates, Update{At: now, Sentences: added})
+	}
+	if len(updates) > maxUpdates {
+		updates = append(updates[:1], updates[len(updates)-maxUpdates+1:]...)
+	}
+	return updates
 }
 
 // Digest is the front page: what is most covered in the last hour.
@@ -541,6 +616,11 @@ func cut(s string, n int) string {
 func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day string, now time.Time) (written, asked int, err error) {
 	ids := newSources()
 	byID := map[string]stories.Story{}
+	saved, err := Summaries(ctx, w.Store)
+	if err != nil {
+		return 0, 0, err
+	}
+	prevOf := map[string]*StorySummary{}
 	var prompt strings.Builder
 	limit := orDefault(w.MaxChars, DefaultMaxChars)
 	for i, s := range changed {
@@ -551,11 +631,20 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			b.WriteString(w.report(ctx, ids, r))
 			b.WriteString("\n")
 		}
+		prev := previous(s, saved)
+		if prev != nil {
+			fmt.Fprintf(&b, "הגרסה הקודמת (%s):\n", israelTime(prev.WrittenAt))
+			for _, sentence := range prev.Sentences {
+				fmt.Fprintf(&b, "- %s\n", oneLine(sentence.Text))
+			}
+			b.WriteString("\n")
+		}
 		if len(byID) == maxStories || len(byID) > 0 && len([]rune(prompt.String()))+len([]rune(b.String())) > limit {
 			break
 		}
 		prompt.WriteString(b.String())
 		byID[id] = s
+		prevOf[id] = prev
 	}
 	asked = len(byID)
 	raw, err := w.send(ctx, day, gemini.Request{System: storiesSystem, Prompt: prompt.String(), Schema: storiesSchema})
@@ -569,6 +658,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			Sentences      []answerSentence      `json:"sentences"`
 			Contradictions []answerContradiction `json:"contradictions"`
 			Unrelated      []answerUnrelated     `json:"unrelated"`
+			New            []answerSentence      `json:"new"`
 		} `json:"stories"`
 	}
 	if err := json.Unmarshal(raw, &answer); err != nil {
@@ -604,6 +694,16 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		if len(summary.Sentences) == 0 {
 			continue
 		}
+		for _, r := range s.Reports {
+			if own[r.URL] {
+				summary.Reports = append(summary.Reports, r.URL)
+			}
+		}
+		var added []Sentence
+		if prev := prevOf[storyID(a.Story)]; prev != nil {
+			added = ids.sentences(a.New, own)
+		}
+		summary.Updates = unfolded(prevOf[storyID(a.Story)], summary.Sentences, added, now)
 		data, err := json.Marshal(summary)
 		if err != nil {
 			return written, asked, err
@@ -753,4 +853,12 @@ func LatestDigest(ctx context.Context, db *store.Store) (*Digest, error) {
 		return nil, err
 	}
 	return &d, nil
+}
+
+// israelTime is t as the prompt shows it: day, month and time in Israel.
+func israelTime(t time.Time) string {
+	if zone, err := time.LoadLocation("Asia/Jerusalem"); err == nil {
+		t = t.In(zone)
+	}
+	return t.Format("02.01 15:04")
 }

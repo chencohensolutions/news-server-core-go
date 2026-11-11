@@ -28,6 +28,9 @@ For every story, write:
   then an empty list.
 - "title": a short factual Hebrew headline for the whole story.
 - "sentences": the story as 2 to 6 sentences.
+- "new": when the story shows its previous version ("הגרסה הקודמת"), the facts of the articles that are not in it:
+  what happened since, as 0 to 4 sentences, each fact once, with sources like the sentences. Facts the previous
+  version has, in other words, are not new. Without a previous version: an empty list.
 - "contradictions": only where two sites give different values for the same fact: a number, a name, a date, a time
   or a place. Two different facts are not a contradiction, nor two breakdowns that can both be true, nor a fact only
   one site has, nor different emphasis. Each one has "sides": every site's version as its "value" and the ids of the
@@ -87,6 +90,7 @@ var storiesSchema = map[string]any{
 					"story":          map[string]any{"type": "string"},
 					"title":          map[string]any{"type": "string"},
 					"sentences":      map[string]any{"type": "array", "items": sentenceSchema},
+					"new":            map[string]any{"type": "array", "items": sentenceSchema},
 					"contradictions": map[string]any{"type": "array", "items": contradictionSchema},
 					"unrelated": map[string]any{"type": "array", "items": map[string]any{
 						"type":       "object",
@@ -94,7 +98,7 @@ var storiesSchema = map[string]any{
 						"required":   []string{"id", "event"},
 					}},
 				},
-				"required": []string{"story", "unrelated", "title", "sentences", "contradictions"},
+				"required": []string{"story", "unrelated", "title", "sentences", "contradictions", "new"},
 			},
 		},
 	},

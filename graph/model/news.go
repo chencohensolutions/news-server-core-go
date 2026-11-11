@@ -150,5 +150,19 @@ func SentencesOf(sentences []summary.Sentence, headlines map[string]store.Headli
 // StorySummaryOf is s for the API.
 func StorySummaryOf(s summary.StorySummary, headlines map[string]store.Headline) *StorySummary {
 	return &StorySummary{Title: s.Title, Sentences: SentencesOf(s.Sentences, headlines),
-		Contradictions: SentencesOf(s.Contradictions, headlines), Unrelated: append([]string{}, s.Unrelated...), WrittenAt: s.WrittenAt}
+		Contradictions: SentencesOf(s.Contradictions, headlines), Unrelated: append([]string{}, s.Unrelated...), WrittenAt: s.WrittenAt,
+		Updates: updatesOf(s, headlines)}
+}
+
+// updatesOf is how s unfolded; a summary written before updates were kept is its own first one.
+func updatesOf(s summary.StorySummary, headlines map[string]store.Headline) []*StoryUpdate {
+	updates := s.Updates
+	if len(updates) == 0 {
+		updates = []summary.Update{{At: s.WrittenAt, Sentences: s.Sentences}}
+	}
+	out := make([]*StoryUpdate, len(updates))
+	for i, u := range updates {
+		out[i] = &StoryUpdate{At: u.At, Sentences: SentencesOf(u.Sentences, headlines)}
+	}
+	return out
 }

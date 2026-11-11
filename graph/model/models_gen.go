@@ -202,6 +202,15 @@ type StorySummary struct {
 	// URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article.
 	Unrelated []string  `json:"unrelated"`
 	WrittenAt time.Time `json:"writtenAt"`
+	// How the story unfolded, oldest first: what its first version said, then what each later version added (only the
+	// new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
+	Updates []*StoryUpdate `json:"updates"`
+}
+
+// What one version of a story added, and when it was written.
+type StoryUpdate struct {
+	At        time.Time   `json:"at"`
+	Sentences []*Sentence `json:"sentences"`
 }
 
 type SummaryRun struct {

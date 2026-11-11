@@ -204,12 +204,12 @@ func TestTheAppReadsTheGeneratedArticles(t *testing.T) {
 	env.api.Stories = func() ([]stories.Story, time.Time) { return []stories.Story{story}, noon }
 	env.api.Summaries = true
 	resp = mustQuery(t, env, `{
-		stories { stories { summary { title sentences { text footnotes { url sourceId title } } contradictions { text } writtenAt } } }
+		stories { stories { summary { title sentences { text footnotes { url sourceId title } } contradictions { text } writtenAt updates { at sentences { text } } } } }
 		digest { title sentences { text footnotes { url sourceId } } writtenAt }
 		serverInfo { summaries } }`, nil)
 	want := fmt.Sprintf(`{"stories":[{"summary":{"title":"גשם","sentences":[{"text":"ירד גשם.","footnotes":[`+
 		`{"url":"https://siteh/1","sourceId":"siteh","title":"Rain all day"},{"url":"https://gone/1","sourceId":null,"title":null}]}],`+
-		`"contradictions":[],"writtenAt":%q}}]}`, noon.Format(time.RFC3339))
+		`"contradictions":[],"writtenAt":%q,"updates":[{"at":%[1]q,"sentences":[{"text":"ירד גשם."}]}]}}]}`, noon.Format(time.RFC3339))
 	if got := string(resp.Data["stories"]); got != want {
 		t.Fatalf("stories\n got %s\nwant %s", got, want)
 	}
