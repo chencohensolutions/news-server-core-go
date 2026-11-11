@@ -1,19 +1,21 @@
 // news-server reads the news sites for the news app: headlines, articles and stories, and (later) their Gemini
 // summaries. Phones reach it over GraphQL with mutual TLS, enrolled the way the journal app is. See README.md.
-package main
+package newsserver
 
 import (
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/chencohensolutions/news-server-core-go/auth"
+	"github.com/chencohensolutions/news-server-core-go/fetch"
 )
 
 const configPath = "config.json"
 
-// version is set at build time: go build -ldflags "-X main.version=1.0.0 (3f2a9c1)".
+// version is set at build time: go build -ldflags "-X github.com/chencohensolutions/news-server-core-go.version=1.0.0".
 var version = "dev"
 
 const usage = `usage:
@@ -38,9 +40,14 @@ site tools (no config.json needed):
   news-server fetch <source> [article url]                   read a source's headlines (or one article) from the live site
 `
 
-func main() {
+// Main runs news-server: the command line in os.Args (see usage). A build with packs (cmd/newsbuild) calls it from
+// its own main, after the packs registered themselves in their init functions.
+func Main() {
 	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "--version") {
 		fmt.Println("news-server", version)
+		if packs := fetch.Transports(); len(packs) > 0 {
+			fmt.Println("packs:", strings.Join(packs, ", "))
+		}
 		return
 	}
 	if len(os.Args) == 2 && (os.Args[1] == "help" || os.Args[1] == "-h" || os.Args[1] == "--help") {

@@ -6,6 +6,9 @@ agreed decisions and the milestones.
 
 ## Rules
 
+- **The core is source-agnostic** (it is going public): no site-specific code, an honest
+  user agent. That code lives in packs (`fetch.RegisterTransport`, `video.Register`, built with
+  `cmd/newsbuild`); the owner's are private.
 - **Port, don't redesign.** The Kotlin engine and clustering in the news repo (`news/scraper/engine`,
   `news/app/android/src/main/kotlin/news/app/stories`) are the reference. Translate them file by file; the news repo's
   `news/docs/source-config.md` is the spec and `news/sources/*/fixtures` with `expected/*.json` are the pass/fail
@@ -23,6 +26,8 @@ agreed decisions and the milestones.
 ## Commands
 
 ```bash
+go run ./cmd/news-server                            # the server without packs
+go run ./cmd/newsbuild --with ../news-sources-xx/server  # a build with packs
 go test ./...
 go vet ./...
 go tool gqlgen generate                            # after editing graph/schema/*.graphql

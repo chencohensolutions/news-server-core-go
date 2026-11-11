@@ -12,6 +12,10 @@ decisions and milestones next to the code.
   golden fixtures carry over unchanged through the `news/` submodule.
 - **CSS with goquery + cascadia.** The configs use `:has`, `:not` and `:nth-of-type`, which cascadia supports. None of
   the 123 `regex` fields uses lookarounds or backreferences, so Go's RE2 reads them all.
+- **Packs** (Nov 11, 2026): the core goes public and stays source-agnostic: a plain client that names itself, no
+  site-specific code. Packs (Go modules, built in with `cmd/newsbuild`, as xcaddy does for Caddy) register HTTP
+  transports (`fetch.RegisterTransport`) and video resolvers (`video.Register`). Site-specific code lives in packs; the server streams a pack-resolved video to the app as an option,
+  the app's web-view player staying the default.
 - **Stories:** the same average-link clustering as the app, with `bge-m3` by default (too big for the phone), on ONNX
   Runtime through purego like the journal server.
 - **Summaries: Gemini free tier only**, `gemini-3.5-flash-lite`. Every 10 minutes, one request with every story that

@@ -13,6 +13,7 @@
   "keep_days": -1,
   "feed_sources": [],
   "site_waits_ms": {},
+  "packs": {},
   "onnxruntime": "",
   "models_dir": "models",
   "story_model": "bge-m3",

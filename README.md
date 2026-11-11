@@ -27,7 +27,8 @@ and a growing pause when a site pushes back, and gives the same output as the ap
 Milestone 3, fetching (`fetch/`, `refresh/`, `store/`): every `refresh_minutes` (10) the server reads every site's
 headlines, then the article of each headline it doesn't have yet, newest first, and keeps them in `news.db` (SQLite)
 with when each headline was first and last seen; a headline gone from its site for `keep_days` (7) is forgotten. It
-reaches the sites with a plain HTTP client.
+reaches the sites with a plain HTTP client that names itself (`news-server-go (+repo URL)`) unless a site config sets
+its own user agent. Packs can change how it reaches sites; see "Packs" below.
 
 Milestone 4, stories (`stories/`, `onnx/`): after each read the server groups the stored headlines of the last
 `story_days` (7) into stories, as the app does: each headline embedded with `story_model` (bge-m3 by default; the app's
@@ -43,6 +44,25 @@ what changed; optionally some sites only), `article` and `articles` (up to 200 a
 grouping, newest first). The fields are the app's `ArticleSummary` and `Article`; `serverInfo.stories` says whether
 stories are on.
 
+## Packs
+
+The core reads only what site configs describe. A pack is a Go module that adds to it from its `init` function:
+
+- `fetch.RegisterTransport(name, wrap)`: an HTTP transport wrapped around the core's, for the requests it handles.
+  It gets every site (with the keys of its config's `http` object the core doesn't know, in `Site.Extra`) and its own
+  settings from config.json's `"packs": { "<name>": {...} }`.
+- `video.Register(name, resolver)`: turns an embedded player into a stream the server can play.
+
+Build the server with packs with `newsbuild`, as `xcaddy` builds Caddy with plugins:
+
+```bash
+go run ./cmd/newsbuild --with github.com/someone/news-sources-xx@latest --with ../my-pack -o news-server.exe
+```
+
+A pack is a module path (`@latest` when no version is given; run newsbuild again to update) or a folder. Run inside
+this checkout, newsbuild builds this checkout's core (`--core` picks another). `news-server version` lists the packs
+built in. Without packs: `go build ./cmd/news-server`.
+
 ## Getting started
 
 Requirements: Go 1.26 or newer (gqlgen runs as a `go tool` of the module) and OpenSSL for the certificate scripts.
@@ -55,22 +75,22 @@ scripts/generate-ca.sh
 SERVER_NAMES="myhome.example.org" scripts/generate-server-cert.sh   # names and IPs devices will use
 cp config.example.json config.json                                   # then edit public_url and users
 
-go run .                        # serves https://0.0.0.0:56399
-go run . enroll-code hen        # a one-time code and a QR code for the app, valid 10 minutes
-go run . devices                # enrolled devices
-go run . revoke <serial>        # lock a device out
-go run . refresh                # read every site once now (the server does it every refresh_minutes)
-go run . models                 # download ONNX Runtime and the story model (once)
-go run . stories                # group the stored headlines now and print the stories
-go run . eval-stories           # the story model on the app's 348 labeled pairs, against the app's numbers
+go run ./cmd/news-server                        # serves https://0.0.0.0:56399
+go run ./cmd/news-server enroll-code hen        # a one-time code and a QR code for the app, valid 10 minutes
+go run ./cmd/news-server devices                # enrolled devices
+go run ./cmd/news-server revoke <serial>        # lock a device out
+go run ./cmd/news-server refresh                # read every site once now (the server does it every refresh_minutes)
+go run ./cmd/news-server models                 # download ONNX Runtime and the story model (once)
+go run ./cmd/news-server stories                # group the stored headlines now and print the stories
+go run ./cmd/news-server eval-stories           # the story model on the app's 348 labeled pairs, against the app's numbers
 ```
 
 The site tools need no config.json:
 
 ```bash
-go run . check news/sources                          # every source's golden fixtures (or one source folder)
-go run . extract news/sources/siteh list page.html    # read a saved page with a config, print JSON
-go run . fetch news/sources/siteh                     # the live headlines (add an article URL for one article)
+go run ./cmd/news-server check news/sources                          # every source's golden fixtures (or one source folder)
+go run ./cmd/news-server extract news/sources/siteh list page.html    # read a saved page with a config, print JSON
+go run ./cmd/news-server fetch news/sources/siteh                     # the live headlines (add an article URL for one article)
 ```
 
 The port is one above the journal server's (56398) and the admin API is on 127.0.0.1:8082, so both servers can run
@@ -95,7 +115,8 @@ auth/  enroll/                     config, request identity and @public, enrollm
 sites/                             reads news/sources/<id>/config.json
 scrape/                            the engine: configs, extraction, dates, URLs, politeness, downloading
 scrape/dom, jsonpath, rx           jsoup-compatible selectors and text, JSON paths, Java-like regex
-fetch/                             the HTTP client the engine reads with
+fetch/  video/                     the HTTP client and video resolvers, with the packs' registries
+cmd/news-server, cmd/newsbuild      the plain server; the builder of a server with packs
 refresh/  store/                   reading every site on a schedule; the SQLite database
 reading.go                         wires them into the server and the refresh command
 stories/  onnx/                    tokenizer, embedder, similarity graph, clustering; ONNX Runtime through purego

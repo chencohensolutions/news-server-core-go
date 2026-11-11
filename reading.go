@@ -1,4 +1,4 @@
-package main
+package newsserver
 
 import (
 	"context"
@@ -22,14 +22,15 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/summary"
 )
 
-// openRefresher sets up reading the sites: their configs, the engine on the fetch client, the database, and the
-// sites' settings (found are the sites as the API lists them).
+// openRefresher sets up reading the sites: their configs, the engine on the fetch client (with any packs'
+// transports), the database, and the sites' settings (found are the sites as the API lists them).
 func openRefresher(config auth.AppConfig, found []sites.Source) (*refresh.Refresher, *sites.Settings, error) {
 	dirs, err := scrape.SourceDirs(config.SourcesDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sites: %w", err)
 	}
 	var sources []*scrape.SourceConfig
+	var fetchSites []fetch.Site
 	for _, dir := range dirs {
 		if strings.HasPrefix(filepath.Base(dir), "_") {
 			continue
@@ -39,12 +40,16 @@ func openRefresher(config auth.AppConfig, found []sites.Source) (*refresh.Refres
 			return nil, nil, fmt.Errorf("%s: %w", dir, err)
 		}
 		sources = append(sources, c)
+		fetchSites = append(fetchSites, fetch.Site{ID: c.ID, Host: fetch.HostOf(c.BaseURL), Extra: c.HTTP.Extra})
+	}
+	client, err := fetch.NewClient(fetch.Options{EngineDefault: scrape.DefaultUserAgent, Sites: fetchSites, Packs: config.Packs})
+	if err != nil {
+		return nil, nil, err
 	}
 	db, settings, err := openSettings(config, found)
 	if err != nil {
 		return nil, nil, err
 	}
-	client := fetch.NewClient(fetch.Options{EngineDefault: scrape.DefaultUserAgent})
 	engine := scrape.NewEngine(client, nil)
 	setWaits := func(all map[string]sites.Setting) {
 		gaps := map[string]time.Duration{}

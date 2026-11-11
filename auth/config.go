@@ -47,6 +47,8 @@ type AppConfig struct {
 	// and its choices, kept in the database, win.
 	FeedSources []string       `json:"feed_sources"`
 	SiteWaitsMs map[string]int `json:"site_waits_ms"`
+	// Each pack's own settings, by pack name (the name it registers with); the core passes them on unread.
+	Packs map[string]json.RawMessage `json:"packs"`
 	// Stories: the ONNX Runtime library ("" looks in ./onnxruntime and the usual places), the folder the models are
 	// in (news-server models downloads them), the model (bge-m3 or multilingual-e5-small), what headlines are
 	// compared by (title, subtitle, title_and_subtitle, title_times_subtitle), how strict the grouping is (10 to 90,

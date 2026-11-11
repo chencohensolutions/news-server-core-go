@@ -114,3 +114,17 @@ func TestAnUnknownCategoryIDIsRejected(t *testing.T) {
 		t.Fatal(errs)
 	}
 }
+
+// The core reads userAgent and headers from "http"; any other key is a pack's, kept for its transport.
+func TestHTTPKeysTheCoreDoesntKnowAreKeptForPacks(t *testing.T) {
+	text := strings.Replace(okJSON, `"language": "he",`,
+		`"language": "he", "http": { "userAgent": "ua", "headers": { "X": "1" }, "packOption": true },`, 1)
+	c, err := ParseConfig([]byte(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HTTP.UserAgent != "ua" || c.HTTP.Headers["X"] != "1" || string(c.HTTP.Extra["packOption"]) != "true" ||
+		len(c.HTTP.Extra) != 1 {
+		t.Fatalf("%+v", c.HTTP)
+	}
+}
