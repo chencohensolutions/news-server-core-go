@@ -565,6 +565,13 @@ func (s *Store) CountGeminiRequest(ctx context.Context, day string) error {
 	return err
 }
 
+// UncountGeminiRequest takes back one of day's requests: one Gemini refused as busy (503), which its quota doesn't
+// count.
+func (s *Store) UncountGeminiRequest(ctx context.Context, day string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE gemini_requests SET requests = MAX(requests - 1, 0) WHERE day = ?`, day)
+	return err
+}
+
 // Tokens are Gemini tokens: the prompts (Cached of them read from its cache), the answers, and the thinking.
 type Tokens struct{ In, Cached, Out, Thoughts int }
 

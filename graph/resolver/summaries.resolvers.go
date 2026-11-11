@@ -7,6 +7,7 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/chencohensolutions/news-server-core-go/graph/generated"
@@ -16,7 +17,7 @@ import (
 )
 
 // SetSummarySettings is the resolver for the setSummarySettings field.
-func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles *bool, length *model.StoryLength) (*model.SummarySettings, error) {
+func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles *bool, length *model.StoryLength, rewriteMinutes *int, rewriteOnNewSite *bool, reserveAfter *int) (*model.SummarySettings, error) {
 	if !r.Summaries {
 		return nil, &gqlerror.Error{Message: "summaries are off", Extensions: map[string]any{"code": CodeBadRequest}}
 	}
@@ -29,6 +30,23 @@ func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles 
 	}
 	if length != nil {
 		settings.Length = strings.ToLower(string(*length))
+	}
+	if rewriteMinutes != nil {
+		if *rewriteMinutes < 0 || *rewriteMinutes > summary.MaxRewriteMinutes {
+			return nil, &gqlerror.Error{Message: fmt.Sprintf("rewriteMinutes is %d; it takes 0 to %d", *rewriteMinutes, summary.MaxRewriteMinutes),
+				Extensions: map[string]any{"code": CodeBadRequest}}
+		}
+		settings.RewriteMinutes = *rewriteMinutes
+	}
+	if rewriteOnNewSite != nil {
+		settings.RewriteOnNewSite = *rewriteOnNewSite
+	}
+	if reserveAfter != nil {
+		if *reserveAfter < 0 || *reserveAfter > 10_000 {
+			return nil, &gqlerror.Error{Message: fmt.Sprintf("reserveAfter is %d; it takes 0 (off) or a number of requests", *reserveAfter),
+				Extensions: map[string]any{"code": CodeBadRequest}}
+		}
+		settings.ReserveAfter = *reserveAfter
 	}
 	if err := summary.SaveSettings(ctx, r.Store, settings); err != nil {
 		return nil, err

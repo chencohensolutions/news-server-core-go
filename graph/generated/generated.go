@@ -153,7 +153,7 @@ type ComplexityRoot struct {
 		RenewCertificate   func(childComplexity int, csr string, keyProtection model.KeyProtection) int
 		SetGrouping        func(childComplexity int, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) int
 		SetSource          func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
-		SetSummarySettings func(childComplexity int, fullArticles *bool, length *model.StoryLength) int
+		SetSummarySettings func(childComplexity int, fullArticles *bool, length *model.StoryLength, rewriteMinutes *int, rewriteOnNewSite *bool, reserveAfter *int) int
 	}
 
 	Query struct {
@@ -259,8 +259,11 @@ type ComplexityRoot struct {
 	}
 
 	SummarySettings struct {
-		FullArticles func(childComplexity int) int
-		Length       func(childComplexity int) int
+		FullArticles     func(childComplexity int) int
+		Length           func(childComplexity int) int
+		ReserveAfter     func(childComplexity int) int
+		RewriteMinutes   func(childComplexity int) int
+		RewriteOnNewSite func(childComplexity int) int
 	}
 
 	Thread struct {
@@ -290,7 +293,7 @@ type MutationResolver interface {
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
 	SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) (*model.Grouping, error)
 	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
-	SetSummarySettings(ctx context.Context, fullArticles *bool, length *model.StoryLength) (*model.SummarySettings, error)
+	SetSummarySettings(ctx context.Context, fullArticles *bool, length *model.StoryLength, rewriteMinutes *int, rewriteOnNewSite *bool, reserveAfter *int) (*model.SummarySettings, error)
 }
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
@@ -820,7 +823,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Mutation.SetSummarySettings(childComplexity, args["fullArticles"].(*bool), args["length"].(*model.StoryLength)), true
+		return e.ComplexityRoot.Mutation.SetSummarySettings(childComplexity, args["fullArticles"].(*bool), args["length"].(*model.StoryLength), args["rewriteMinutes"].(*int), args["rewriteOnNewSite"].(*bool), args["reserveAfter"].(*int)), true
 
 	case "Query.article":
 		if e.ComplexityRoot.Query.Article == nil {
@@ -1273,6 +1276,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SummarySettings.Length(childComplexity), true
+	case "SummarySettings.reserveAfter":
+		if e.ComplexityRoot.SummarySettings.ReserveAfter == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummarySettings.ReserveAfter(childComplexity), true
+	case "SummarySettings.rewriteMinutes":
+		if e.ComplexityRoot.SummarySettings.RewriteMinutes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummarySettings.RewriteMinutes(childComplexity), true
+	case "SummarySettings.rewriteOnNewSite":
+		if e.ComplexityRoot.SummarySettings.RewriteOnNewSite == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummarySettings.RewriteOnNewSite(childComplexity), true
 
 	case "Thread.id":
 		if e.ComplexityRoot.Thread.ID == nil {
@@ -1844,7 +1865,8 @@ extend type Mutation {
   Changes how the summaries are written; the fields left out keep their value. Stories written from now on follow
   it. Summaries off fails with BAD_REQUEST in extensions.code.
   """
-  setSummarySettings(fullArticles: Boolean, length: StoryLength): SummarySettings!
+  setSummarySettings(fullArticles: Boolean, length: StoryLength, rewriteMinutes: Int, rewriteOnNewSite: Boolean,
+    reserveAfter: Int): SummarySettings!
 }
 
 type SummarySettings {
@@ -1856,6 +1878,18 @@ type SummarySettings {
   fullArticles: Boolean!
   "How long a generated story is (default MEDIUM). Stories are written at it from the next round."
   length: StoryLength!
+  """
+  The least minutes between two versions of a story (default 30): the reports that join it meanwhile wait and go in
+  together, which saves requests on busy stories. 0 writes it again on every change; at most 240.
+  """
+  rewriteMinutes: Int!
+  "A site that wasn't in the story joining writes it again at once, rewriteMinutes or not (default false)."
+  rewriteOnNewSite: Boolean!
+  """
+  After this many of the day's Gemini requests, only new stories are written, not new versions of written ones
+  (default 300); 0 is off. Takes 0 to the daily budget.
+  """
+  reserveAfter: Int!
 }
 
 "How long a generated story is: its sentences, more within the range the more sites cover it."
@@ -2346,6 +2380,12 @@ func (ec *executionContext) childFields_SummarySettings(ctx context.Context, fie
 		return ec.fieldContext_SummarySettings_fullArticles(ctx, field)
 	case "length":
 		return ec.fieldContext_SummarySettings_length(ctx, field)
+	case "rewriteMinutes":
+		return ec.fieldContext_SummarySettings_rewriteMinutes(ctx, field)
+	case "rewriteOnNewSite":
+		return ec.fieldContext_SummarySettings_rewriteOnNewSite(ctx, field)
+	case "reserveAfter":
+		return ec.fieldContext_SummarySettings_reserveAfter(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type SummarySettings", field.Name)
 }
@@ -2639,6 +2679,30 @@ func (ec *executionContext) field_Mutation_setSummarySettings_args(ctx context.C
 		return nil, err
 	}
 	args["length"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "rewriteMinutes",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["rewriteMinutes"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "rewriteOnNewSite",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["rewriteOnNewSite"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "reserveAfter",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["reserveAfter"] = arg4
 	return args, nil
 }
 
@@ -4657,7 +4721,7 @@ func (ec *executionContext) _Mutation_setSummarySettings(ctx context.Context, fi
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().SetSummarySettings(ctx, fc.Args["fullArticles"].(*bool), fc.Args["length"].(*model.StoryLength))
+			return ec.Resolvers.Mutation().SetSummarySettings(ctx, fc.Args["fullArticles"].(*bool), fc.Args["length"].(*model.StoryLength), fc.Args["rewriteMinutes"].(*int), fc.Args["rewriteOnNewSite"].(*bool), fc.Args["reserveAfter"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
@@ -6648,6 +6712,75 @@ func (ec *executionContext) _SummarySettings_length(ctx context.Context, field g
 }
 func (ec *executionContext) fieldContext_SummarySettings_length(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type StoryLength does not have child fields"))
+}
+
+func (ec *executionContext) _SummarySettings_rewriteMinutes(ctx context.Context, field graphql.CollectedField, obj *model.SummarySettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummarySettings_rewriteMinutes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RewriteMinutes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummarySettings_rewriteMinutes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _SummarySettings_rewriteOnNewSite(ctx context.Context, field graphql.CollectedField, obj *model.SummarySettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummarySettings_rewriteOnNewSite(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RewriteOnNewSite, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummarySettings_rewriteOnNewSite(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _SummarySettings_reserveAfter(ctx context.Context, field graphql.CollectedField, obj *model.SummarySettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummarySettings_reserveAfter(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ReserveAfter, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummarySettings_reserveAfter(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type Int does not have child fields"))
 }
 
 func (ec *executionContext) _Thread_id(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
@@ -10009,6 +10142,21 @@ func (ec *executionContext) _SummarySettings(ctx context.Context, sel ast.Select
 			}
 		case "length":
 			out.Values[i] = ec._SummarySettings_length(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "rewriteMinutes":
+			out.Values[i] = ec._SummarySettings_rewriteMinutes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "rewriteOnNewSite":
+			out.Values[i] = ec._SummarySettings_rewriteOnNewSite(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "reserveAfter":
+			out.Values[i] = ec._SummarySettings_reserveAfter(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

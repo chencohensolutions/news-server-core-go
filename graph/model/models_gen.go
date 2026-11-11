@@ -239,6 +239,14 @@ type SummarySettings struct {
 	FullArticles bool `json:"fullArticles"`
 	// How long a generated story is (default MEDIUM). Stories are written at it from the next round.
 	Length StoryLength `json:"length"`
+	// The least minutes between two versions of a story (default 30): the reports that join it meanwhile wait and go in
+	// together, which saves requests on busy stories. 0 writes it again on every change; at most 240.
+	RewriteMinutes int `json:"rewriteMinutes"`
+	// A site that wasn't in the story joining writes it again at once, rewriteMinutes or not (default false).
+	RewriteOnNewSite bool `json:"rewriteOnNewSite"`
+	// After this many of the day's Gemini requests, only new stories are written, not new versions of written ones
+	// (default 300); 0 is off. Takes 0 to the daily budget.
+	ReserveAfter int `json:"reserveAfter"`
 }
 
 type Thread struct {

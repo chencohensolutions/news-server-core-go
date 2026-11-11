@@ -13,7 +13,8 @@ extend type Mutation {
   Changes how the summaries are written; the fields left out keep their value. Stories written from now on follow
   it. Summaries off fails with BAD_REQUEST in extensions.code.
   """
-  setSummarySettings(fullArticles: Boolean, length: StoryLength): SummarySettings!
+  setSummarySettings(fullArticles: Boolean, length: StoryLength, rewriteMinutes: Int, rewriteOnNewSite: Boolean,
+    reserveAfter: Int): SummarySettings!
 }
 
 type SummarySettings {
@@ -25,6 +26,18 @@ type SummarySettings {
   fullArticles: Boolean!
   "How long a generated story is (default MEDIUM). Stories are written at it from the next round."
   length: StoryLength!
+  """
+  The least minutes between two versions of a story (default 30): the reports that join it meanwhile wait and go in
+  together, which saves requests on busy stories. 0 writes it again on every change; at most 240.
+  """
+  rewriteMinutes: Int!
+  "A site that wasn't in the story joining writes it again at once, rewriteMinutes or not (default false)."
+  rewriteOnNewSite: Boolean!
+  """
+  After this many of the day's Gemini requests, only new stories are written, not new versions of written ones
+  (default 300); 0 is off. Takes 0 to the daily budget.
+  """
+  reserveAfter: Int!
 }
 
 "How long a generated story is: its sentences, more within the range the more sites cover it."

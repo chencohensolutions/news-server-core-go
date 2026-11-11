@@ -189,6 +189,7 @@ func (w *Writer) Status() Status {
 type Result struct {
 	Written int // story summaries written
 	Waiting int // changed stories left for the next run
+	Held    int // changed stories written lately, left until RewriteMinutes pass
 }
 
 // StoryKey names a story by its reports: a story that gains or loses a report is a new story to summarize.
@@ -265,11 +266,38 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	if err != nil {
 		return result, err
 	}
+	settings, err := LoadSettings(ctx, w.Store)
+	if err != nil {
+		return result, err
+	}
+	written, err := Summaries(ctx, w.Store)
+	if err != nil {
+		return result, err
+	}
+	gap := time.Duration(settings.RewriteMinutes) * time.Minute
+	usedToday, err := w.Store.GeminiRequests(ctx, Day(now))
+	if err != nil {
+		return result, err
+	}
+	reserve := settings.ReserveAfter > 0 && usedToday >= settings.ReserveAfter
 	var changed []stories.Story
 	for _, s := range window {
-		if _, ok := saved[StoryKey(s)]; !ok {
-			changed = append(changed, s)
+		if _, ok := saved[StoryKey(s)]; ok {
+			continue
 		}
+		prev := previous(s, written)
+		switch {
+		case prev == nil:
+		case reserve:
+			// Past the reserve mark only new stories are written; new versions wait for tomorrow's budget.
+			result.Held++
+			continue
+		case gap > 0 && now.Sub(prev.WrittenAt) < gap && !(settings.RewriteOnNewSite && newSite(s, prev)):
+			// A story written lately waits for its next version: the reports joining it meanwhile go in together.
+			result.Held++
+			continue
+		}
+		changed = append(changed, s)
 	}
 	// The most reported first.
 	sort.SliceStable(changed, func(i, j int) bool { return len(changed[i].Reports) > len(changed[j].Reports) })
@@ -318,6 +346,26 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	return result, w.Store.PruneSummaries(ctx, keep, since)
 }
 
+// newSite says s has a report of a site prev wasn't written from.
+func newSite(s stories.Story, prev *StorySummary) bool {
+	before := map[string]bool{}
+	for _, url := range reportsOf(*prev) {
+		before[url] = true
+	}
+	sites := map[string]bool{}
+	for _, r := range s.Reports {
+		if before[r.URL] {
+			sites[r.SourceID] = true
+		}
+	}
+	for _, r := range s.Reports {
+		if !sites[r.SourceID] {
+			return true
+		}
+	}
+	return false
+}
+
 // runsLeft is how many runs start before the free tier's day ends (midnight Pacific time).
 func (w *Writer) runsLeft(now time.Time) int {
 	pacific, err := time.LoadLocation("America/Los_Angeles")
@@ -353,6 +401,13 @@ func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json
 		}
 		start := time.Now()
 		answer, usage, err := w.Gemini.Generate(ctx, req)
+		if errors.Is(err, gemini.ErrUnavailable) {
+			// Busy is Google's failure, not a request of the quota. Counted first all the same: a stop mid-request
+			// errs toward the budget.
+			if err := w.Store.UncountGeminiRequest(ctx, day); err != nil {
+				return nil, err
+			}
+		}
 		if errors.Is(err, gemini.ErrUnavailable) && try < len(busyWaits) {
 			w.logf("summaries: %v; trying again in %s", err, busyWaits[try])
 			if err := w.sleep(ctx, busyWaits[try]); err != nil {

@@ -196,5 +196,6 @@ func SummarySettingsOf(s *summary.Settings) *SummarySettings {
 	if s == nil {
 		return nil
 	}
-	return &SummarySettings{FullArticles: s.FullArticles, Length: StoryLength(strings.ToUpper(s.Length))}
+	return &SummarySettings{FullArticles: s.FullArticles, Length: StoryLength(strings.ToUpper(s.Length)), RewriteMinutes: s.RewriteMinutes,
+		RewriteOnNewSite: s.RewriteOnNewSite, ReserveAfter: s.ReserveAfter}
 }

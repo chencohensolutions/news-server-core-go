@@ -96,10 +96,20 @@ type Settings struct {
 	FullArticles bool `json:"fullArticles"`
 	// Length is how long a story is written: "short", "medium", "long" or "full" (lengths).
 	Length string `json:"length"`
+	// RewriteMinutes is the least time between two versions of a story: the reports that join it meanwhile wait
+	// for the next. 0 writes it again on every change.
+	RewriteMinutes int `json:"rewriteMinutes"`
+	// RewriteOnNewSite writes a story again at once when a site that wasn't in it joins, RewriteMinutes or not.
+	RewriteOnNewSite bool `json:"rewriteOnNewSite"`
+	// ReserveAfter is the day's requests after which only new stories are written, not new versions; 0 is off.
+	ReserveAfter int `json:"reserveAfter"`
 }
 
+// MaxRewriteMinutes is the most RewriteMinutes takes.
+const MaxRewriteMinutes = 240
+
 // DefaultSettings are the settings before the app changes them.
-var DefaultSettings = Settings{FullArticles: true, Length: "medium"}
+var DefaultSettings = Settings{FullArticles: true, Length: "medium", RewriteMinutes: 30, ReserveAfter: 300}
 
 // storyLength is a story's sentences at a length: from min to max, and up to newMax new ones in an update; perRequest
 // stories in one request, fewer for longer stories, since a long answer is where the model cuts sentences short.

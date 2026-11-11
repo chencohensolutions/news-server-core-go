@@ -1,9 +1,13 @@
 package summary
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/chencohensolutions/news-server-core-go/scrape"
 )
 
 func TestArticleTextDropsWhatIsNotTheArticle(t *testing.T) {
@@ -90,5 +94,45 @@ func TestTheLengthSetsTheSentences(t *testing.T) {
 	}
 	if lengthOf("nope") != lengths["medium"] {
 		t.Error("an unknown length isn't medium")
+	}
+}
+
+func TestAStoryWrittenLatelyWaitsForItsNextVersion(t *testing.T) {
+	w, fake, found := setup(t)
+	ctx := context.Background()
+	if err := SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", RewriteMinutes: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	// Another report of a site already in it, 10 minutes later: held.
+	more := scrape.ArticleSummary{SourceID: "siteh", URL: "https://siteh/rain2", Title: "עוד גשם"}
+	w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{more}, now)
+	found[0].Reports = append(found[0].Reports, more)
+	w.Now = func() time.Time { return now.Add(10 * time.Minute) }
+	result, err := w.Run(ctx, found)
+	if err != nil || result.Held != 1 || fake.count() != 1 {
+		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
+	}
+	// A new site at once, when that's set.
+	SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", RewriteMinutes: 30, RewriteOnNewSite: true})
+	if result, _ := w.Run(ctx, found); result.Held != 1 {
+		t.Fatalf("same site: %+v", result)
+	}
+	siteg := scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/rain", Title: "גשם"}
+	w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{siteg}, now)
+	found[0].Reports = append(found[0].Reports, siteg)
+	if result, _ := w.Run(ctx, found); result.Held != 0 || fake.count() != 2 {
+		t.Fatalf("new site: %+v, %d requests", result, fake.count())
+	}
+	// Past the reserve: new versions wait, whatever the time.
+	SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", ReserveAfter: 2})
+	another := scrape.ArticleSummary{SourceID: "sited", URL: "https://sited/rain", Title: "גשם"}
+	w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{another}, now)
+	found[0].Reports = append(found[0].Reports, another)
+	w.Now = func() time.Time { return now.Add(2 * time.Hour) }
+	if result, _ := w.Run(ctx, found); result.Held != 1 || fake.count() != 2 {
+		t.Fatalf("reserve: %+v, %d requests", result, fake.count())
 	}
 }
