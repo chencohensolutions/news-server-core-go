@@ -380,15 +380,16 @@ func TestTheAppChangesTheSummarySettings(t *testing.T) {
 	}
 	env.api.Summaries = true
 	resp = mustQuery(t, env, `{ summarySettings { fullArticles } }`, nil)
-	if got := string(resp.Data["summarySettings"]); got != `{"fullArticles":true}` {
+	resp = mustQuery(t, env, `{ summarySettings { fullArticles length } }`, nil)
+	if got := string(resp.Data["summarySettings"]); got != `{"fullArticles":true,"length":"MEDIUM"}` {
 		t.Fatalf("default: %s", got)
 	}
-	resp = mustQuery(t, env, `mutation { setSummarySettings(fullArticles: false) { fullArticles } }`, nil)
-	if got := string(resp.Data["setSummarySettings"]); got != `{"fullArticles":false}` {
+	resp = mustQuery(t, env, `mutation { setSummarySettings(fullArticles: false, length: FULL) { fullArticles length } }`, nil)
+	if got := string(resp.Data["setSummarySettings"]); got != `{"fullArticles":false,"length":"FULL"}` {
 		t.Fatalf("set: %s %+v", got, resp.Errors)
 	}
 	settings, err := summary.LoadSettings(context.Background(), env.db)
-	if err != nil || settings.FullArticles {
+	if err != nil || settings.FullArticles || settings.Length != "full" {
 		t.Fatalf("saved: %+v %v", settings, err)
 	}
 }

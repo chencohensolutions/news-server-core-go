@@ -15,7 +15,7 @@ extend type Mutation {
   Changes how the summaries are written; the fields left out keep their value. Stories written from now on follow
   it. Summaries off fails with BAD_REQUEST in extensions.code.
   """
-  setSummarySettings(fullArticles: Boolean): SummarySettings!
+  setSummarySettings(fullArticles: Boolean, length: StoryLength): SummarySettings!
 }
 
 type SummarySettings {
@@ -25,6 +25,20 @@ type SummarySettings {
   characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
   """
   fullArticles: Boolean!
+  "How long a generated story is (default MEDIUM). Stories are written at it from the next round."
+  length: StoryLength!
+}
+
+"How long a generated story is: its sentences, more within the range the more sites cover it."
+enum StoryLength {
+  "2 to 6 sentences; an update adds up to 4."
+  SHORT
+  "3 to 10; an update adds up to 6."
+  MEDIUM
+  "5 to 15; an update adds up to 8."
+  LONG
+  "No limit: every fact the articles give, each once. Fewer stories a request, so more requests."
+  FULL
 }
 
 extend type ServerInfo {

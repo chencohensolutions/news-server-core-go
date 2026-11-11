@@ -7,6 +7,7 @@ package resolver
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/graph/generated"
@@ -17,7 +18,7 @@ import (
 )
 
 // SetSummarySettings is the resolver for the setSummarySettings field.
-func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles *bool) (*model.SummarySettings, error) {
+func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles *bool, length *model.StoryLength) (*model.SummarySettings, error) {
 	if !r.Summaries {
 		return nil, &gqlerror.Error{Message: "summaries are off", Extensions: map[string]any{"code": CodeBadRequest}}
 	}
@@ -28,10 +29,13 @@ func (r *mutationResolver) SetSummarySettings(ctx context.Context, fullArticles 
 	if fullArticles != nil {
 		settings.FullArticles = *fullArticles
 	}
+	if length != nil {
+		settings.Length = strings.ToLower(string(*length))
+	}
 	if err := summary.SaveSettings(ctx, r.Store, settings); err != nil {
 		return nil, err
 	}
-	return &model.SummarySettings{FullArticles: settings.FullArticles}, nil
+	return summarySettings(settings), nil
 }
 
 // Digest is the resolver for the digest field.
@@ -60,7 +64,7 @@ func (r *queryResolver) SummarySettings(ctx context.Context) (*model.SummarySett
 	if err != nil {
 		return nil, err
 	}
-	return &model.SummarySettings{FullArticles: settings.FullArticles}, nil
+	return summarySettings(settings), nil
 }
 
 // StorySummary returns generated.StorySummaryResolver implementation.

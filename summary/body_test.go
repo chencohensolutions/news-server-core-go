@@ -80,3 +80,15 @@ func TestCheckPlacingRefusesALazyAnswer(t *testing.T) {
 		t.Errorf("3 alone: %v", err)
 	}
 }
+
+func TestTheLengthSetsTheSentences(t *testing.T) {
+	if got := storiesSystem("medium"); !strings.Contains(got, "3 to 10 sentences") || !strings.Contains(got, "0 to 6 sentences") {
+		t.Errorf("medium:\n%s", got)
+	}
+	if got := storiesSystem("full"); !strings.Contains(got, "as many sentences as it takes") || strings.Contains(got, "%!") {
+		t.Errorf("full:\n%s", got)
+	}
+	if lengthOf("nope") != lengths["medium"] {
+		t.Error("an unknown length isn't medium")
+	}
+}

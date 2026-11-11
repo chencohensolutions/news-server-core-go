@@ -94,10 +94,35 @@ func containsAny(s string, parts []string) bool {
 type Settings struct {
 	// FullArticles sends each report's whole body (cleaned, up to 4,000 characters) instead of its first 600.
 	FullArticles bool `json:"fullArticles"`
+	// Length is how long a story is written: "short", "medium", "long" or "full" (lengths).
+	Length string `json:"length"`
 }
 
 // DefaultSettings are the settings before the app changes them.
-var DefaultSettings = Settings{FullArticles: true}
+var DefaultSettings = Settings{FullArticles: true, Length: "medium"}
+
+// storyLength is a story's sentences at a length: from min to max, and up to newMax new ones in an update; perRequest
+// stories in one request, fewer for longer stories, since a long answer is where the model cuts sentences short.
+type storyLength struct{ min, max, newMax, perRequest int }
+
+var lengths = map[string]storyLength{
+	"short":  {2, 6, 4, maxStories},
+	"medium": {3, 10, 6, 8},
+	"long":   {5, 15, 8, 5},
+	// full has no most: as many sentences as the facts take. Few stories a request, so the answer isn't cut.
+	"full": {2, 0, 0, 4},
+}
+
+// Lengths are the lengths Settings.Length takes, shortest first.
+var Lengths = []string{"short", "medium", "long", "full"}
+
+// lengthOf is length's sentences; an unknown one is medium.
+func lengthOf(length string) storyLength {
+	if l, ok := lengths[length]; ok {
+		return l
+	}
+	return lengths["medium"]
+}
 
 const settingsKey = "summaries"
 
@@ -109,6 +134,9 @@ func LoadSettings(ctx context.Context, db *store.Store) (Settings, error) {
 		return settings, err
 	}
 	err = json.Unmarshal(data, &settings)
+	if _, ok := lengths[settings.Length]; !ok {
+		settings.Length = DefaultSettings.Length
+	}
 	return settings, err
 }
 

@@ -1,5 +1,7 @@
 package summary
 
+import "fmt"
+
 // The instructions are in English, which the model follows best; everything it writes is Hebrew.
 
 const writingRules = `Writing rules, all of them strict:
@@ -15,9 +17,22 @@ const writingRules = `Writing rules, all of them strict:
 - Write Hebrew abbreviations with the Hebrew marks, as the input does: צה״ל, יו״ר, ג׳ (U+05F4 and U+05F3), never
   with " or '. Write quotes with „ and ”.`
 
-const storiesSystem = `You write a personal newspaper from Israeli news sites. The input is several stories; each
+// storiesSystem is the stories' instructions for a length (Settings.Length).
+func storiesSystem(length string) string {
+	l := lengthOf(length)
+	count := fmt.Sprintf("%d to %d sentences: the more sites cover it and the more facts they give, the more\n"+
+		"  sentences, up to the most; never filler or a fact twice to reach a count", l.min, l.max)
+	news := fmt.Sprintf("0 to %d sentences", l.newMax)
+	if l.max == 0 {
+		count = "as many sentences as it takes to state every fact the articles give, each fact once; no filler"
+		news = "as many sentences as the new facts take"
+	}
+	return fmt.Sprintf(storiesInstructions, count, news)
+}
+
+const storiesInstructions = `You write a personal newspaper from Israeli news sites. The input is several stories; each
 story is a few articles from different sites about one event, each with an id in brackets, its site, time, title,
-subtitle and the start of its body.
+subtitle and its body (the whole article, or its start).
 
 For every story, write:
 - "unrelated": the story's articles that are clearly about a different event than the rest (the grouping can be
@@ -27,9 +42,9 @@ For every story, write:
   to it belongs to the story. When unsure, it belongs. Don't use unrelated ones anywhere in the story. Usually none:
   then an empty list.
 - "title": a short factual Hebrew headline for the whole story.
-- "sentences": the story as 2 to 6 sentences.
+- "sentences": the story as %s.
 - "new": when the story shows its previous version ("הגרסה הקודמת"), the facts of the articles that are not in it:
-  what happened since, as 0 to 4 sentences, each fact once, with sources like the sentences. Facts the previous
+  what happened since, as %s, each fact once, with sources like the sentences. Facts the previous
   version has, in other words, are not new. Without a previous version: an empty list.
 - "contradictions": only where two sites give different values for the same fact: a number, a name, a date, a time
   or a place. Two different facts are not a contradiction, nor two breakdowns that can both be true, nor a fact only

@@ -96,3 +96,8 @@ func (r *Resolver) grouping() *model.Grouping {
 	return &model.Grouping{Method: method, GeminiAvailable: r.Grouping.GeminiAvailable(), Model: r.StoryModel, Text: model.StoryText(strings.ToUpper(g.Text.String())), Strictness: g.Strictness,
 		Days: g.Days, Threshold: math.Round(float64(threshold)*1e4) / 1e4}
 }
+
+// summarySettings is the summaries' settings as the API shows them.
+func summarySettings(s summary.Settings) *model.SummarySettings {
+	return &model.SummarySettings{FullArticles: s.FullArticles, Length: model.StoryLength(strings.ToUpper(s.Length))}
+}

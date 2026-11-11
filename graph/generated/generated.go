@@ -158,7 +158,7 @@ type ComplexityRoot struct {
 		RenewCertificate   func(childComplexity int, csr string, keyProtection model.KeyProtection) int
 		SetGrouping        func(childComplexity int, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) int
 		SetSource          func(childComplexity int, id string, enabled *bool, feed *bool, waitMs *int) int
-		SetSummarySettings func(childComplexity int, fullArticles *bool) int
+		SetSummarySettings func(childComplexity int, fullArticles *bool, length *model.StoryLength) int
 	}
 
 	Query struct {
@@ -265,6 +265,7 @@ type ComplexityRoot struct {
 
 	SummarySettings struct {
 		FullArticles func(childComplexity int) int
+		Length       func(childComplexity int) int
 	}
 
 	Thread struct {
@@ -292,7 +293,7 @@ type MutationResolver interface {
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
 	SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) (*model.Grouping, error)
 	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
-	SetSummarySettings(ctx context.Context, fullArticles *bool) (*model.SummarySettings, error)
+	SetSummarySettings(ctx context.Context, fullArticles *bool, length *model.StoryLength) (*model.SummarySettings, error)
 }
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
@@ -836,7 +837,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Mutation.SetSummarySettings(childComplexity, args["fullArticles"].(*bool)), true
+		return e.ComplexityRoot.Mutation.SetSummarySettings(childComplexity, args["fullArticles"].(*bool), args["length"].(*model.StoryLength)), true
 
 	case "Query.article":
 		if e.ComplexityRoot.Query.Article == nil {
@@ -1283,6 +1284,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SummarySettings.FullArticles(childComplexity), true
+	case "SummarySettings.length":
+		if e.ComplexityRoot.SummarySettings.Length == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SummarySettings.Length(childComplexity), true
 
 	case "Thread.id":
 		if e.ComplexityRoot.Thread.ID == nil {
@@ -1846,7 +1853,7 @@ extend type Mutation {
   Changes how the summaries are written; the fields left out keep their value. Stories written from now on follow
   it. Summaries off fails with BAD_REQUEST in extensions.code.
   """
-  setSummarySettings(fullArticles: Boolean): SummarySettings!
+  setSummarySettings(fullArticles: Boolean, length: StoryLength): SummarySettings!
 }
 
 type SummarySettings {
@@ -1856,6 +1863,20 @@ type SummarySettings {
   characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
   """
   fullArticles: Boolean!
+  "How long a generated story is (default MEDIUM). Stories are written at it from the next round."
+  length: StoryLength!
+}
+
+"How long a generated story is: its sentences, more within the range the more sites cover it."
+enum StoryLength {
+  "2 to 6 sentences; an update adds up to 4."
+  SHORT
+  "3 to 10; an update adds up to 6."
+  MEDIUM
+  "5 to 15; an update adds up to 8."
+  LONG
+  "No limit: every fact the articles give, each once. Fewer stories a request, so more requests."
+  FULL
 }
 
 extend type ServerInfo {
@@ -2329,6 +2350,8 @@ func (ec *executionContext) childFields_SummarySettings(ctx context.Context, fie
 	switch field.Name {
 	case "fullArticles":
 		return ec.fieldContext_SummarySettings_fullArticles(ctx, field)
+	case "length":
+		return ec.fieldContext_SummarySettings_length(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type SummarySettings", field.Name)
 }
@@ -2610,6 +2633,14 @@ func (ec *executionContext) field_Mutation_setSummarySettings_args(ctx context.C
 		return nil, err
 	}
 	args["fullArticles"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "length",
+		func(ctx context.Context, v any) (*model.StoryLength, error) {
+			return ec.unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["length"] = arg1
 	return args, nil
 }
 
@@ -4683,7 +4714,7 @@ func (ec *executionContext) _Mutation_setSummarySettings(ctx context.Context, fi
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().SetSummarySettings(ctx, fc.Args["fullArticles"].(*bool))
+			return ec.Resolvers.Mutation().SetSummarySettings(ctx, fc.Args["fullArticles"].(*bool), fc.Args["length"].(*model.StoryLength))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
@@ -6651,6 +6682,29 @@ func (ec *executionContext) _SummarySettings_fullArticles(ctx context.Context, f
 }
 func (ec *executionContext) fieldContext_SummarySettings_fullArticles(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _SummarySettings_length(ctx context.Context, field graphql.CollectedField, obj *model.SummarySettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SummarySettings_length(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Length, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.StoryLength) graphql.Marshaler {
+			return ec.marshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SummarySettings_length(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type StoryLength does not have child fields"))
 }
 
 func (ec *executionContext) _Thread_id(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
@@ -10028,6 +10082,11 @@ func (ec *executionContext) _SummarySettings(ctx context.Context, sel ast.Select
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "length":
+			out.Values[i] = ec._SummarySettings_length(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -10980,6 +11039,16 @@ func (ec *executionContext) marshalNStory2ᚖgithubᚗcomᚋchencohensolutions�
 	return ec._Story(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, v any) (model.StoryLength, error) {
+	var res model.StoryLength
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNStoryLength2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, sel ast.SelectionSet, v model.StoryLength) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNStoryList2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryList(ctx context.Context, sel ast.SelectionSet, v model.StoryList) graphql.Marshaler {
 	return ec._StoryList(ctx, sel, &v)
 }
@@ -11427,6 +11496,22 @@ func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohens
 		return graphql.Null
 	}
 	return ec._ServerDiscovery(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, v any) (*model.StoryLength, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.StoryLength)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, sel ast.SelectionSet, v *model.StoryLength) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
 }
 
 func (ec *executionContext) marshalOStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐStorySummary(ctx context.Context, sel ast.SelectionSet, v *model.StorySummary) graphql.Marshaler {

@@ -661,7 +661,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			}
 			b.WriteString("\n")
 		}
-		if len(byID) == maxStories || len(byID) > 0 && len([]rune(prompt.String()))+len([]rune(b.String())) > limit {
+		if len(byID) == lengthOf(settings.Length).perRequest || len(byID) > 0 && len([]rune(prompt.String()))+len([]rune(b.String())) > limit {
 			break
 		}
 		prompt.WriteString(b.String())
@@ -669,7 +669,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		prevOf[id] = prev
 	}
 	asked = len(byID)
-	raw, err := w.send(ctx, day, gemini.Request{System: storiesSystem, Prompt: prompt.String(), Schema: storiesSchema})
+	raw, err := w.send(ctx, day, gemini.Request{System: storiesSystem(settings.Length), Prompt: prompt.String(), Schema: storiesSchema})
 	if err != nil {
 		return 0, asked, err
 	}

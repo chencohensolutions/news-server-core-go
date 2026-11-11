@@ -116,6 +116,10 @@ func setup(t *testing.T) (*Writer, *fakeGemini, []stories.Story) {
 	w := &Writer{Gemini: fake.serve(t), Store: db, Now: func() time.Time { return now }, Log: t.Logf,
 		Sleep: func(context.Context, time.Duration) error { return nil }, ThreadsEvery: -1,
 		SiteName: func(id string) string { return map[string]string{"siteh": "siteh", "sitee": "SiteE"}[id] }}
+	// Short stories: 12 a request, which the tests of the requests count on.
+	if err := SaveSettings(context.Background(), db, Settings{FullArticles: true, Length: "short"}); err != nil {
+		t.Fatal(err)
+	}
 	found := []stories.Story{
 		{Reports: []scrape.ArticleSummary{rainSiteh, rainSiteE}},
 		{Reports: []scrape.ArticleSummary{budgetSited, budgetSiteg}},

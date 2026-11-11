@@ -238,6 +238,8 @@ type SummarySettings struct {
 	// this", other news), a paywall stub, or paragraphs another site of the story has word for word, and up to 4,000
 	// characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
 	FullArticles bool `json:"fullArticles"`
+	// How long a generated story is (default MEDIUM). Stories are written at it from the next round.
+	Length StoryLength `json:"length"`
 }
 
 type Thread struct {
@@ -447,6 +449,70 @@ func (e *KeyProtection) UnmarshalJSON(b []byte) error {
 }
 
 func (e KeyProtection) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// How long a generated story is: its sentences, more within the range the more sites cover it.
+type StoryLength string
+
+const (
+	// 2 to 6 sentences; an update adds up to 4.
+	StoryLengthShort StoryLength = "SHORT"
+	// 3 to 10; an update adds up to 6.
+	StoryLengthMedium StoryLength = "MEDIUM"
+	// 5 to 15; an update adds up to 8.
+	StoryLengthLong StoryLength = "LONG"
+	// No limit: every fact the articles give, each once. Fewer stories a request, so more requests.
+	StoryLengthFull StoryLength = "FULL"
+)
+
+var AllStoryLength = []StoryLength{
+	StoryLengthShort,
+	StoryLengthMedium,
+	StoryLengthLong,
+	StoryLengthFull,
+}
+
+func (e StoryLength) IsValid() bool {
+	switch e {
+	case StoryLengthShort, StoryLengthMedium, StoryLengthLong, StoryLengthFull:
+		return true
+	}
+	return false
+}
+
+func (e StoryLength) String() string {
+	return string(e)
+}
+
+func (e *StoryLength) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = StoryLength(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid StoryLength", str)
+	}
+	return nil
+}
+
+func (e StoryLength) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *StoryLength) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e StoryLength) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil
