@@ -21,8 +21,8 @@ const (
 	// DefaultThreadsEvery is how often stories are linked into threads.
 	DefaultThreadsEvery = 24 * time.Hour
 	// threadStories is the most new stories one linking request takes; threadRequests the most requests a linking.
-	threadStories  = 120
-	threadRequests = 3
+	threadStories  = 40
+	threadRequests = 8
 	// threadsShown is the most threads a request lists, latest updated first: years of them fit.
 	threadsShown = 3000
 	// linkedAtKey is where the latest linking's time is kept.
@@ -169,14 +169,13 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 		return false, err
 	}
 	var answer struct {
-		Links []struct {
+		Stories []struct {
 			Story   string   `json:"story"`
 			Threads []string `json:"threads"`
-		} `json:"links"`
+		} `json:"stories"`
 		NewThreads []struct {
-			Name    string   `json:"name"`
-			Summary string   `json:"summary"`
-			Stories []string `json:"stories"`
+			Name    string `json:"name"`
+			Summary string `json:"summary"`
 		} `json:"newThreads"`
 		Summaries []struct {
 			Thread  string `json:"thread"`
@@ -205,36 +204,53 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 			t.UpdatedAt = r.WrittenAt
 		}
 	}
-	for _, link := range answer.Links {
-		r, ok := storyOf[strings.TrimSpace(link.Story)]
+	// New threads by name: they exist once a story is in them.
+	// A "new" one named as an existing thread is that thread.
+	byName := map[string]store.Thread{}
+	for _, t := range threads {
+		byName[t.Name] = t
+	}
+	fresh := map[string]store.Thread{}
+	isNew := map[string]bool{}
+	for _, n := range answer.NewThreads {
+		name := strings.TrimSpace(n.Name)
+		if _, taken := fresh[name]; name == "" || taken {
+			continue
+		}
+		if t, ok := byName[name]; ok {
+			fresh[name] = t
+			continue
+		}
+		t := store.Thread{ID: newThreadID(), Name: name, Summary: strings.TrimSpace(n.Summary)}
+		fresh[name], isNew[t.ID] = t, true
+	}
+	// Each story Gemini decided on: its threads, existing by id or new by name; the ones it left out wait.
+	decided := map[string]bool{}
+	for _, d := range answer.Stories {
+		r, ok := storyOf[strings.TrimSpace(d.Story)]
 		if !ok {
 			continue
 		}
-		for _, ref := range link.Threads {
-			if t, ok := threadOf[strings.TrimSpace(ref)]; ok && !contains(placed[r.ID], t.ID) {
+		decided[r.ID] = true
+		for _, ref := range d.Threads {
+			ref = strings.TrimSpace(ref)
+			t, ok := threadOf[ref]
+			if !ok {
+				t, ok = fresh[ref]
+			}
+			if ok && !contains(placed[r.ID], t.ID) {
 				placed[r.ID] = append(placed[r.ID], t.ID)
 				touch(t, r)
 			}
 		}
 	}
 	created := 0
-	for _, n := range answer.NewThreads {
-		name := strings.TrimSpace(n.Name)
-		if name == "" {
-			continue
-		}
-		t := store.Thread{ID: newThreadID(), Name: name, Summary: strings.TrimSpace(n.Summary)}
-		members := 0
-		for _, ref := range n.Stories {
-			if r, ok := storyOf[strings.TrimSpace(ref)]; ok && !contains(placed[r.ID], t.ID) {
-				placed[r.ID] = append(placed[r.ID], t.ID)
-				touch(t, r)
-				members++
+	for name, t := range fresh {
+		if touched[t.ID] != nil {
+			if isNew[t.ID] {
+				created++
 			}
-		}
-		if members > 0 {
-			created++
-			threadOf[name] = t // its summary may come by name
+			threadOf[name] = t // its summary and relations come by name
 		}
 	}
 	for _, s := range answer.Summaries {
@@ -272,6 +288,9 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 	}
 	linked := 0
 	for _, r := range storyOf {
+		if !decided[r.ID] {
+			continue
+		}
 		if err := w.Store.LinkStory(ctx, r.ID, placed[r.ID]); err != nil {
 			return false, err
 		}
@@ -279,8 +298,12 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 			linked++
 		}
 	}
-	w.logf("threads: %d new stories, %d in threads; %d threads new, %d updated; %d related", len(storyOf), linked, created, len(touched)-created, related)
-	return more, nil
+	w.logf("threads: %d new stories, %d decided, %d in threads; %d threads new, %d updated; %d related", len(storyOf), len(decided), linked, created, len(touched)-created, related)
+	if len(decided) == 0 {
+		// Nothing decided: asking again now would get the same.
+		return false, nil
+	}
+	return more || len(decided) < len(storyOf), nil
 }
 
 func contains(list []string, s string) bool {

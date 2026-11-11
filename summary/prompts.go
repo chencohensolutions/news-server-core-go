@@ -120,12 +120,13 @@ lists the existing threads (id, name, how many stories and when, and the story s
 date, title and main facts).
 
 Answer:
-- "links": for each new story that continues existing threads, its id and the ids of those threads. A story can be
-  in several threads (a strike during a war is in both). It continues a thread only when it is a development of that
-  same affair, not just the same general subject.
-- "newThreads": affairs that start among the new stories and are likely to go on (an investigation opened, talks
-  begun, a war, an indictment): a short Hebrew "name" (2 to 5 words, like "פרשת הצוללות" or "המלחמה עם איראן"),
-  the "summary" so far, and the ids of its new stories. Never a thread that an existing one already is.
+- "stories": every new story, each with its id and its "threads": the ids of the existing threads it continues and
+  the names of new threads it starts or joins. A story can be in several threads (a strike during a war is in both).
+  It continues a thread only when it is a development of that same affair, not just the same general subject. An
+  empty list only for a one-time event.
+- "newThreads": the affairs that start among the new stories: a short Hebrew "name" (2 to 5 words, like
+  "פרשת הצוללות" or "המלחמה עם איראן"), exactly as the stories name it, and its "summary" so far. Never a thread that
+  an existing one already is.
 - "summaries": for every existing thread that got new stories, its id and the story so far, updated with them.
 - "related": threads that are separate affairs but bear on each other (a war and the strike during it, an
   investigation and the election it shapes): a thread, by its id or a new thread's name, and the threads related to
@@ -140,7 +141,7 @@ Use only ids from the input.`
 var threadsSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
-		"links": map[string]any{"type": "array", "items": map[string]any{
+		"stories": map[string]any{"type": "array", "items": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"story":   map[string]any{"type": "string"},
@@ -153,9 +154,8 @@ var threadsSchema = map[string]any{
 			"properties": map[string]any{
 				"name":    map[string]any{"type": "string"},
 				"summary": map[string]any{"type": "string"},
-				"stories": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			},
-			"required": []string{"name", "summary", "stories"},
+			"required": []string{"name", "summary"},
 		}},
 		"summaries": map[string]any{"type": "array", "items": map[string]any{
 			"type": "object",
@@ -174,5 +174,5 @@ var threadsSchema = map[string]any{
 			"required": []string{"thread", "related"},
 		}},
 	},
-	"required": []string{"links", "newThreads", "summaries", "related"},
+	"required": []string{"stories", "newThreads", "summaries", "related"},
 }

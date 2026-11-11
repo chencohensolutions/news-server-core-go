@@ -410,7 +410,7 @@ func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
 		t.Fatalf("threads %+v, %v", threads, err)
 	}
 	// Many to many: the weather thread has both stories, the budget thread one (n99 isn't in the input), and the
-	// unnamed one is none; links to threads that don't exist yet (t1, t9) are dropped.
+	// unnamed one is none; threads that don't exist yet (t1, t9) are dropped.
 	counts := map[string]int{}
 	for _, th := range threads {
 		counts[th.Name] = th.Stories
@@ -459,16 +459,18 @@ func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
 		t.Fatalf("second linking:\n%s", fake.prompts[3])
 	}
 	ths, err := w.Store.StoryThreads(ctx, "x")
-	if err != nil || len(ths) < 2 {
+	if err != nil || len(ths) == 0 {
 		t.Fatalf("x in %+v, %v", ths, err)
 	}
-	t1 := ths[0]
-	for _, th := range ths {
-		if th.Summary == "הסיפור עד כה, מעודכן." && th.UpdatedAt.Equal(later) {
-			t1 = th
-		}
+	// A new thread named as an existing one is that one: still two threads.
+	if all, _ := w.Store.Threads(ctx, 10); len(all) != 2 {
+		t.Fatalf("threads after %+v", all)
 	}
-	if t1.Summary != "הסיפור עד כה, מעודכן." || !t1.UpdatedAt.Equal(later) {
+	updated := false
+	for _, th := range ths {
+		updated = updated || th.Summary == "הסיפור עד כה, מעודכן." && th.UpdatedAt.Equal(later)
+	}
+	if !updated {
 		t.Fatalf("t1 after %+v", ths)
 	}
 }
