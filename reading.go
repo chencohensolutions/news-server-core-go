@@ -6,8 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,19 +23,16 @@ import (
 // openRefresher sets up reading the sites: their configs, the engine on the fetch client (with any packs'
 // transports), the database, and the sites' settings (found are the sites as the API lists them).
 func openRefresher(config auth.AppConfig, found []sites.Source) (*refresh.Refresher, *sites.Settings, error) {
-	dirs, err := scrape.SourceDirs(config.SourcesDir)
+	files, err := scrape.ReadSources(config.SourcesDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sites: %w", err)
 	}
 	var sources []*scrape.SourceConfig
 	var fetchSites []fetch.Site
-	for _, dir := range dirs {
-		if strings.HasPrefix(filepath.Base(dir), "_") {
-			continue
-		}
-		c, err := scrape.LoadConfig(dir)
+	for _, f := range files {
+		c, err := scrape.ParseConfig(f.Data)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", dir, err)
+			return nil, nil, fmt.Errorf("%s (%s): %w", f.ID, f.Origin, err)
 		}
 		sources = append(sources, c)
 		fetchSites = append(fetchSites, fetch.Site{ID: c.ID, Host: fetch.HostOf(c.BaseURL), Extra: c.HTTP.Extra})

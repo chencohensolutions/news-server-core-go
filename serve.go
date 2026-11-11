@@ -23,6 +23,7 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/gemini"
 	"github.com/chencohensolutions/news-server-core-go/graph/generated"
 	"github.com/chencohensolutions/news-server-core-go/graph/resolver"
+	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/sites"
 	"github.com/chencohensolutions/news-server-core-go/summary"
 	"github.com/vektah/gqlparser/v2/ast"
@@ -48,7 +49,7 @@ func serve(config auth.AppConfig) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Read %d sites from %s", len(found), config.SourcesDir)
+	log.Printf("Read %d sites from %s and the packs %v", len(found), config.SourcesDir, scrape.SourcePacks())
 	// Ctrl+C or a service stop removes the router's mapping before the process ends.
 	stopping, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

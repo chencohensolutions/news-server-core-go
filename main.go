@@ -11,6 +11,8 @@ import (
 
 	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/fetch"
+	"github.com/chencohensolutions/news-server-core-go/scrape"
+	"github.com/chencohensolutions/news-server-core-go/video"
 )
 
 const configPath = "config.json"
@@ -45,8 +47,13 @@ site tools (no config.json needed):
 func Main() {
 	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "--version") {
 		fmt.Println("news-server", version)
-		if packs := fetch.Transports(); len(packs) > 0 {
-			fmt.Println("packs:", strings.Join(packs, ", "))
+		for _, built := range []struct {
+			what  string
+			names []string
+		}{{"transports", fetch.Transports()}, {"sources", scrape.SourcePacks()}, {"video resolvers", video.Names()}} {
+			if len(built.names) > 0 {
+				fmt.Printf("packs' %s: %s\n", built.what, strings.Join(built.names, ", "))
+			}
 		}
 		return
 	}

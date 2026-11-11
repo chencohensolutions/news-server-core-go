@@ -1,15 +1,12 @@
-// Package sites reads the site configs (the news repo's sources/<id>/config.json). For now it reads only what
-// the API lists about each site; the full schema (docs/source-config.md in the news repo) comes with the engine
-// port.
+// Package sites reads the site configs (sources_dir's and the packs' <id>/config.json) for what the API lists about
+// each site, and keeps each site's settings.
 package sites
 
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
+
+	"github.com/chencohensolutions/news-server-core-go/scrape"
 )
 
 // Source is one news site.
@@ -22,41 +19,29 @@ type Source struct {
 	HasFeed bool `json:"-"`
 }
 
-// Load reads every dir/<id>/config.json, sorted by id. Folders whose name starts with "_" (the example) are
-// skipped. A config whose id isn't its folder's name is an error, as in the Kotlin engine's checks.
+// Load reads every site's config.json, from dir (sources_dir) and from the packs (scrape.ReadSources), sorted by
+// id. A config whose id isn't its folder's name is an error, as in the Kotlin engine's checks.
 func Load(dir string) ([]Source, error) {
-	entries, err := os.ReadDir(dir)
+	files, err := scrape.ReadSources(dir)
 	if err != nil {
 		return nil, fmt.Errorf("sites: %w (sources_dir in config.json)", err)
 	}
 	var found []Source
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), "_") || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name(), "config.json")
-		data, err := os.ReadFile(path)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
+	for _, f := range files {
 		var s Source
 		var feed struct {
 			Feed json.RawMessage `json:"feed"`
 		}
-		if err := json.Unmarshal(data, &s); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
+		if err := json.Unmarshal(f.Data, &s); err != nil {
+			return nil, fmt.Errorf("%s (%s): %w", f.ID, f.Origin, err)
 		}
-		if err := json.Unmarshal(data, &feed); err == nil && len(feed.Feed) > 0 && string(feed.Feed) != "null" {
+		if err := json.Unmarshal(f.Data, &feed); err == nil && len(feed.Feed) > 0 && string(feed.Feed) != "null" {
 			s.HasFeed = true
 		}
-		if s.ID != e.Name() {
-			return nil, fmt.Errorf("%s: id is %q, not the folder's name %q", path, s.ID, e.Name())
+		if s.ID != f.ID {
+			return nil, fmt.Errorf("%s (%s): id is %q, not the folder's name %q", f.ID, f.Origin, s.ID, f.ID)
 		}
 		found = append(found, s)
 	}
-	sort.Slice(found, func(i, j int) bool { return found[i].ID < found[j].ID })
 	return found, nil
 }
