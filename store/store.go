@@ -1,6 +1,6 @@
 // Package store keeps what the server read from the sites in one SQLite file (modernc.org/sqlite, no cgo): the
-// headlines with when each was first and last seen, the articles with the page each was read from (so a changed
-// config can read them again without a download), the articles whose download failed and when to try again, and
+// headlines with when each was first and last seen, the articles with the page each was read from until the archive
+// has it (so a changed config can read them again without a download), the articles whose download failed and when to try again, and
 // each site's last run.
 package store
 
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS articles (
 	url TEXT PRIMARY KEY,
 	source_id TEXT NOT NULL,
 	article TEXT NOT NULL,       -- scrape.Article as JSON
-	page TEXT NOT NULL,          -- the HTML it was read from
+	page TEXT NOT NULL,          -- the HTML it was read from; '' once the archive keeps it
 	fetched_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS failures (
@@ -295,6 +295,22 @@ func (s *Store) SaveArticle(ctx context.Context, a *scrape.Article, page string,
 		return err
 	}
 	return tx.Commit()
+}
+
+// DropPages empties the pages of the articles read at or before upTo (Unix milliseconds): the archive keeps them,
+// gzipped, and the server reads only the articles' text. It returns how many it emptied.
+func (s *Store) DropPages(ctx context.Context, upTo int64) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `UPDATE articles SET page = '' WHERE fetched_at <= ? AND page != ''`, upTo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// Vacuum gives the file's free space back to the disk.
+func (s *Store) Vacuum(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `VACUUM`)
+	return err
 }
 
 // Failure is how often in a row url's download failed and when it may be tried again; zero when it hasn't failed.
