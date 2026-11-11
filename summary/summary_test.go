@@ -166,7 +166,8 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	want := StorySummary{Title: "גשם כבד בצפון", WrittenAt: now,
 		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}},
 		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}},
-		Reports:        []string{rainSiteh.URL, rainSiteE.URL}, ID: StoryKey(found[0])}
+		Reports:        []string{rainSiteh.URL, rainSiteE.URL}, ID: StoryKey(found[0]),
+		Written: &Settings{FullArticles: true, Length: "short"}}
 	// A new story unfolds from its first version.
 	want.Updates = []Update{{At: now, Sentences: want.Sentences}}
 	if got, _ := json.Marshal(rain); string(got) != mustJSON(want) {

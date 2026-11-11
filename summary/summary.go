@@ -61,6 +61,8 @@ type StorySummary struct {
 	// Updates are how the story unfolded, oldest first: the first version's sentences, then each later version's new
 	// facts, carried from version to version.
 	Updates []Update `json:"updates,omitempty"`
+	// Written is the settings it was written with; nil for a story written before they were kept.
+	Written *Settings `json:"written,omitempty"`
 }
 
 // Update is what a version of a story added, and when it was written.
@@ -712,7 +714,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			}
 		}
 		summary := StorySummary{Title: strings.TrimSpace(a.Title), Sentences: ids.sentences(a.Sentences, own),
-			Contradictions: ids.sentences(ids.contradictions(a.Contradictions, own, s), own), Unrelated: unrelated, WrittenAt: now}
+			Contradictions: ids.sentences(ids.contradictions(a.Contradictions, own, s), own), Unrelated: unrelated, WrittenAt: now, Written: &settings}
 		if len(summary.Sentences) == 0 {
 			continue
 		}

@@ -99,5 +99,5 @@ func (r *Resolver) grouping() *model.Grouping {
 
 // summarySettings is the summaries' settings as the API shows them.
 func summarySettings(s summary.Settings) *model.SummarySettings {
-	return &model.SummarySettings{FullArticles: s.FullArticles, Length: model.StoryLength(strings.ToUpper(s.Length))}
+	return model.SummarySettingsOf(&s)
 }

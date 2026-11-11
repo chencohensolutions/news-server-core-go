@@ -213,6 +213,8 @@ type StorySummary struct {
 	// How the story unfolded, oldest first: what its first version said, then what each later version added (only the
 	// new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
 	Updates []*StoryUpdate `json:"updates"`
+	// The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026).
+	WrittenWith *SummarySettings `json:"writtenWith,omitempty"`
 	// The story's id, kept by its later versions.
 	ID string `json:"id"`
 	// The threads the story is in, latest updated first; none until the day's linking placed it.

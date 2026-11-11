@@ -249,6 +249,7 @@ type ComplexityRoot struct {
 		Unrelated      func(childComplexity int) int
 		Updates        func(childComplexity int) int
 		WrittenAt      func(childComplexity int) int
+		WrittenWith    func(childComplexity int) int
 	}
 
 	StoryUpdate struct {
@@ -1240,6 +1241,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StorySummary.WrittenAt(childComplexity), true
+	case "StorySummary.writtenWith":
+		if e.ComplexityRoot.StorySummary.WrittenWith == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.WrittenWith(childComplexity), true
 
 	case "StoryUpdate.at":
 		if e.ComplexityRoot.StoryUpdate.At == nil {
@@ -1909,6 +1916,8 @@ type StorySummary {
   new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
   """
   updates: [StoryUpdate!]!
+  "The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026)."
+  writtenWith: SummarySettings
 }
 
 "What one version of a story added, and when it was written."
@@ -2326,6 +2335,8 @@ func (ec *executionContext) childFields_StorySummary(ctx context.Context, field 
 		return ec.fieldContext_StorySummary_writtenAt(ctx, field)
 	case "updates":
 		return ec.fieldContext_StorySummary_updates(ctx, field)
+	case "writtenWith":
+		return ec.fieldContext_StorySummary_writtenWith(ctx, field)
 	case "id":
 		return ec.fieldContext_StorySummary_id(ctx, field)
 	case "threads":
@@ -6473,6 +6484,38 @@ func (ec *executionContext) fieldContext_StorySummary_updates(_ context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _StorySummary_writtenWith(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_writtenWith(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.WrittenWith, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SummarySettings) graphql.Marshaler {
+			return ec.marshalOSummarySettings2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑgoᚋgraphᚋmodelᚐSummarySettings(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_writtenWith(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StorySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SummarySettings(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _StorySummary_id(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -9941,6 +9984,8 @@ func (ec *executionContext) _StorySummary(ctx context.Context, sel ast.Selection
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "writtenWith":
+			out.Values[i] = ec._StorySummary_writtenWith(ctx, field, obj)
 		case "id":
 			out.Values[i] = ec._StorySummary_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {

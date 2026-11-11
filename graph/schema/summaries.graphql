@@ -64,6 +64,8 @@ type StorySummary {
   new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
   """
   updates: [StoryUpdate!]!
+  "The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026)."
+  writtenWith: SummarySettings
 }
 
 "What one version of a story added, and when it was written."
