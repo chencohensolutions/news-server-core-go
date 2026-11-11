@@ -164,7 +164,8 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}},
 		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}},
 		Reports:        []string{rainSiteh.URL, rainSiteE.URL}, ID: StoryKey(found[0]),
-		Written: &Settings{FullArticles: true, Length: "short"}}
+		HeadlineOnly: []string{rainSiteE.URL}, // no article read: its title and subtitle only
+		Written:      &Settings{FullArticles: true, Length: "short"}}
 	// A new story unfolds from its first version.
 	want.Updates = []Update{{At: now, Sentences: want.Sentences}}
 	if got, _ := json.Marshal(rain); string(got) != mustJSON(want) {
@@ -320,6 +321,17 @@ func TestABusyGeminiIsTriedAgain(t *testing.T) {
 	fake2.busy = 10
 	if _, err := w2.Run(context.Background(), found2); !errors.Is(err, gemini.ErrUnavailable) || fake2.count() != 3 {
 		t.Fatalf("%v, %d requests", err, fake2.count())
+	}
+}
+
+func TestTheSameArticleUnderTwoAddressesIsShownOnce(t *testing.T) {
+	s := stories.Story{Reports: []scrape.ArticleSummary{
+		{SourceID: "siteb", URL: "https://siteb/gallery/media/1", Title: "גיא פלג נגד ינון מגל"},
+		{SourceID: "siteb", URL: "https://siteb/gallery/television/1", Title: "גיא פלג נגד ינון מגל"},
+		{SourceID: "sitef", URL: "https://sitef/1", Title: "גיא פלג נגד ינון מגל"},
+	}}
+	if got := shown(s); len(got) != 2 || got[1].SourceID != "sitef" {
+		t.Fatalf("%+v", got)
 	}
 }
 

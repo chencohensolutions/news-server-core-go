@@ -80,6 +80,8 @@ type StorySummary {
   per site first); the rest of a bigger story weren't read.
   """
   reports: [String!]!
+  "Of reports, the ones Gemini read only the title and subtitle of: a paywall stub (on some sites), or no article."
+  headlineOnly: [String!]!
   "The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026)."
   writtenWith: SummarySettings
 }

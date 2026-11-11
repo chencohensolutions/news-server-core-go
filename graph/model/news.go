@@ -154,7 +154,7 @@ func StorySummaryOf(s summary.StorySummary, headlines map[string]store.Headline)
 	return &StorySummary{Title: s.Title, Sentences: SentencesOf(s.Sentences, headlines),
 		Contradictions: SentencesOf(s.Contradictions, headlines), Unrelated: append([]string{}, s.Unrelated...), WrittenAt: s.WrittenAt,
 		Updates: updatesOf(s, headlines), ID: s.ID, WrittenWith: SummarySettingsOf(s.Written),
-		Reports: append([]string{}, s.Reports...)}
+		Reports: append([]string{}, s.Reports...), HeadlineOnly: append([]string{}, s.HeadlineOnly...)}
 }
 
 // updatesOf is how s unfolded; a summary written before updates were kept is its own first one.

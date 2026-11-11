@@ -209,6 +209,8 @@ type StorySummary struct {
 	// URLs of the reports its latest version was written from: the ones Gemini read: all of them, up to 40 (one
 	// per site first); the rest of a bigger story weren't read.
 	Reports []string `json:"reports"`
+	// Of reports, the ones Gemini read only the title and subtitle of: a paywall stub (on some sites), or no article.
+	HeadlineOnly []string `json:"headlineOnly"`
 	// The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026).
 	WrittenWith *SummarySettings `json:"writtenWith,omitempty"`
 	// The story's id, kept by its later versions.

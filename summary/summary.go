@@ -60,6 +60,8 @@ type StorySummary struct {
 	// Updates are how the story unfolded, oldest first: the first version's sentences, then each later version's new
 	// facts, carried from version to version.
 	Updates []Update `json:"updates,omitempty"`
+	// HeadlineOnly are the reports Gemini read only the title and subtitle of: a paywall stub, or no article.
+	HeadlineOnly []string `json:"headlineOnly,omitempty"`
 	// Written is the settings it was written with; nil for a story written before they were kept.
 	Written *Settings `json:"written,omitempty"`
 }
@@ -446,6 +448,8 @@ type sources struct {
 	// What sentences were dropped, for the log.
 	cut, unsourced, mended, oneSided int
 	mendedEnd                        string // the end of a sentence cut short, for the log
+	// headlineOnly are the URLs sent without a body: a paywall stub, or no article read.
+	headlineOnly map[string]bool
 }
 
 // inlineRefs are footnotes the model wrote into the text too ("… נסגרו [a1, a3].").
@@ -465,7 +469,15 @@ var arabic = regexp.MustCompile(`\p{Arabic}`)
 func shown(s stories.Story) []scrape.ArticleSummary {
 	var first, rest []scrape.ArticleSummary
 	sites := map[string]bool{}
+	titles := map[string]bool{}
 	for _, r := range s.Reports {
+		// The same article under two addresses (a site's sections): once.
+		if key := r.SourceID + "\x00" + strings.TrimSpace(r.Title); r.Title != "" {
+			if titles[key] {
+				continue
+			}
+			titles[key] = true
+		}
 		if sites[r.SourceID] {
 			rest = append(rest, r)
 		} else {
@@ -624,10 +636,17 @@ func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSumma
 	} else if r.Summary != "" {
 		fmt.Fprintf(&b, "תקציר: %s\n", oneLine(r.Summary))
 	}
+	body := ""
 	if article, err := w.Store.Article(ctx, r.URL); err == nil && article != nil {
-		if body := articleText(article.Body, seen, bodyChars); body != "" {
-			fmt.Fprintf(&b, "גוף: %s\n", body)
+		body = articleText(article.Body, seen, bodyChars)
+	}
+	if body != "" {
+		fmt.Fprintf(&b, "גוף: %s\n", body)
+	} else {
+		if ids.headlineOnly == nil {
+			ids.headlineOnly = map[string]bool{}
 		}
+		ids.headlineOnly[r.URL] = true
 	}
 	return b.String()
 }
@@ -757,6 +776,9 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		for _, r := range s.Reports {
 			if own[r.URL] {
 				summary.Reports = append(summary.Reports, r.URL)
+				if ids.headlineOnly[r.URL] {
+					summary.HeadlineOnly = append(summary.HeadlineOnly, r.URL)
+				}
 			}
 		}
 		var added []Sentence
