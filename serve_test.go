@@ -243,7 +243,7 @@ func TestTheLinksFingerprintIsTheKeyTheServerPresents(t *testing.T) {
 
 func TestCheckRunsTheFixturesOfEverySource(t *testing.T) {
 	var out bytes.Buffer
-	if _, err := runSiteCommand("check", []string{filepath.Join("news", "sources", "_example")}, &out); err != nil {
+	if _, err := runSiteCommand("check", []string{filepath.Join("sources", "_example")}, &out); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 	if !strings.HasPrefix(out.String(), "ok   _example") {

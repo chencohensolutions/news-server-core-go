@@ -3,7 +3,6 @@ package stories
 import (
 	"math"
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -21,11 +20,11 @@ func TestScorePairsAsTheAppsScript(t *testing.T) {
 	}
 }
 
-// The app's labeled test set is in the news submodule.
+// The app's labeled test set, when NEWS_EVAL_SET names it (say ../news-sources-xx/eval/story-model-eval).
 func TestTheAppsTestSetLoads(t *testing.T) {
-	dir := filepath.Join("..", "news", "tools", "story-model-eval")
-	if _, err := os.Stat(dir); err != nil {
-		t.Skip("no news submodule")
+	dir := os.Getenv("NEWS_EVAL_SET")
+	if dir == "" {
+		t.Skip("NEWS_EVAL_SET not set")
 	}
 	items, pairs, err := LoadEvalSet(dir)
 	if err != nil {

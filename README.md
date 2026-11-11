@@ -16,12 +16,14 @@ Milestone 1, the skeleton:
   `enrollmentPreview` and `enrollDevice` are `@public`, certificates renew with `renewCertificate`.
 - **Admin API** on loopback with a token rewritten on every start, and the commands that call it: `enroll-code`,
   `devices`, `revoke`.
-- **The site configs** come from the news repo, a git submodule at `news/`. `sources` lists them.
+- **The site configs** are a folder of `<id>/config.json` (`sources_dir`): no sites ship with the server, you bring
+  them (a pack's `sources/`). The schema is [docs/source-config.md](docs/source-config.md); `sources/_example` shows
+  it. `sources` lists them.
 
 Milestone 2, the engine port (`scrape/`): the news app's scraper translated file by file. It reads a site's config
 (CSS selectors, JSON paths, regex transforms, dates), downloads pages one at a time per site with a gap between them
 and a growing pause when a site pushes back, and gives the same output as the app on every saved page of every site
-(`news/sources/*/fixtures`). Jsoup's selector and text rules are reimplemented in `scrape/dom`, Java regex through
+(each source's `fixtures/`). Jsoup's selector and text rules are reimplemented in `scrape/dom`, Java regex through
 `regexp2`.
 
 Milestone 3, fetching (`fetch/`, `refresh/`, `store/`): every `refresh_minutes` (10) the server reads every site's
@@ -68,12 +70,12 @@ built in. Without packs: `go build ./cmd/news-server`.
 Requirements: Go 1.26 or newer (gqlgen runs as a `go tool` of the module) and OpenSSL for the certificate scripts.
 
 ```bash
-git clone --recurse-submodules https://github.com/chencohensolutions/news-server-core-go.git
+git clone https://github.com/chencohensolutions/news-server-core-go.git
 cd news-server-core-go
 
 scripts/generate-ca.sh
 SERVER_NAMES="myhome.example.org" scripts/generate-server-cert.sh   # names and IPs devices will use
-cp config.example.json config.json                                   # then edit public_url and users
+cp config.example.json config.json                                   # then edit public_url, users and sources_dir
 
 go run ./cmd/news-server                        # serves https://0.0.0.0:56399
 go run ./cmd/news-server enroll-code hen        # a one-time code and a QR code for the app, valid 10 minutes
@@ -88,9 +90,9 @@ go run ./cmd/news-server eval-stories           # the story model on the app's 3
 The site tools need no config.json:
 
 ```bash
-go run ./cmd/news-server check news/sources                          # every source's golden fixtures (or one source folder)
-go run ./cmd/news-server extract news/sources/siteh list page.html    # read a saved page with a config, print JSON
-go run ./cmd/news-server fetch news/sources/siteh                     # the live headlines (add an article URL for one article)
+go run ./cmd/news-server check sources                               # every source's golden fixtures (or one source folder)
+go run ./cmd/news-server extract sources/_example list page.html     # read a saved page with a config, print JSON
+go run ./cmd/news-server fetch path/to/sources/<id>                  # the live headlines (add an article URL for one article)
 ```
 
 The port is one above the journal server's (56398) and the admin API is on 127.0.0.1:8082, so both servers can run
@@ -99,11 +101,12 @@ on the same PC.
 ## Development
 
 ```bash
-go test ./...                    # end to end over real mTLS, plus every site's golden fixtures
+go test ./...                    # end to end over real mTLS, plus the example's golden fixtures
+NEWS_SOURCES=../news-sources-xx/sources NEWS_EVAL_SET=../news-sources-xx/eval/story-model-eval go test ./...
+                                 # plus a pack's sites and the story test set
 go vet ./...
 go tool gqlgen generate          # after editing graph/schema/*.graphql
 go tool gqlgen generate --config gqlgen.admin.yml
-git submodule update --remote news   # the latest site configs
 ```
 
 ## Project layout
@@ -112,7 +115,7 @@ git submodule update --remote news   # the latest site configs
 main.go, serve.go, middleware.go   start-up, routing, identify / gzip / deadlines
 admin.go, admincli.go              the loopback admin API and the commands that call it
 auth/  enroll/                     config, request identity and @public, enrollment and issuing
-sites/                             reads news/sources/<id>/config.json
+sites/                             reads <sources_dir>/<id>/config.json
 scrape/                            the engine: configs, extraction, dates, URLs, politeness, downloading
 scrape/dom, jsonpath, rx           jsoup-compatible selectors and text, JSON paths, Java-like regex
 fetch/  video/                     the HTTP client and video resolvers, with the packs' registries
@@ -124,7 +127,7 @@ bundle/                            downloads ONNX Runtime and the models, checke
 storyjob.go                        groups stories after each read; the models, stories and eval-stories commands
 sitecli.go                         check, extract, fetch
 graph/                             public schema and resolvers; graph/admin/ for the admin API
-news/                              the news repo (submodule): sources/ configs and golden fixtures
+sources/_example                   the config schema's example, with its golden fixtures
 scripts/                           CA and server certificates
 docs/                              plan.md, authentication.md
 ```

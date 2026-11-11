@@ -20,7 +20,7 @@ import (
 )
 
 // eval-gemini-grouping: whether Gemini groups headlines into stories better than the story model, on the app's
-// 348 labeled pairs (news/tools/story-model-eval). One request with all 737 headlines, counted in the day's budget.
+// 348 labeled pairs (story_eval_dir). One request with all 737 headlines, counted in the day's budget.
 
 const geminiGroupingSystem = `You group Israeli news headlines into stories. The input is headlines from many sites of one day, each
 with an id in brackets, its site, time, title and list summary. A story is one specific event or development reported
@@ -51,7 +51,7 @@ func evalGeminiGrouping(config auth.AppConfig, out io.Writer) error {
 // evalGeminiRounds groups the test set as the server would: the headlines in time order, 100 a round, each round
 // placed in the stories so far (summary.Writer.Group on a scratch database), the requests counted in the real one.
 func evalGeminiRounds(config auth.AppConfig, out io.Writer) error {
-	items, pairs, err := stories.LoadEvalSet(evalSetDir)
+	items, pairs, err := stories.LoadEvalSet(config.StoryEvalDir)
 	if err != nil {
 		return err
 	}
@@ -146,9 +146,9 @@ func evalGeminiRounds(config auth.AppConfig, out io.Writer) error {
 
 // evalGeminiOneShot is all 737 headlines in one request.
 func evalGeminiOneShot(config auth.AppConfig, out io.Writer) error {
-	items, pairs, err := stories.LoadEvalSet(evalSetDir)
+	items, pairs, err := stories.LoadEvalSet(config.StoryEvalDir)
 	if err != nil {
-		return fmt.Errorf("the test set (the news submodule's tools/story-model-eval): %w", err)
+		return fmt.Errorf("the test set (story_eval_dir in config.json): %w", err)
 	}
 	key, err := gemini.ReadKey(config.GeminiKeyFile)
 	if err != nil {

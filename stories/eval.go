@@ -11,7 +11,7 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 )
 
-// The app's story model test set (news/tools/story-model-eval): 737 headlines of one day and 348 cross-site pairs of
+// The app's story model test set (the news repo's tools/story-model-eval; story_eval_dir): 737 headlines of one day and 348 cross-site pairs of
 // them labeled by hand "same event" or not. Its measurements are in the news repo's docs/story-model-comparison.md,
 // so the server's embedder can be checked against the app's numbers on the same pairs.
 

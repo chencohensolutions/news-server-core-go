@@ -27,7 +27,7 @@ type Source struct {
 func Load(dir string) ([]Source, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("sites: %w (is the news submodule checked out? git submodule update --init)", err)
+		return nil, fmt.Errorf("sites: %w (sources_dir in config.json)", err)
 	}
 	var found []Source
 	for _, e := range entries {
