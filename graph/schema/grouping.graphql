@@ -13,7 +13,7 @@ extend type Mutation {
   (stories shows them a few seconds later), and summaries are written for the changed stories in the next round.
   A value out of range, or stories off, fails with BAD_REQUEST in extensions.code.
   """
-  setGrouping(strictness: Int, text: StoryText, days: Int): Grouping!
+  setGrouping(strictness: Int, text: StoryText, days: Int, method: GroupingMethod): Grouping!
 }
 
 "What a headline is grouped by: the app's StoryText."
@@ -24,7 +24,21 @@ enum StoryText {
   TITLE_TIMES_SUBTITLE
 }
 
+"Who groups the headlines into stories."
+enum GroupingMethod {
+  "The story model (model): by meaning vectors, at strictness."
+  MODEL
+  """
+  Gemini, each round placing the new headlines in the stories so far (a request of the day's budget); the model's
+  grouping stands in when Gemini doesn't answer. Needs a Gemini key (geminiAvailable).
+  """
+  GEMINI
+}
+
 type Grouping {
+  method: GroupingMethod!
+  "Whether GEMINI can be chosen: the server has a Gemini key."
+  geminiAvailable: Boolean!
   "The model's id (\"bge-m3\"); set in config.json, not here."
   model: String!
   text: StoryText!

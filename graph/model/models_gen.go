@@ -97,6 +97,9 @@ type GeminiStats struct {
 }
 
 type Grouping struct {
+	Method GroupingMethod `json:"method"`
+	// Whether GEMINI can be chosen: the server has a Gemini key.
+	GeminiAvailable bool `json:"geminiAvailable"`
 	// The model's id ("bge-m3"); set in config.json, not here.
 	Model string    `json:"model"`
 	Text  StoryText `json:"text"`
@@ -314,6 +317,65 @@ func (e *EnrollmentRejectedReason) UnmarshalJSON(b []byte) error {
 }
 
 func (e EnrollmentRejectedReason) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// Who groups the headlines into stories.
+type GroupingMethod string
+
+const (
+	// The story model (model): by meaning vectors, at strictness.
+	GroupingMethodModel GroupingMethod = "MODEL"
+	// Gemini, each round placing the new headlines in the stories so far (a request of the day's budget); the model's
+	// grouping stands in when Gemini doesn't answer. Needs a Gemini key (geminiAvailable).
+	GroupingMethodGemini GroupingMethod = "GEMINI"
+)
+
+var AllGroupingMethod = []GroupingMethod{
+	GroupingMethodModel,
+	GroupingMethodGemini,
+}
+
+func (e GroupingMethod) IsValid() bool {
+	switch e {
+	case GroupingMethodModel, GroupingMethodGemini:
+		return true
+	}
+	return false
+}
+
+func (e GroupingMethod) String() string {
+	return string(e)
+}
+
+func (e *GroupingMethod) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = GroupingMethod(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid GroupingMethod", str)
+	}
+	return nil
+}
+
+func (e GroupingMethod) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *GroupingMethod) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e GroupingMethod) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

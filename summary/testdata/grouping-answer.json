@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "{\"headlines\": [{\"id\": \"h1\", \"story\": \"new1\"}, {\"id\": \"h2\", \"story\": \"new1\"}, {\"id\": \"h3\", \"story\": \"new2\"}, {\"id\": \"h4\", \"story\": \"new2\"}, {\"id\": \"h5\", \"story\": \"alone\"}, {\"id\": \"h77\", \"story\": \"new1\"}], \"merge\": [{\"stories\": [\"s1\", \"s2\"]}]}"
+          }
+        ]
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 900,
+    "candidatesTokenCount": 60,
+    "totalTokenCount": 960
+  }
+}

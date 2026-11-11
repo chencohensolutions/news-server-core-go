@@ -179,3 +179,38 @@ var threadsSchema = map[string]any{
 	},
 	"required": []string{"stories", "newThreads", "summaries", "related"},
 }
+
+const groupingSystem = `You group Israeli news headlines into stories for a personal newspaper. A story is one specific event or
+development reported by one or more sites: the same happening, decision, statement, incident or announcement, even in
+different words, from another side of it, as a reaction to it, or as a teaser that doesn't name it. Headlines about
+the same general subject but different happenings (two different shootings, two separate Knesset votes, the war's
+different days) are different stories.
+
+The input lists the stories so far (id, and a few of their headlines with their sites), then new headlines (id, site,
+time, title and subtitle).
+
+Answer:
+- "headlines": every new headline, with its id and its "story": the id of the existing story it reports; or "new1",
+  "new2", ... for a story that starts among the new headlines (the same label for all of its headlines); or "alone"
+  when nothing else reports it yet.
+- "merge": existing stories that turn out to be one story, as lists of their ids; usually none.`
+
+var groupingSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"headlines": map[string]any{"type": "array", "items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id":    map[string]any{"type": "string"},
+				"story": map[string]any{"type": "string"},
+			},
+			"required": []string{"id", "story"},
+		}},
+		"merge": map[string]any{"type": "array", "items": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"stories": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
+			"required":   []string{"stories"},
+		}},
+	},
+	"required": []string{"headlines", "merge"},
+}

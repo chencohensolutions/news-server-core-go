@@ -16,7 +16,7 @@ import (
 )
 
 // SetGrouping is the resolver for the setGrouping field.
-func (r *mutationResolver) SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int) (*model.Grouping, error) {
+func (r *mutationResolver) SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) (*model.Grouping, error) {
 	badRequest := func(format string, args ...any) error {
 		return &gqlerror.Error{Message: fmt.Sprintf(format, args...), Extensions: map[string]any{"code": CodeBadRequest}}
 	}
@@ -36,6 +36,12 @@ func (r *mutationResolver) SetGrouping(ctx context.Context, strictness *int, tex
 	}
 	if days != nil {
 		g.Days = *days
+	}
+	if method != nil {
+		if *method == model.GroupingMethodGemini && !r.Resolver.Grouping.GeminiAvailable() {
+			return nil, badRequest("grouping by Gemini needs a Gemini key on the server")
+		}
+		g.ByGemini = *method == model.GroupingMethodGemini
 	}
 	if err := g.Check(); err != nil {
 		return nil, badRequest("%v", err)

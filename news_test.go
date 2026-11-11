@@ -273,8 +273,8 @@ func TestTheAppSetsTheServersGrouping(t *testing.T) {
 	config := stories.Grouping{Text: stories.TitleAndSubtitle, Strictness: 60, Days: 7}
 	job := &storyJob{db: env.db, embedder: anyText{}, model: stories.BGEM3, grouping: config}
 	env.api.Grouping, env.api.StoryModel = job, stories.BGEM3.ID
-	resp = mustQuery(t, env, `{ grouping { model text strictness days threshold } }`, nil)
-	if got := string(resp.Data["grouping"]); got != `{"model":"bge-m3","text":"TITLE_AND_SUBTITLE","strictness":60,"days":7,"threshold":0.6625}` {
+	resp = mustQuery(t, env, `{ grouping { method geminiAvailable model text strictness days threshold } }`, nil)
+	if got := string(resp.Data["grouping"]); got != `{"method":"MODEL","geminiAvailable":false,"model":"bge-m3","text":"TITLE_AND_SUBTITLE","strictness":60,"days":7,"threshold":0.6625}` {
 		t.Fatalf("grouping: %s", got)
 	}
 	// The app's slider and text: kept, and the stories grouped again at once.
@@ -303,6 +303,8 @@ func TestTheAppSetsTheServersGrouping(t *testing.T) {
 		`mutation { setGrouping(strictness: 95) { days } }`,
 		`mutation { setGrouping(days: -1) { days } }`,
 		`mutation { setGrouping(days: 31) { days } }`,
+		// No Gemini key in the test.
+		`mutation { setGrouping(method: GEMINI) { days } }`,
 	} {
 		_, resp := env.query(t, cert, mutation, nil)
 		if len(resp.Errors) != 1 || resp.Errors[0].Extensions["code"] != resolver.CodeBadRequest {

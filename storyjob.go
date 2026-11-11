@@ -31,6 +31,9 @@ type storyJob struct {
 	enabled func(id string) bool
 	// summaries says the summary job runs after each grouping (serverInfo.summaries).
 	summaries bool
+	// byGemini groups a feed with Gemini (the summary writer's Group) when the grouping asks for it; nil without a
+	// Gemini key.
+	byGemini func(ctx context.Context, feed []scrape.ArticleSummary, now time.Time) ([]stories.Story, error)
 
 	// running is held by a grouping: one at a time, as the finder isn't safe for concurrent use.
 	running sync.Mutex
@@ -114,6 +117,9 @@ func (j *storyJob) Grouping() (stories.Grouping, float32) {
 	defer j.mu.Unlock()
 	return j.grouping, j.model.Scale(j.grouping.Text).Threshold(j.grouping.Strictness)
 }
+
+// GeminiAvailable says Gemini can group the stories.
+func (j *storyJob) GeminiAvailable() bool { return j.byGemini != nil }
 
 // SetGrouping keeps g and groups the stories again with it, in the background.
 func (j *storyJob) SetGrouping(ctx context.Context, g stories.Grouping) error {
@@ -202,6 +208,14 @@ func (j *storyJob) run(ctx context.Context) ([]stories.Story, error) {
 	flags, err := j.db.Unrelated(ctx, now.AddDate(0, 0, -max(1, g.Days)))
 	if err != nil {
 		return nil, err
+	}
+	if g.ByGemini && j.byGemini != nil {
+		// The model's grouping above is the fallback: the vectors are embedded either way.
+		if byGemini, err := j.byGemini(ctx, feed, now); err != nil {
+			log.Printf("stories: grouping by Gemini: %v; the model's grouping stands in", err)
+		} else {
+			found = byGemini
+		}
 	}
 	found = j.finder.MoveUnrelated(found, feed, flags, threshold)
 	j.mu.Lock()

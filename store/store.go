@@ -107,6 +107,12 @@ CREATE TABLE IF NOT EXISTS thread_links (
 	b TEXT NOT NULL,
 	PRIMARY KEY (a, b)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS gemini_groups (
+	url TEXT PRIMARY KEY,        -- a headline Gemini placed in a story (grouping by Gemini)
+	story TEXT NOT NULL,         -- the story's id; one headline alone has its own
+	placed_at INTEGER NOT NULL
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS gemini_groups_story ON gemini_groups (story);
 CREATE TABLE IF NOT EXISTS server_settings (
 	key TEXT PRIMARY KEY,        -- a setting the app changes on the server ("grouping")
 	value TEXT NOT NULL          -- as JSON
@@ -880,4 +886,55 @@ func (s *Store) RelatedThreads(ctx context.Context, id string) ([]Thread, error)
 		return nil, err
 	}
 	return scanThreads(rows)
+}
+
+// GeminiGroups are the stories Gemini placed urls in, by URL; ones it didn't place yet are left out.
+func (s *Store) GeminiGroups(ctx context.Context, urls []string) (map[string]string, error) {
+	out := map[string]string{}
+	for start := 0; start < len(urls); start += 500 {
+		chunk := urls[start:min(len(urls), start+500)]
+		args := make([]any, len(chunk))
+		for i, u := range chunk {
+			args[i] = u
+		}
+		rows, err := s.db.QueryContext(ctx, `SELECT url, story FROM gemini_groups WHERE url IN (?`+
+			strings.Repeat(", ?", len(chunk)-1)+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var url, story string
+			if err := rows.Scan(&url, &story); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[url] = story
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// PlaceInGeminiGroups keeps each URL's story, and moves the headlines of each merged story (key) to its value.
+func (s *Store) PlaceInGeminiGroups(ctx context.Context, placed map[string]string, merged map[string]string, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for url, story := range placed {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO gemini_groups (url, story, placed_at) VALUES (?, ?, ?)
+			ON CONFLICT(url) DO UPDATE SET story = excluded.story, placed_at = excluded.placed_at`, url, story, millis(now)); err != nil {
+			return err
+		}
+	}
+	for from, to := range merged {
+		if _, err := tx.ExecContext(ctx, `UPDATE gemini_groups SET story = ? WHERE story = ?`, to, from); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

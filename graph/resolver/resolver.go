@@ -75,6 +75,8 @@ type Grouping interface {
 	Grouping() (stories.Grouping, float32)
 	// SetGrouping keeps g (checked) and groups the stories again.
 	SetGrouping(ctx context.Context, g stories.Grouping) error
+	// GeminiAvailable says Gemini can group the stories (the server has a Gemini key).
+	GeminiAvailable() bool
 }
 
 // GeminiInfo is what stats says about the summary job.
@@ -87,6 +89,10 @@ type GeminiInfo struct {
 // grouping is the grouping field: Grouping's settings now.
 func (r *Resolver) grouping() *model.Grouping {
 	g, threshold := r.Grouping.Grouping()
-	return &model.Grouping{Model: r.StoryModel, Text: model.StoryText(strings.ToUpper(g.Text.String())), Strictness: g.Strictness,
+	method := model.GroupingMethodModel
+	if g.ByGemini {
+		method = model.GroupingMethodGemini
+	}
+	return &model.Grouping{Method: method, GeminiAvailable: r.Grouping.GeminiAvailable(), Model: r.StoryModel, Text: model.StoryText(strings.ToUpper(g.Text.String())), Strictness: g.Strictness,
 		Days: g.Days, Threshold: math.Round(float64(threshold)*1e4) / 1e4}
 }

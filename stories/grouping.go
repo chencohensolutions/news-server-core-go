@@ -12,6 +12,8 @@ type Grouping struct {
 	TextName   string    `json:"text"`
 	Strictness int       `json:"strictness"`
 	Days       int       `json:"days"`
+	// ByGemini groups the headlines with Gemini instead of the model (which stays the fallback).
+	ByGemini bool `json:"gemini,omitempty"`
 }
 
 // Check says what is out of range.

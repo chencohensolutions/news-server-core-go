@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -59,6 +60,9 @@ func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
 		}
 		if strings.Contains(string(system), "threads of a personal newspaper") {
 			name = "threads-answer.json"
+		}
+		if strings.Contains(string(system), "group Israeli news headlines into stories") {
+			name = "grouping-answer.json"
 		}
 		data, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
@@ -472,5 +476,51 @@ func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
 	}
 	if !updated {
 		t.Fatalf("t1 after %+v", ths)
+	}
+}
+
+func TestGeminiGroupsTheNewHeadlinesOnce(t *testing.T) {
+	w, fake, _ := setup(t)
+	ctx := context.Background()
+	feed := []scrape.ArticleSummary{rainSiteh, rainSiteE, budgetSited, budgetSiteg, alone}
+	found, err := w.Group(ctx, feed, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two new stories of two sites each; alone in none; h77 isn't in the input.
+	if len(found) != 2 || fake.count() != 1 || !strings.Contains(fake.prompts[0], "(אין עדיין)") {
+		t.Fatalf("%d stories, %d requests:\n%s", len(found), fake.count(), fake.prompts[0])
+	}
+	urls := func(s stories.Story) string {
+		var out []string
+		for _, r := range s.Reports {
+			out = append(out, r.URL)
+		}
+		sort.Strings(out)
+		return strings.Join(out, " ")
+	}
+	got := []string{urls(found[0]), urls(found[1])}
+	sort.Strings(got)
+	if got[0] != budgetSited.URL+" "+budgetSiteg.URL || got[1] != rainSiteE.URL+" "+rainSiteh.URL {
+		t.Fatalf("stories %v", got)
+	}
+	// Placed headlines aren't sent again.
+	again, err := w.Group(ctx, feed, now)
+	if err != nil || len(again) != 2 || fake.count() != 1 {
+		t.Fatalf("again: %d stories, %v, %d requests", len(again), err, fake.count())
+	}
+	// A new headline is offered with the stories so far, and the answer's merge of s1 and s2 makes them one.
+	third := scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/rain", Title: "גשם"}
+	merged, err := w.Group(ctx, append([]scrape.ArticleSummary{third}, feed...), now)
+	if err != nil || fake.count() != 2 || !strings.Contains(fake.prompts[1], "[s1]") || !strings.Contains(fake.prompts[1], "[s2]") {
+		t.Fatalf("%v, %d requests:\n%s", err, fake.count(), fake.prompts[len(fake.prompts)-1])
+	}
+	if len(merged) != 1 || len(merged[0].Reports) != 4 {
+		t.Fatalf("after the merge %d stories", len(merged))
+	}
+	// Out of budget: an error, so the model's grouping stands in.
+	w.Budget = 1
+	if _, err := w.Group(ctx, append([]scrape.ArticleSummary{{SourceID: "sited", URL: "https://sited/new", Title: "x"}}, feed...), now); !errors.Is(err, ErrNoBudget) {
+		t.Fatalf("no budget: %v", err)
 	}
 }
