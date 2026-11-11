@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-// The golden fixtures of every site (the news repo's sources/, a submodule at news/): the Go engine must give the
-// same output as the Kotlin one on every saved page.
+// The golden fixtures of every site: this repo's sources/ (the example), or NEWS_SOURCES (a pack's sources/, say
+// ../news-sources-xx/sources): the Go engine must give the same output as the Kotlin one on every saved page.
 func TestGoldenFixtures(t *testing.T) {
 	root := os.Getenv("NEWS_SOURCES")
 	if root == "" {
-		root = filepath.Join("..", "news", "sources")
+		root = filepath.Join("..", "sources")
 	}
 	dirs, err := SourceDirs(root)
 	if err != nil || len(dirs) == 0 {

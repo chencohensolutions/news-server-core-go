@@ -30,7 +30,8 @@ type AppConfig struct {
 	// The loopback-only admin API, and the file holding its token (rewritten on every start).
 	AdminAddr      string `json:"admin_addr"`
 	AdminTokenFile string `json:"admin_token_file"`
-	// The site configs: the news repo's sources/ folder (a git submodule at news/).
+	// The site configs: a folder of <id>/config.json (with their fixtures), such as a pack's sources/ folder. This
+	// repo's sources/ holds only _example, which is never read.
 	SourcesDir string       `json:"sources_dir"`
 	Users      []UserConfig `json:"users"`
 	// What the server read from the sites: one SQLite file.
@@ -47,6 +48,8 @@ type AppConfig struct {
 	// and its choices, kept in the database, win.
 	FeedSources []string       `json:"feed_sources"`
 	SiteWaitsMs map[string]int `json:"site_waits_ms"`
+	// Each pack's own settings, by pack name (the name it registers with); the core passes them on unread.
+	Packs map[string]json.RawMessage `json:"packs"`
 	// Stories: the ONNX Runtime library ("" looks in ./onnxruntime and the usual places), the folder the models are
 	// in (news-server models downloads them), the model (bge-m3 or multilingual-e5-small), what headlines are
 	// compared by (title, subtitle, title_and_subtitle, title_times_subtitle), how strict the grouping is (10 to 90,
@@ -57,6 +60,9 @@ type AppConfig struct {
 	StoryText       string `json:"story_text"`
 	StoryStrictness int    `json:"story_strictness"`
 	StoryDays       int    `json:"story_days"`
+	// The labeled story test set eval-stories and eval-gemini-grouping score against (items.json, pairs.json,
+	// labels-*.json); it holds real headlines, so it lives with the sources, not in this repo.
+	StoryEvalDir string `json:"story_eval_dir"`
 	// Summaries (Gemini, free tier only): the file holding the API key (Google AI Studio, a project without
 	// billing; "" is gemini.key, and no file turns summaries off), the model ("" is gemini-3.5-flash-lite), the
 	// day's request budget (0 is 400, -1 turns summaries off), the hours of stories summarized (0 is 12), and the
@@ -92,7 +98,7 @@ const (
 	DefaultDevicesFile    = "devices.json"
 	DefaultAdminAddr      = "127.0.0.1:8082"
 	DefaultAdminTokenFile = "admin.token"
-	DefaultSourcesDir     = "news/sources"
+	DefaultSourcesDir     = "sources"
 	DefaultDatabaseFile   = "news.db"
 	DefaultArchiveDir     = "archive"
 	DefaultRefreshMinutes = 10
@@ -103,6 +109,7 @@ const (
 	DefaultStoryText       = "title_and_subtitle"
 	DefaultStoryStrictness = 60
 	DefaultStoryDays       = 7
+	DefaultStoryEvalDir    = "story-model-eval"
 )
 
 // LoadConfig reads config.json, fills in the defaults and checks the users.
@@ -168,6 +175,9 @@ func (c AppConfig) WithDefaults() AppConfig {
 	}
 	if c.StoryStrictness == 0 {
 		c.StoryStrictness = DefaultStoryStrictness
+	}
+	if c.StoryEvalDir == "" {
+		c.StoryEvalDir = DefaultStoryEvalDir
 	}
 	if c.StoryDays == 0 {
 		c.StoryDays = DefaultStoryDays

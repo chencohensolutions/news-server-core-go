@@ -1,0 +1,22 @@
+[
+  {
+    "sourceId": "example",
+    "url": "https://news.example.com/news/2026/10/26/city-council-budget",
+    "title": "City council approves new budget",
+    "summary": "The vote passed 7-2 after a long debate.",
+    "imageUrl": "https://news.example.com/img/budget.jpg",
+    "publishedAt": "2026-10-26T07:15:00Z"
+  },
+  {
+    "sourceId": "example",
+    "url": "https://news.example.com/news/2026/10/26/storm-warning?ref=feed",
+    "title": "Storm warning issued for the coast",
+    "imageUrl": "https://cdn.example.com/storm.jpg",
+    "publishedAt": "2026-10-26T06:40:00Z"
+  },
+  {
+    "sourceId": "example",
+    "url": "https://news.example.com/tech/new-phone",
+    "title": "New phone launches next week"
+  }
+]

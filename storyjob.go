@@ -1,4 +1,4 @@
-package main
+package newsserver
 
 import (
 	"context"
@@ -291,9 +291,6 @@ func printStories(config auth.AppConfig, out io.Writer) error {
 	return nil
 }
 
-// evalSetDir is the app's story model test set, in the news submodule.
-var evalSetDir = filepath.Join("news", "tools", "story-model-eval")
-
 // appScores are the app's measurements on the test set's titles and list summaries (title + ". " + summary), from
 // the news repo's docs/story-model-comparison.md: AUC, best F1 and its threshold.
 var appScores = map[string][3]float64{
@@ -308,9 +305,9 @@ func evalStories(config auth.AppConfig, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	items, pairs, err := stories.LoadEvalSet(evalSetDir)
+	items, pairs, err := stories.LoadEvalSet(config.StoryEvalDir)
 	if err != nil {
-		return fmt.Errorf("the test set (the news submodule's tools/story-model-eval): %w", err)
+		return fmt.Errorf("the test set (story_eval_dir in config.json): %w", err)
 	}
 	embedder, err := openEmbedder(config, model)
 	if err != nil {

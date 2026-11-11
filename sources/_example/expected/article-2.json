@@ -1,0 +1,10 @@
+{
+  "sourceId": "example",
+  "url": "https://news.example.com/news/2026/10/26/storm-warning?ref=feed",
+  "title": "Storm warning issued for the coast",
+  "publishedAt": "2026-10-26T06:40:00Z",
+  "body": [
+    "Forecasters expect winds of up to 90 km/h overnight.",
+    "Residents are advised to stay indoors."
+  ]
+}

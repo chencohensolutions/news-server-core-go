@@ -1,0 +1,14 @@
+{
+  "sourceId": "example",
+  "url": "https://news.example.com/news/2026/10/26/city-council-budget",
+  "title": "City council approves new budget",
+  "subtitle": "Spending on parks and transport rises for the first time in five years.",
+  "author": "Dana Levi",
+  "publishedAt": "2026-10-26T07:15:00Z",
+  "imageUrl": "https://news.example.com/img/budget-large.jpg",
+  "body": [
+    "The city council voted on Monday to approve next year's budget.",
+    "The plan raises spending on parks by 12 percent.",
+    "Opposition members said the increase was not enough."
+  ]
+}

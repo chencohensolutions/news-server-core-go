@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "example",
+  "name": "Example Daily",
+  "baseUrl": "https://news.example.com",
+  "language": "en",
+  "list": {
+    "urls": ["/latest"],
+    "item": "ul.feed > li.story",
+    "url": { "selector": "a.story-link", "attr": "href" },
+    "title": { "selector": "h2.story-title" },
+    "summary": { "selector": "p.teaser" },
+    "image": {
+      "selector": "img",
+      "attr": "data-src",
+      "fallback": { "selector": "img", "attr": "src" }
+    },
+    "publishedAt": {
+      "selector": "span.when",
+      "date": { "format": "dd.MM.yy HH:mm", "timezone": "Asia/Jerusalem" }
+    }
+  },
+  "article": {
+    "remove": [".ad-slot", "aside.related", "script", "style"],
+    "title": { "selector": "article h1" },
+    "subtitle": { "selector": "article .standfirst" },
+    "author": {
+      "selector": ".byline .author",
+      "transforms": [{ "type": "replace", "pattern": "^By\\s+" }]
+    },
+    "publishedAt": {
+      "selector": "time[datetime]",
+      "attr": "datetime",
+      "fallback": {
+        "selector": ".byline .date",
+        "date": { "format": "dd.MM.yyyy HH:mm", "timezone": "Asia/Jerusalem" }
+      }
+    },
+    "image": { "selector": "meta[property=og:image]", "attr": "content" },
+    "body": { "selector": "article .article-body > p" }
+  }
+}

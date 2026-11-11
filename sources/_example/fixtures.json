@@ -1,0 +1,20 @@
+[
+  {
+    "kind": "list",
+    "url": "https://news.example.com/latest",
+    "html": "fixtures/list.html",
+    "expected": "expected/list.json"
+  },
+  {
+    "kind": "article",
+    "url": "https://news.example.com/news/2026/10/26/city-council-budget",
+    "html": "fixtures/article-1.html",
+    "expected": "expected/article-1.json"
+  },
+  {
+    "kind": "article",
+    "url": "https://news.example.com/news/2026/10/26/storm-warning?ref=feed",
+    "html": "fixtures/article-2.html",
+    "expected": "expected/article-2.json"
+  }
+]

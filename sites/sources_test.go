@@ -33,11 +33,11 @@ func TestLoadRefusesAnIdThatIsNotTheFolder(t *testing.T) {
 	}
 }
 
-// The real configs, when the news submodule is checked out.
+// The real configs, when NEWS_SOURCES names a pack's sources/ (say ../news-sources-xx/sources).
 func TestLoadTheNewsRepoSources(t *testing.T) {
-	dir := filepath.Join("..", "news", "sources")
-	if _, err := os.Stat(dir); err != nil {
-		t.Skip("news submodule not checked out")
+	dir := os.Getenv("NEWS_SOURCES")
+	if dir == "" {
+		t.Skip("NEWS_SOURCES not set")
 	}
 	got, err := Load(dir)
 	if err != nil {

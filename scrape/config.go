@@ -48,6 +48,34 @@ func (c *SourceConfig) WithFeed() *SourceConfig {
 type HTTPConfig struct {
 	UserAgent string            `json:"userAgent"`
 	Headers   map[string]string `json:"headers"`
+	// Extra holds the keys the core doesn't know, for the packs' transports to read (fetch.Site.Extra). Unlike the
+	// rest of a config, unknown keys here are not errors, since packs define them.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON reads userAgent and headers, and keeps every other key in Extra.
+func (h *HTTPConfig) UnmarshalJSON(data []byte) error {
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	*h = HTTPConfig{}
+	if raw, ok := keys["userAgent"]; ok {
+		if err := json.Unmarshal(raw, &h.UserAgent); err != nil {
+			return fmt.Errorf("http.userAgent: %w", err)
+		}
+		delete(keys, "userAgent")
+	}
+	if raw, ok := keys["headers"]; ok {
+		if err := json.Unmarshal(raw, &h.Headers); err != nil {
+			return fmt.Errorf("http.headers: %w", err)
+		}
+		delete(keys, "headers")
+	}
+	if len(keys) > 0 {
+		h.Extra = keys
+	}
+	return nil
 }
 
 type ListConfig struct {

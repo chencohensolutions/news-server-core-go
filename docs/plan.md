@@ -9,9 +9,14 @@ decisions and milestones next to the code.
 - **Port the Kotlin, don't redesign it.** Only the engine (~600 lines: `HtmlExtractor`, `JsonPath`, `Dates`, `Urls`,
   `Politeness`, `ScraperEngine`, config parsing) and the story clustering (~1,400 lines: `UnigramTokenizer`,
   `TextEmbedder`, `SimilarityGraph`, `StoryClustering`, `StoryFinder`) are rewritten. The 33 site configs and their
-  golden fixtures carry over unchanged through the `news/` submodule.
+  golden fixtures carry over unchanged (first through a `news/` submodule; since Nov 11, 2026 in the private
+  `news-sources-xx` pack).
 - **CSS with goquery + cascadia.** The configs use `:has`, `:not` and `:nth-of-type`, which cascadia supports. None of
   the 123 `regex` fields uses lookarounds or backreferences, so Go's RE2 reads them all.
+- **Packs** (Nov 11, 2026): the core goes public and stays source-agnostic: a plain client that names itself, no
+  site-specific code. Packs (Go modules, built in with `cmd/newsbuild`, as xcaddy does for Caddy) register HTTP
+  transports (`fetch.RegisterTransport`) and video resolvers (`video.Register`). Site-specific code lives in packs; the server streams a pack-resolved video to the app as an option,
+  the app's web-view player staying the default.
 - **Stories:** the same average-link clustering as the app, with `bge-m3` by default (too big for the phone), on ONNX
   Runtime through purego like the journal server.
 - **Summaries: Gemini free tier only**, `gemini-3.5-flash-lite`. Every 10 minutes, one request with every story that
@@ -44,11 +49,11 @@ decisions and milestones next to the code.
 
 ## Harness
 
-1. **Port parity:** `go test` runs every `news/sources/*/fixtures` page against its `expected/*.json`. Stories: the
+1. **Port parity:** `go test` (with `NEWS_SOURCES`) runs every source's `fixtures` page against its `expected/*.json`. Stories: the
    app's clustering and graph tests run on the Go port (the chain against the plain method, close pairs against the
    full table, components against clustering everything); the embedder is checked on real ONNX Runtime with a
    hand-written model, and end to end by `news-server eval-stories` on the app's labeled test set
-   (`news/tools/story-model-eval`), whose AUC and best F1 must match the app's (bge-m3: 0.950 and 0.83).
+   (`story_eval_dir`, the pack's `eval/story-model-eval`), whose AUC and best F1 must match the app's (bge-m3: 0.950 and 0.83).
 2. **Server behavior:** a fake clock for the scheduler (10-minute runs, the 12-hour edge, overlapping runs skipped,
    only changed stories re-summarized); a local test site with 403, 429 and 304; a fake Gemini with recorded answers;
    an end-to-end mTLS test (`newTestEnv`).
