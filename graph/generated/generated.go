@@ -236,6 +236,7 @@ type ComplexityRoot struct {
 	StorySummary struct {
 		Contradictions func(childComplexity int) int
 		ID             func(childComplexity int) int
+		Reports        func(childComplexity int) int
 		Sentences      func(childComplexity int) int
 		Threads        func(childComplexity int) int
 		Title          func(childComplexity int) int
@@ -1173,6 +1174,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StorySummary.ID(childComplexity), true
+	case "StorySummary.reports":
+		if e.ComplexityRoot.StorySummary.Reports == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Reports(childComplexity), true
 	case "StorySummary.sentences":
 		if e.ComplexityRoot.StorySummary.Sentences == nil {
 			break
@@ -1886,6 +1893,11 @@ type StorySummary {
   new facts), with when each was written. One entry for a story written once; at most 30 (the first and the latest).
   """
   updates: [StoryUpdate!]!
+  """
+  URLs of the reports its latest version was written from: the ones Gemini read (one per site first, at most 16).
+  A big story can have more reports than that; the rest weren't read.
+  """
+  reports: [String!]!
   "The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026)."
   writtenWith: SummarySettings
 }
@@ -2292,6 +2304,8 @@ func (ec *executionContext) childFields_StorySummary(ctx context.Context, field 
 		return ec.fieldContext_StorySummary_writtenAt(ctx, field)
 	case "updates":
 		return ec.fieldContext_StorySummary_updates(ctx, field)
+	case "reports":
+		return ec.fieldContext_StorySummary_reports(ctx, field)
 	case "writtenWith":
 		return ec.fieldContext_StorySummary_writtenWith(ctx, field)
 	case "id":
@@ -6333,6 +6347,29 @@ func (ec *executionContext) fieldContext_StorySummary_updates(_ context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _StorySummary_reports(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_reports(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Reports, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_reports(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _StorySummary_writtenWith(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -9785,6 +9822,11 @@ func (ec *executionContext) _StorySummary(ctx context.Context, sel ast.Selection
 			}
 		case "updates":
 			out.Values[i] = ec._StorySummary_updates(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "reports":
+			out.Values[i] = ec._StorySummary_reports(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}

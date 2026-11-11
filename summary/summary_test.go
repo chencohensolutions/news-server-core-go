@@ -323,13 +323,13 @@ func TestABusyGeminiIsTriedAgain(t *testing.T) {
 	}
 }
 
-func TestABigStoryShowsEightReportsOnePerSiteFirst(t *testing.T) {
+func TestABigStoryShowsSixteenReportsOnePerSiteFirst(t *testing.T) {
 	var s stories.Story
-	for i := range 12 {
+	for i := range 20 {
 		s.Reports = append(s.Reports, scrape.ArticleSummary{SourceID: fmt.Sprintf("site%d", i%3), URL: fmt.Sprintf("https://x/%d", i)})
 	}
 	got := shown(s)
-	if len(got) != 8 || got[0].SourceID != "site0" || got[1].SourceID != "site1" || got[2].SourceID != "site2" || got[3].URL != "https://x/3" {
+	if len(got) != maxReports || got[0].SourceID != "site0" || got[1].SourceID != "site1" || got[2].SourceID != "site2" || got[3].URL != "https://x/3" {
 		t.Fatalf("%+v", got)
 	}
 }

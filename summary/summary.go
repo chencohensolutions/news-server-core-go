@@ -33,7 +33,8 @@ const (
 	DefaultMaxChars    = 90_000 // of article text in one request: about 35,000 tokens
 	maxStories         = 12     // stories in one request: a long answer is where the model cuts sentences short
 	articleChars       = 600    // of each article's body
-	maxReports         = 8      // of a story's reports in the prompt, one per site first
+	maxReports         = 16     // of a story's reports in the prompt, one per site first: a big event has 15 sites
+	storyBodyChars     = 32_000 // of a story's bodies together: a story of many reports gets shorter bodies
 	maxFootnotes       = 5      // of one sentence: more can't all state it
 )
 
@@ -629,8 +630,10 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		seen := map[string]bool{}
 		id := fmt.Sprintf("s%d", i+1)
 		fmt.Fprintf(&b, "=== סיפור %s ===\n", id)
-		for _, r := range shown(s) {
-			b.WriteString(w.report(ctx, ids, r, bodyChars, seen))
+		reports := shown(s)
+		each := min(bodyChars, max(articleChars, storyBodyChars/max(len(reports), 1)))
+		for _, r := range reports {
+			b.WriteString(w.report(ctx, ids, r, each, seen))
 			b.WriteString("\n")
 		}
 		prev := previous(s, saved)
