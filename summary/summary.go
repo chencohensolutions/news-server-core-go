@@ -30,12 +30,12 @@ const (
 	DefaultHours       = 12
 	DefaultMinReports  = 2
 	DefaultMaxRequests = 4
-	DefaultMaxChars    = 90_000 // of article text in one request: about 35,000 tokens
-	maxStories         = 12     // stories in one request: a long answer is where the model cuts sentences short
-	articleChars       = 600    // of each article's body
-	maxReports         = 16     // of a story's reports in the prompt, one per site first: a big event has 15 sites
-	storyBodyChars     = 32_000 // of a story's bodies together: a story of many reports gets shorter bodies
-	maxFootnotes       = 5      // of one sentence: more can't all state it
+	DefaultMaxChars    = 90_000  // of article text in one request: about 35,000 tokens
+	maxStories         = 12      // stories in one request: a long answer is where the model cuts sentences short
+	articleChars       = 600     // of each article's body
+	maxReports         = 40      // of a story's reports in the prompt, one per site first: every one but a runaway's
+	storyBodyChars     = 120_000 // of a story's bodies together (~45,000 tokens): only a story of 30+ reports is cut
+	maxFootnotes       = 5       // of one sentence: more can't all state it
 )
 
 // Sentence is one sentence and the URLs of the articles it comes from: its footnotes.

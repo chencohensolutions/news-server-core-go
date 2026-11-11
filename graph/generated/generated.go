@@ -1894,8 +1894,8 @@ type StorySummary {
   """
   updates: [StoryUpdate!]!
   """
-  URLs of the reports its latest version was written from: the ones Gemini read (one per site first, at most 16).
-  A big story can have more reports than that; the rest weren't read.
+  URLs of the reports its latest version was written from: the ones Gemini read: all of them, up to 40 (one
+  per site first); the rest of a bigger story weren't read.
   """
   reports: [String!]!
   "The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026)."
