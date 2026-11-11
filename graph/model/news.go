@@ -138,7 +138,7 @@ func SentencesOf(sentences []summary.Sentence, headlines map[string]store.Headli
 		for _, url := range s.Sources {
 			note := &Footnote{URL: url}
 			if h, ok := headlines[url]; ok {
-				note.SourceID, note.Title = optional(h.SourceID), optional(h.Title)
+				note.SourceID, note.Title, note.Video = optional(h.SourceID), optional(h.Title), h.Video
 			}
 			sentence.Footnotes = append(sentence.Footnotes, note)
 		}

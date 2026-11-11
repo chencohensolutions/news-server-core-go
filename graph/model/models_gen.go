@@ -68,6 +68,8 @@ type Footnote struct {
 	SourceID *string `json:"sourceId,omitempty"`
 	// The article's title; null when the server no longer has its headline.
 	Title *string `json:"title,omitempty"`
+	// The article has a video (known once its page was read); false when the server no longer has its headline.
+	Video bool `json:"video"`
 }
 
 type GeminiDay struct {

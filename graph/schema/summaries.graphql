@@ -59,4 +59,6 @@ type Footnote {
   sourceId: String
   "The article's title; null when the server no longer has its headline."
   title: String
+  "The article has a video (known once its page was read); false when the server no longer has its headline."
+  video: Boolean!
 }
