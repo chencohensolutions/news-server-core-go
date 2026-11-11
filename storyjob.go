@@ -174,7 +174,12 @@ func (j *storyJob) run(ctx context.Context) ([]stories.Story, error) {
 		// Another text is other vectors: embedded once, kept in the database beside the others.
 		j.finder = stories.NewFinder(j.embedder, j.db, j.model, g.Text)
 	}
-	headlines, err := j.db.Headlines(ctx, time.Time{})
+	// The grouping's days, by when a headline was last on its site too: one without a time isn't grouped forever.
+	days := g.Days
+	if days == 0 {
+		days = stories.MaxDays
+	}
+	headlines, err := j.db.Headlines(ctx, time.Now().AddDate(0, 0, -days))
 	if err != nil {
 		return nil, err
 	}

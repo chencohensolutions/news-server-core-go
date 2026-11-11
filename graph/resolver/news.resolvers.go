@@ -12,13 +12,14 @@ import (
 
 	"github.com/chencohensolutions/news-server-core-go/graph/model"
 	"github.com/chencohensolutions/news-server-core-go/store"
+	"github.com/chencohensolutions/news-server-core-go/stories"
 	"github.com/chencohensolutions/news-server-core-go/summary"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 // Headlines is the resolver for the headlines field.
 func (r *queryResolver) Headlines(ctx context.Context, since *time.Time, sourceIds []string) ([]*model.Headline, error) {
-	var from time.Time
+	from := store.Recent(time.Now(), 0)
 	if since != nil {
 		from = *since
 	}
@@ -81,7 +82,7 @@ func (r *queryResolver) Stories(ctx context.Context) (*model.StoryList, error) {
 	}
 	list.GroupedAt = &at
 	// When each report was first and last seen: the stored headlines of the stories' days.
-	stored, err := r.Store.Headlines(ctx, time.Time{})
+	stored, err := r.Store.Headlines(ctx, store.Recent(at, stories.MaxDays))
 	if err != nil {
 		return nil, err
 	}

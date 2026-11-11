@@ -23,7 +23,7 @@ type Refresher struct {
 	// Settings, when set, says per site whether it is read, and from its RSS feed (SourceConfig.WithFeed) instead of
 	// its pages; nil reads every site's pages.
 	Settings func(id string) store.SiteSetting
-	// Keep is how long a headline no longer on its site stays; 0 is a week.
+	// Keep is how long a headline no longer on its site stays; 0 is a week, below 0 forever.
 	Keep time.Duration
 	Now  func() time.Time
 	Log  func(format string, args ...any)

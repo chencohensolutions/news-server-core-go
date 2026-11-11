@@ -20,7 +20,7 @@ func (r *queryResolver) Digest(ctx context.Context) (*model.Digest, error) {
 	if err != nil || digest == nil {
 		return nil, err
 	}
-	stored, err := r.Store.Headlines(ctx, time.Time{})
+	stored, err := r.Store.Headlines(ctx, store.Recent(time.Now(), 0))
 	if err != nil {
 		return nil, err
 	}

@@ -187,6 +187,15 @@ func nullable(s string) any {
 	return s
 }
 
+// RecentDays is how far back what reads "every headline" goes, now that they are kept for good: a week, the most
+// stories, summaries and a first sync need.
+const RecentDays = 7
+
+// Recent is since for RecentDays before now, or days before now when that is longer.
+func Recent(now time.Time, days int) time.Time {
+	return now.AddDate(0, 0, -max(RecentDays, days))
+}
+
 // Headlines are those seen on their site at or after since, newest sighting first.
 func (s *Store) Headlines(ctx context.Context, since time.Time) ([]Headline, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT item, first_seen, last_seen FROM headlines WHERE last_seen >= ?

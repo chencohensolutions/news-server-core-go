@@ -173,7 +173,7 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		w.mu.Unlock()
 	}()
 	now := w.now()
-	stored, err := w.Store.Headlines(ctx, time.Time{})
+	stored, err := w.Store.Headlines(ctx, store.Recent(now, stories.MaxDays))
 	if err != nil {
 		return result, err
 	}

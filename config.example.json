@@ -9,7 +9,7 @@
   "users": [{ "username": "hen" }],
   "database_file": "news.db",
   "refresh_minutes": 10,
-  "keep_days": 7,
+  "keep_days": -1,
   "feed_sources": [],
   "site_waits_ms": {},
   "onnxruntime": "",

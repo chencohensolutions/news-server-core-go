@@ -4,7 +4,7 @@
 
 extend type Query {
   """
-  The headlines seen on their site at or after since (every kept one when left out), newest sighting first; only
+  The headlines seen on their site at or after since (the last week's when left out: older ones are kept, but a first sync needs no more), newest sighting first; only
   sourceIds' sites when given. Asking again with since set to the last answer's newest lastSeen gets what changed:
   new headlines, and known ones seen again or filled in from their article.
   """

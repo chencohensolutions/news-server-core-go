@@ -37,7 +37,7 @@ type AppConfig struct {
 	DatabaseFile string `json:"database_file"`
 	// Minutes between reads of every site; 0 is DefaultRefreshMinutes, -1 turns reading off.
 	RefreshMinutes int `json:"refresh_minutes"`
-	// Days a headline no longer on its site is kept; 0 is DefaultKeepDays.
+	// Days a headline no longer on its site is kept, with its article; 0 is DefaultKeepDays, -1 keeps everything.
 	KeepDays int `json:"keep_days"`
 	// Sources read from their RSS feed instead of their pages, and each site's wait between its requests in
 	// milliseconds (the others wait 250 ms): the starting values; the app's Sources screen changes them (setSource),
@@ -89,7 +89,7 @@ const (
 	DefaultSourcesDir     = "news/sources"
 	DefaultDatabaseFile   = "news.db"
 	DefaultRefreshMinutes = 10
-	DefaultKeepDays       = 7
+	DefaultKeepDays       = -1
 	DefaultModelsDir      = "models"
 	// bge-m3 is the more accurate model, too big for the phone; the text and strictness are the app's defaults.
 	DefaultStoryModel      = "bge-m3"
