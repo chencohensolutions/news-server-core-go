@@ -130,7 +130,10 @@ Answer:
 - "related": threads that are separate affairs but bear on each other (a war and the strike during it, an
   investigation and the election it shapes): a thread, by its id or a new thread's name, and the threads related to
   it, the same way. Only new relations that involve a new story's thread; usually few.
-A story about a one-time event (an accident, a single statement, a game) is left out. A summary is 1 to 3 Hebrew
+Most political, security, legal, economic and social news is part of an ongoing affair: the war and each front of
+it, the coalition, an investigation, a trial, a reform, a strike, a crisis with a country. Put each such story in its
+affairs, starting the thread if there is none yet; a thread may begin with one story. Only a clearly one-time event
+with nothing before or after it (a road accident, a sports result, a celebrity item) is left out. A summary is 1 to 3 Hebrew
 sentences, facts only, the latest developments last; the first time a thread is named it says what the affair is.
 Use only ids from the input.`
 
