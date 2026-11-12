@@ -213,6 +213,7 @@ func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	found[0].Reports = append(found[0].Reports, third)
+	w.Now = func() time.Time { return now.Add(time.Minute) }
 	if _, err := w.Run(ctx, found); err != nil {
 		t.Fatal(err)
 	}
@@ -235,6 +236,72 @@ func TestOnlyChangedStoriesAreSentAgain(t *testing.T) {
 	// The same story: it keeps its id.
 	if want := StoryKey(stories.Story{Reports: found[0].Reports[:2]}); rain.ID != want {
 		t.Fatalf("id %s, want %s", rain.ID, want)
+	}
+	// Both versions are kept, oldest first.
+	versions, err := w.Store.StoryVersions(ctx, []string{rain.ID})
+	if err != nil || len(versions[rain.ID]) != 2 {
+		t.Fatalf("versions %+v %v", versions, err)
+	}
+}
+
+func TestAHeldStoryShowsItsLatestVersion(t *testing.T) {
+	w, _, found := setup(t)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", RewriteMinutes: 30}); err != nil {
+		t.Fatal(err)
+	}
+	third := scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/rain", Title: "גשם"}
+	grown := stories.Story{Reports: append(append([]scrape.ArticleSummary{}, found[0].Reports...), third)}
+	// Within rewriteMinutes the grown story waits: it shows the version before, not current.
+	if result, err := w.Run(ctx, append([]stories.Story{grown}, found[1:]...)); err != nil || result.Held != 1 {
+		t.Fatalf("%+v %v", result, err)
+	}
+	saved, err := Summaries(ctx, w.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, current, ok := Latest(grown, saved)
+	if !ok || current || latest.ID != StoryKey(found[0]) || latest.Title != "גשם כבד בצפון" {
+		t.Fatalf("%+v current %v ok %v", latest, current, ok)
+	}
+	if latest, current, ok := Latest(found[1], saved); !ok || !current || latest.ID != StoryKey(found[1]) {
+		t.Fatalf("%+v current %v ok %v", latest, current, ok)
+	}
+	if _, _, ok := Latest(found[2], saved); ok {
+		t.Fatal("a story never written has a version")
+	}
+}
+
+func TestANewStoryThatSaysWhatAnEarlierOneDoesIsItsNextVersion(t *testing.T) {
+	w, _, found := setup(t)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found[:1]); err != nil {
+		t.Fatal(err)
+	}
+	// The grouping puts two newer reports of the rain in a story of their own, sharing no report with the first:
+	// Gemini writes the same (the recorded answer), so it is the rain story's next version.
+	w.Now = func() time.Time { return now.Add(time.Hour) }
+	apart := stories.Story{Reports: []scrape.ArticleSummary{
+		{SourceID: "sited", URL: "https://sited/rain", Title: "גשם"}, {SourceID: "siteg", URL: "https://siteg/rain", Title: "סערה"}}}
+	if err := w.Store.SaveHeadlines(ctx, apart.Reports, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := w.Run(ctx, []stories.Story{found[0], apart}); err != nil || result.Written != 1 {
+		t.Fatalf("%+v %v", result, err)
+	}
+	saved, err := Summaries(ctx, w.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := saved[StoryKey(apart)]
+	if next.ID != StoryKey(found[0]) || len(next.Updates) != 1 {
+		t.Fatalf("id %s (want %s), updates %+v", next.ID, StoryKey(found[0]), next.Updates)
+	}
+	if versions, err := w.Store.StoryVersions(ctx, []string{next.ID}); err != nil || len(versions[next.ID]) != 2 {
+		t.Fatalf("versions %+v %v", versions, err)
 	}
 }
 

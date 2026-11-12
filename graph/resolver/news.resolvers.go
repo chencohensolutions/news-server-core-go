@@ -119,14 +119,24 @@ func (r *queryResolver) Stories(ctx context.Context) (*model.StoryList, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, s := range found {
+	// Each story's newest version, and the versions of the stories written, for their numbers and changes.
+	latest := make([]summary.StorySummary, len(found))
+	current := make([]bool, len(found))
+	var ids []string
+	for i, s := range found {
+		if sum, now, ok := summary.Latest(s, summaries); ok {
+			latest[i], current[i] = sum, now
+			ids = append(ids, sum.ID)
+		}
+	}
+	versions, err := r.storyVersions(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i, s := range found {
 		story := &model.Story{}
-		if sum, ok := summaries[summary.StoryKey(s)]; ok {
-			if sum.ID == "" {
-				// Written before ids: its key is its id.
-				sum.ID = summary.StoryKey(s)
-			}
-			story.Summary = model.StorySummaryOf(sum, byURL)
+		if latest[i].ID != "" {
+			story.Summary = versioned(latest[i], versions[latest[i].ID], current[i], byURL)
 		}
 		for _, report := range s.Reports {
 			if !r.enabled(report.SourceID) {

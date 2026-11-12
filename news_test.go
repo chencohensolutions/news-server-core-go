@@ -213,6 +213,69 @@ func TestTheAppReadsTheGeneratedArticles(t *testing.T) {
 	}
 }
 
+func TestTheAppReadsAStorysVersionsAndWhatEachChanged(t *testing.T) {
+	env := newTestEnv(t)
+	_, noon := seed(t, env)
+	ctx := context.Background()
+	first := stories.Story{Reports: []scrape.ArticleSummary{
+		{SourceID: "siteh", URL: "https://siteh/1", Title: "Rain all day"},
+		{SourceID: "sitee", URL: "https://sitee/1", Title: "Vote"},
+	}}
+	grown := stories.Story{Reports: append(append([]scrape.ArticleSummary{}, first.Reports...),
+		scrape.ArticleSummary{SourceID: "sited", URL: "https://sited/1", Title: "Storm"})}
+	id := summary.StoryKey(first)
+	save := func(s stories.Story, v summary.StorySummary) {
+		t.Helper()
+		v.ID, v.Reports = id, nil
+		for _, r := range s.Reports {
+			v.Reports = append(v.Reports, r.URL)
+		}
+		data, _ := json.Marshal(v)
+		if err := env.db.SaveSummary(ctx, summary.StoryKey(s), data, v.WrittenAt); err != nil {
+			t.Fatal(err)
+		}
+		if err := env.db.SaveStoryVersion(ctx, id, data, v.WrittenAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(first, summary.StorySummary{Title: "גשם", WrittenAt: noon, Sentences: []summary.Sentence{
+		{Text: "ירד גשם כבד.", Sources: []string{"https://siteh/1"}}, {Text: "כביש נסגר.", Sources: []string{"https://sitee/1"}}}})
+	later := noon.Add(time.Hour)
+	save(grown, summary.StorySummary{Title: "סערה", WrittenAt: later, Sentences: []summary.Sentence{
+		{Text: "ירד גשם כבד.", Sources: []string{"https://siteh/1"}}, {Text: "שני כבישים נסגרו.", Sources: []string{"https://sited/1"}}}})
+	env.api.Summaries = true
+	const fields = `version versions current changes { since title removed { text } sentences { kind parts { text added } } }`
+	// The story as grouped now: its newest version, the second of two, with what it changed.
+	env.api.Stories = func() ([]stories.Story, time.Time) { return []stories.Story{grown}, later }
+	resp := mustQuery(t, env, `{ stories { stories { summary { id title `+fields+` } } } }`, nil)
+	second := fmt.Sprintf(`{"id":%q,"title":"סערה","version":2,"versions":2,"current":true,"changes":{"since":%q,"title":"גשם","removed":[],`+
+		`"sentences":[{"kind":"SAME","parts":[{"text":"ירד גשם כבד.","added":false}]},`+
+		`{"kind":"CHANGED","parts":[{"text":"שני","added":true},{"text":" כבישים נסגרו.","added":false}]}]}}`,
+		id, noon.Format(time.RFC3339))
+	if got := string(resp.Data["stories"]); got != `{"stories":[{"summary":`+second+`}]}` {
+		t.Fatalf("stories\n got %s\nwant %s", got, second)
+	}
+	// A report joined, and the next version waits: the story shows the newest, not current.
+	waiting := stories.Story{Reports: append(append([]scrape.ArticleSummary{}, grown.Reports...),
+		scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/1", Title: "More rain"})}
+	env.api.Stories = func() ([]stories.Story, time.Time) { return []stories.Story{waiting}, later }
+	resp = mustQuery(t, env, `{ stories { stories { summary { title version current } } } }`, nil)
+	if got := string(resp.Data["stories"]); got != `{"stories":[{"summary":{"title":"סערה","version":2,"current":false}}]}` {
+		t.Fatalf("waiting: %s", got)
+	}
+	// Every version, newest first; the first changed nothing.
+	resp = mustQuery(t, env, `query($id: ID!) { storyVersions(id: $id) { title writtenAt `+fields+` } }`, map[string]any{"id": id})
+	want := fmt.Sprintf(`[{"title":"סערה","writtenAt":%q,`+second[len(fmt.Sprintf(`{"id":%q,"title":"סערה",`, id)):]+`,`+
+		`{"title":"גשם","writtenAt":%q,"version":1,"versions":2,"current":true,"changes":null}]`, later.Format(time.RFC3339), noon.Format(time.RFC3339))
+	if got := string(resp.Data["storyVersions"]); got != want {
+		t.Fatalf("versions\n got %s\nwant %s", got, want)
+	}
+	resp = mustQuery(t, env, `{ storyVersions(id: "nope") { title } }`, nil)
+	if got := string(resp.Data["storyVersions"]); got != `[]` {
+		t.Fatalf("none: %s", got)
+	}
+}
+
 func TestTheAppReadsTheStatistics(t *testing.T) {
 	env := newTestEnv(t)
 	_, noon := seed(t, env)

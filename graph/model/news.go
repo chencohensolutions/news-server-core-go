@@ -199,3 +199,17 @@ func SummarySettingsOf(s *summary.Settings) *SummarySettings {
 	return &SummarySettings{FullArticles: s.FullArticles, Length: StoryLength(strings.ToUpper(s.Length)), RewriteMinutes: s.RewriteMinutes,
 		RewriteOnNewSite: s.RewriteOnNewSite, ReserveAfter: s.ReserveAfter}
 }
+
+// StoryChangesOf is c for the API.
+func StoryChangesOf(c summary.Changes, headlines map[string]store.Headline) *StoryChanges {
+	out := &StoryChanges{Since: c.Since, Title: c.Title, Sentences: make([]*SentenceChange, len(c.Sentences)),
+		Removed: SentencesOf(c.Removed, headlines)}
+	for i, s := range c.Sentences {
+		change := &SentenceChange{Kind: SentenceChangeKind(strings.ToUpper(s.Kind)), Parts: make([]*TextPart, len(s.Parts))}
+		for j, p := range s.Parts {
+			change.Parts[j] = &TextPart{Text: p.Text, Added: p.Added}
+		}
+		out.Sentences[i] = change
+	}
+	return out
+}

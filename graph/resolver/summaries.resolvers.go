@@ -66,6 +66,35 @@ func (r *queryResolver) SummarySettings(ctx context.Context) (*model.SummarySett
 	return summarySettings(settings), nil
 }
 
+// StoryVersions is the resolver for the storyVersions field.
+func (r *queryResolver) StoryVersions(ctx context.Context, id string) ([]*model.StorySummary, error) {
+	kept, err := r.storyVersions(ctx, []string{id})
+	if err != nil {
+		return nil, err
+	}
+	versions := kept[id]
+	var urls []string
+	for _, v := range versions {
+		for _, s := range append(append([]summary.Sentence{}, v.Sentences...), v.Contradictions...) {
+			urls = append(urls, s.Sources...)
+		}
+		for _, u := range v.Updates {
+			for _, s := range u.Sentences {
+				urls = append(urls, s.Sources...)
+			}
+		}
+	}
+	headlines, err := r.Store.HeadlinesByURL(ctx, urls)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*model.StorySummary, 0, len(versions))
+	for i := len(versions) - 1; i >= 0; i-- {
+		out = append(out, versioned(versions[i], versions, true, headlines))
+	}
+	return out, nil
+}
+
 // StorySummary returns generated.StorySummaryResolver implementation.
 func (r *Resolver) StorySummary() generated.StorySummaryResolver { return &storySummaryResolver{r} }
 
