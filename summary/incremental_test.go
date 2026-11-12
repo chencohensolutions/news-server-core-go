@@ -176,6 +176,15 @@ func TestAnAnswerWithoutNewsMakesNoVersion(t *testing.T) {
 		if name == "only citations" && len(m.Story.Sentences[0].Sources) != 3 {
 			t.Errorf("the cited sentence's footnotes: %v", m.Story.Sentences[0].Sources)
 		}
+		// Every sentence answered has its note: left out when it is sound, dropped with the rule's reason otherwise.
+		if len(m.Notes) != len(answer.Insert)+len(answer.Replace)+len(answer.Cite)+len(answer.Delete) {
+			t.Errorf("%s: %d notes: %v", name, len(m.Notes), notesOf(m))
+		}
+		for _, n := range m.Notes {
+			if n.Op != "cite" && (n.Outcome == NoteApplied || n.Why == "" || (n.Outcome == NoteLeftOut) != (name == "background and a reaction")) {
+				t.Errorf("%s: %v", name, notesOf(m))
+			}
+		}
 	}
 }
 
@@ -210,6 +219,35 @@ func TestACorrectionReplacesASentence(t *testing.T) {
 	if kinds := m.Story.Updates[len(m.Story.Updates)-1].Kinds; strings.Join(kinds, " ") != "correction detail" {
 		t.Fatalf("kinds %v", kinds)
 	}
+	// What became of each operation, and why: the replay's cases show it.
+	wantNotes := []string{
+		"replace s1.2: applied, makes a version",
+		"replace 2: dropped (another sentence of the answer replaces the same one)",
+		"insert s1.3: applied",
+		"insert top: dropped (says what another sentence of the answer does)",
+		"delete s1.2: dropped (the sentence is replaced)",
+		"delete s1.1: applied",
+		"delete s1.8: dropped (names a sentence the story doesn't have)",
+	}
+	if got := notesOf(m); strings.Join(got, "\n") != strings.Join(wantNotes, "\n") {
+		t.Fatalf("notes\n got %s\nwant %s", strings.Join(got, "\n"), strings.Join(wantNotes, "\n"))
+	}
+}
+
+// notesOf are m's notes, a line each.
+func notesOf(m Merged) []string {
+	var out []string
+	for _, n := range m.Notes {
+		line := n.Op + " " + n.At + ": " + n.Outcome
+		if n.Why != "" {
+			line += " (" + n.Why + ")"
+		}
+		if n.MakesVersion {
+			line += ", makes a version"
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 func TestADetailWithANewNumberMakesAVersion(t *testing.T) {

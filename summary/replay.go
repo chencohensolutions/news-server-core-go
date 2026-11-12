@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/url"
 	"sort"
 	"strings"
@@ -33,6 +34,18 @@ type ReplayOptions struct {
 	Dry bool
 	// NoControls leaves the controls out: every story of a request is a real step.
 	NoControls bool
+	// Until is the last day (UTC) whose steps are replayed, and the day Days counts back from; zero, or a day after
+	// the archive's last, is the archive's last. A day that is over gives the same steps on every run.
+	Until time.Time
+	// Sample is how many of the steps that take a request are asked, spread over all of them in time: one of each
+	// of Sample equal runs of them, picked by Seed (the same seed picks the same steps). 0 is all of them.
+	Sample int
+	Seed   int64
+	// Offset is how many stories of the selection, controls among them, are skipped: a replay that stopped is
+	// gone on with from the story it stopped at (ReplayReport.Next), under the same other options.
+	Offset int
+	// Cases gets a line of JSON for every real step answered and every control answered wrong (ReplayCase).
+	Cases io.Writer
 }
 
 // The controls: stories whose right answer is known without a label.
@@ -50,8 +63,10 @@ type ReplayStep struct {
 type replayItem struct {
 	step    Step
 	plan    Plan
-	control string // "" for a real step
-	target  string // the control's article
+	control string       // "" for a real step
+	target  string       // the control's article
+	n       int          // its number in the selection, from 1: what Offset counts
+	next    StorySummary // of a real step: the version the live rewrite made
 	// Of a real step: how many sentences the live rewrite gave as new, and how many of them the version before
 	// didn't already say (restates); and the sizes of the live request and answer, in characters.
 	liveNew, liveGenuine int
@@ -84,11 +99,19 @@ type ReplayReport struct {
 	// Missing are the reports of the steps the archive has no article of: shown by their titles only.
 	Missing int
 
+	// Last is the last day (UTC) replayed. Sampled are the steps asked about of the Eligible when a sample was
+	// taken (0 when not), Selected the stories the replay would ask about in all (controls too), Skipped the ones
+	// Offset left out.
+	Last                       time.Time
+	Sampled, Selected, Skipped int
+
 	Requests int // sent (dry: built)
 	Asked    int // stories in them, controls too
 	Answered int
 	Cut      int // requests whose answer was cut: their whole stories were read
 	Stopped  string
+	// Next is the Offset that goes on from where a replay stopped; 0 when it asked about everything.
+	Next int
 
 	// The real steps answered, by what the incremental update made of them and what the live rewrite did: Live*
 	// has new facts by the live rewrite's own "new" list, less what the version before already said.
@@ -97,9 +120,20 @@ type ReplayReport struct {
 	LiveQuietVersion, LiveQuietQuiet int // the live rewrite had none
 	LiveListed                       int // real steps whose live "new" list wasn't empty, restated or not
 	Tripwire                         int // steps sent to be written whole after Gemini found nothing
+	// The steps without a version, apart by whether the live rewrite had new facts (Missed, of LiveNewQuiet) or
+	// none (Quiet, of LiveQuietQuiet): Found are the ones where Gemini answered sound sentences and the version
+	// rule left them out, Tripwire the ones sent to be written whole, Both the ones that are both. MissedDropped
+	// are the missed steps where Gemini answered sentences and the other rules dropped every one (in the rest of
+	// the missed it answered none).
+	MissedFound, MissedTripwire, MissedBoth int
+	MissedDropped                           int
+	QuietFound, QuietTripwire, QuietBoth    int
 
 	Stats MergeStats     // of the real steps
 	Kinds map[string]int // the sentences that went into versions, by kind
+	// LeftOutKinds are the sound sentences left out with no version made, by kind.
+	LeftOutKinds map[string]int
+	Cases        int // lines written to ReplayOptions.Cases
 
 	RepeatAsked, RepeatPassed     int
 	StrangerAsked, StrangerPassed int
@@ -295,6 +329,18 @@ func (w *Writer) liveChars(ctx context.Context, story stories.Story, prev, next 
 	return len([]rune(b.String())) + len([]rune(storiesSystem(settings.Length)))/lengthOf(settings.Length).perRequest, out
 }
 
+// sampleOf are n of items, spread over them: one of each of n equal runs of them, picked by seed, in their order.
+// The same items, n and seed give the same ones (PCG's sequence is fixed).
+func sampleOf(items []replayItem, n int, seed int64) []replayItem {
+	random := rand.New(rand.NewPCG(uint64(seed), 0))
+	out := make([]replayItem, 0, n)
+	for i := 0; i < n; i++ {
+		from, to := i*len(items)/n, (i+1)*len(items)/n
+		out = append(out, items[from+random.IntN(to-from)])
+	}
+	return out
+}
+
 // replayItems are the stories the replay asks about: the steps that take a request, in time order, and among
 // them the controls, two a request at places that move from request to request (so each place gets its controls).
 func (w *Writer) replayItems(ctx context.Context, steps []ReplayStep, arch *replayArchive, opts ReplayOptions, settings Settings, report *ReplayReport) []replayItem {
@@ -324,9 +370,13 @@ func (w *Writer) replayItems(ctx context.Context, steps []ReplayStep, arch *repl
 				report.Missing++
 			}
 		}
-		item := replayItem{step: step, plan: p, liveNew: listed, liveGenuine: genuine}
+		item := replayItem{step: step, plan: p, liveNew: listed, liveGenuine: genuine, next: s.Next}
 		item.liveIn, item.liveOut = w.liveChars(ctx, story, s.Prev, s.Next, settings)
 		real = append(real, item)
+	}
+	if opts.Sample > 0 && opts.Sample < len(real) {
+		real = sampleOf(real, opts.Sample, opts.Seed)
+		report.Sampled = len(real)
 	}
 	batch := orDefault(opts.Batch, IncrementalPerRequest)
 	if opts.NoControls || batch < 3 || len(steps) < 2 {
@@ -413,7 +463,7 @@ func (w *Writer) replayItems(ctx context.Context, steps []ReplayStep, arch *repl
 // share the day); the articles come from the archive (it sets w.Articles). It stops, with what it has, at
 // MaxRequests, at the day's budget, or when Gemini refuses.
 func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport, error) {
-	report := &ReplayReport{Dry: opts.Dry, Rebuild: map[string]int{}, Kinds: map[string]int{}}
+	report := &ReplayReport{Dry: opts.Dry, Rebuild: map[string]int{}, Kinds: map[string]int{}, LeftOutKinds: map[string]int{}}
 	settings, err := LoadSettings(ctx, w.Store)
 	if err != nil {
 		return report, err
@@ -428,6 +478,11 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 	if !opts.Dry && w.Gemini == nil {
 		return report, errors.New("no Gemini to ask: only a dry replay runs without one")
 	}
+	var end time.Time // steps from it on are left out; zero when the archive's last day is the last
+	if until := opts.Until.UTC().Truncate(24 * time.Hour); !opts.Until.IsZero() && until.Before(last) {
+		last, end = until, until.Add(24*time.Hour)
+	}
+	report.Last = last
 	var cutoff, since time.Time
 	if opts.Days > 0 {
 		cutoff = last.Add(24*time.Hour - time.Duration(opts.Days)*24*time.Hour)
@@ -441,7 +496,7 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 	var steps []ReplayStep
 	urls := map[string]bool{}
 	for _, s := range ReplaySteps(versions) {
-		if s.Next.WrittenAt.Before(cutoff) {
+		if s.Next.WrittenAt.Before(cutoff) || !end.IsZero() && !s.Next.WrittenAt.Before(end) {
 			continue
 		}
 		steps = append(steps, s)
@@ -463,6 +518,17 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 	w.logf("replay: %d headlines and %d articles read", len(arch.headlines), len(arch.articles))
 	w.Articles = func(_ context.Context, address string) *scrape.Article { return arch.articles[address] }
 	items := w.replayItems(ctx, steps, arch, opts, settings, report)
+	for i := range items {
+		items[i].n = i + 1
+	}
+	report.Selected = len(items)
+	report.Skipped = min(max(opts.Offset, 0), len(items))
+	items = items[report.Skipped:]
+	var cases *json.Encoder
+	if opts.Cases != nil {
+		cases = json.NewEncoder(opts.Cases)
+		cases.SetEscapeHTML(false)
+	}
 	batch := orDefault(opts.Batch, IncrementalPerRequest)
 	report.Positions = make([]PositionStats, batch)
 	system := len([]rune(incrementalSystem))
@@ -542,9 +608,11 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 			}
 			item := sent[position]
 			m := merge(a, answer, id, req.ids, w.now())
+			tripwire := w.tripwire(ctx, a, m)
 			report.Answered++
 			at := &report.Positions[position]
 			at.Answered++
+			kind := ""
 			switch item.control {
 			case controlRepeat:
 				// Nothing may come of an article the story has: no version, and not another event.
@@ -554,6 +622,8 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 				if passed {
 					report.RepeatPassed++
 					at.Passed++
+				} else {
+					kind = CaseRepeat
 				}
 			case controlStranger:
 				passed := contains(m.Unrelated, item.target)
@@ -562,6 +632,8 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 				if passed {
 					report.StrangerPassed++
 					at.Passed++
+				} else {
+					kind = CaseStranger
 				}
 			default:
 				report.Real++
@@ -569,33 +641,240 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 				if item.liveNew > 0 {
 					report.LiveListed++
 				}
+				// Without a version: Gemini may have answered sound sentences all the same (found), and the
+				// story may be sent to be written whole (the tripwire).
+				found := !m.Version && m.Stats.Unapplied > 0
+				count := func(foundIn, tripwireIn, bothIn *int) {
+					if found {
+						*foundIn++
+					}
+					if tripwire != "" {
+						*tripwireIn++
+					}
+					if found && tripwire != "" {
+						*bothIn++
+					}
+				}
 				switch {
 				case item.liveGenuine > 0 && m.Version:
 					report.LiveNewVersion++
+					kind = CaseAgreeVersion
 				case item.liveGenuine > 0:
 					report.LiveNewQuiet++
+					kind = CaseMissed
+					count(&report.MissedFound, &report.MissedTripwire, &report.MissedBoth)
+					if !found && m.Stats.Asked > 0 {
+						report.MissedDropped++
+					}
 				case m.Version:
 					report.LiveQuietVersion++
+					kind = CaseExtra
 				default:
 					report.LiveQuietQuiet++
+					kind = CaseAgreeNone
+					count(&report.QuietFound, &report.QuietTripwire, &report.QuietBoth)
 				}
 				if m.Version == (item.liveGenuine > 0) {
 					at.Agree++
 				}
-				if w.tripwire(ctx, a, m) != "" {
+				if tripwire != "" {
 					report.Tripwire++
 				}
 				report.Stats.add(m.Stats)
 				if m.Version {
 					updates := m.Story.Updates
-					for _, kind := range updates[len(updates)-1].Kinds {
-						report.Kinds[kind]++
+					for _, added := range updates[len(updates)-1].Kinds {
+						report.Kinds[added]++
+					}
+				}
+				for _, note := range m.Notes {
+					if note.Outcome == NoteLeftOut && note.Text != "" {
+						report.LeftOutKinds[note.Kind]++
 					}
 				}
 			}
+			if cases != nil && kind != "" {
+				c := w.replayCase(item, a, id, req.ids, answer, m, tripwire, arch)
+				c.Kind, c.Request, c.Position = kind, report.Requests, position+1
+				if err := cases.Encode(c); err != nil {
+					return report, fmt.Errorf("the cases: %w", err)
+				}
+				report.Cases++
+			}
 		}
 	}
+	if report.Stopped != "" {
+		report.Next = report.Skipped + report.Asked
+	}
 	return report, nil
+}
+
+// The kinds of a case: how a real step's outcome stands against the live rewrite of the same step, or the
+// control that was answered wrong.
+const (
+	CaseMissed       = "missed"           // the live rewrite had new facts, the incremental update made no version
+	CaseExtra        = "extra"            // the incremental update made a version, the live rewrite had no new facts
+	CaseAgreeVersion = "agree-version"    // both had news
+	CaseAgreeNone    = "agree-none"       // neither had
+	CaseRepeat       = "control-repeat"   // an article the story has, shown as new, made a version or was found unrelated
+	CaseStranger     = "control-stranger" // an article of another story was not found unrelated
+)
+
+// ReplayCase is one story of the replay with all that was sent and answered: a line of the cases file. It is for
+// reading a disagreement and judging who is right, so it holds the sites' headlines and articles as they are:
+// the file is kept out of the archive and out of any repository.
+type ReplayCase struct {
+	// N is the story's number in the replay's selection, from 1: the same story has it on every run with the same
+	// options, whatever -offset is.
+	N     int    `json:"n"`
+	Story string `json:"story"` // the story's id
+	// At is the step's time: when the live rewrite wrote the next version (of a control: the version it was shown).
+	At   time.Time `json:"at"`
+	Kind string    `json:"kind"`
+	// Request and Position are where it was asked: the run's request, and its place in it, both from 1. ID is its
+	// id there ("s3"): the sentence numbers start with it.
+	Request  int    `json:"request"`
+	Position int    `json:"position"`
+	ID       string `json:"id"`
+	Title    string `json:"title"` // the version before's
+	// PrevAt is when the version before was written, Prev its sentences as the request numbered them.
+	PrevAt time.Time      `json:"prevAt"`
+	Prev   []CaseSentence `json:"prev"`
+	// Old are the articles the story had (the request shows their titles), New the ones shown as new.
+	Old []CaseArticle `json:"old"`
+	New []CaseArticle `json:"new"`
+	// Target is the control's article, by its id in the request.
+	Target string `json:"target,omitempty"`
+	// Answer is what Gemini answered for the story, as it was read.
+	Answer Answer    `json:"answer"`
+	Merge  CaseMerge `json:"merge"`
+	// Live is the live rewrite of the same step; nil for a control.
+	Live *CaseLive `json:"live,omitempty"`
+}
+
+// CaseSentence is a sentence of a story in a case.
+type CaseSentence struct {
+	N    string `json:"n,omitempty"` // its number in the request ("s3.2")
+	Text string `json:"text"`
+	// Sites are the sites it cites: as the request showed them for the version before's, the sites' ids otherwise.
+	Sites []string `json:"sites,omitempty"`
+	// Articles are the step's new articles among its sources, by their ids in the request: a live sentence without
+	// one stands on articles the story had already.
+	Articles []string `json:"articles,omitempty"`
+}
+
+// CaseArticle is an article of a story in a case. Body is the body exactly as the request showed it: without the
+// paragraphs the story's articles gave already, up to the request's length for it; "" when it showed the headline
+// alone. An article the story had has no id and no body: the request shows its title only.
+type CaseArticle struct {
+	ID        string `json:"id,omitempty"` // in the request ("a4")
+	Site      string `json:"site"`         // the site's id
+	URL       string `json:"url"`
+	Published string `json:"published,omitempty"`
+	Title     string `json:"title"`
+	Subtitle  string `json:"subtitle,omitempty"`
+	Body      string `json:"body,omitempty"`
+}
+
+// CaseMerge is what the server made of the answer.
+type CaseMerge struct {
+	Version bool `json:"version"` // a new version was made
+	// Tripwire says the story would be sent to be written whole after an answer that made no version, and
+	// TripwireWhy why.
+	Tripwire    bool   `json:"tripwire"`
+	TripwireWhy string `json:"tripwireWhy,omitempty"`
+	// Unrelated are the new articles found to be about another event, by their ids in the request.
+	Unrelated []string `json:"unrelated,omitempty"`
+	// Notes are what became of each operation of the answer, and why.
+	Notes []MergeNote `json:"notes"`
+	Stats MergeStats  `json:"stats"`
+}
+
+// CaseLive is the live rewrite's version of a step.
+type CaseLive struct {
+	At    time.Time `json:"at"`
+	Title string    `json:"title"`
+	// New are the sentences it gave as new that the version before didn't already say, Restated the ones it gave
+	// as new that the version before did say (the same check as the incremental update's own sentences get).
+	New      []CaseSentence `json:"new"`
+	Restated []CaseSentence `json:"restated,omitempty"`
+	// Sentences are the whole version.
+	Sentences []CaseSentence `json:"sentences"`
+}
+
+// replayCase is the case of item, asked as a under id in a request with ids and answered answer, which made m.
+func (w *Writer) replayCase(item replayItem, a *asked, id string, ids *sources, answer Answer, m Merged, tripwire string, arch *replayArchive) ReplayCase {
+	prev := a.step.Prev
+	c := ReplayCase{N: item.n, Story: prev.ID, At: prev.WrittenAt, ID: id, Title: prev.Title, PrevAt: prev.WrittenAt, Prev: []CaseSentence{},
+		Old: []CaseArticle{}, New: []CaseArticle{}, Target: ids.urls[item.target], Answer: answer}
+	site := map[string]string{}
+	for _, r := range a.step.Story.Reports {
+		site[r.URL] = w.siteName(r.SourceID)
+	}
+	for i, s := range a.plan.Kept {
+		sentence := CaseSentence{N: fmt.Sprintf("%s.%d", id, i+1), Text: s.Text}
+		for _, address := range s.Sources {
+			if name := site[address]; name != "" && !contains(sentence.Sites, name) {
+				sentence.Sites = append(sentence.Sites, name)
+			}
+		}
+		c.Prev = append(c.Prev, sentence)
+	}
+	article := func(r scrape.ArticleSummary) CaseArticle {
+		return CaseArticle{Site: r.SourceID, URL: r.URL, Published: r.PublishedAt, Title: r.Title, Subtitle: r.Subtitle}
+	}
+	for _, r := range shown(stories.Story{Reports: a.plan.Old}) {
+		c.Old = append(c.Old, article(r))
+	}
+	fresh := map[string]bool{}
+	for _, r := range a.sent {
+		fresh[r.URL] = true
+		shown := article(r)
+		shown.ID, shown.Body = ids.urls[r.URL], a.bodies[r.URL]
+		c.New = append(c.New, shown)
+	}
+	c.Merge = CaseMerge{Version: m.Version, Tripwire: tripwire != "", TripwireWhy: tripwire, Notes: m.Notes, Stats: m.Stats}
+	if c.Merge.Notes == nil {
+		c.Merge.Notes = []MergeNote{}
+	}
+	for _, address := range m.Unrelated {
+		c.Merge.Unrelated = append(c.Merge.Unrelated, ids.urls[address])
+	}
+	if item.control != "" {
+		return c
+	}
+	next := item.next
+	c.At = next.WrittenAt
+	sentences := func(in []Sentence) []CaseSentence {
+		out := []CaseSentence{}
+		for _, s := range in {
+			sentence := CaseSentence{Text: s.Text}
+			for _, address := range s.Sources {
+				if name := arch.report(address).SourceID; !contains(sentence.Sites, name) {
+					sentence.Sites = append(sentence.Sites, name)
+				}
+				if fresh[address] {
+					sentence.Articles = append(sentence.Articles, ids.urls[address])
+				}
+			}
+			out = append(out, sentence)
+		}
+		return out
+	}
+	var added, restated []Sentence
+	index := indexOf(prev.Sentences)
+	for _, s := range liveNew(prev, next) {
+		if index.restates(s.Text) {
+			restated = append(restated, s)
+		} else {
+			added = append(added, s)
+		}
+	}
+	c.Live = &CaseLive{At: next.WrittenAt, Title: next.Title, New: sentences(added), Sentences: sentences(next.Sentences)}
+	if len(restated) > 0 {
+		c.Live.Restated = sentences(restated)
+	}
+	return c
 }
 
 func share(n, of int) string {
@@ -607,6 +886,9 @@ func share(n, of int) string {
 
 // Print writes the report.
 func (r *ReplayReport) Print(out io.Writer) {
+	if !r.Last.IsZero() {
+		fmt.Fprintf(out, "the archive's days up to %s (UTC)\n", r.Last.Format(time.DateOnly))
+	}
 	fmt.Fprintf(out, "%d story versions in the archive, %d of them rewrites (a version with one before it)\n", r.Versions, r.Steps)
 	fmt.Fprintf(out, "  %d (%s) have no new article: kept by the server, no request (the live rewrite had new facts in %d of them)\n", r.Local, share(r.Local, r.Steps), r.LocalNews)
 	rebuilt := 0
@@ -623,6 +905,12 @@ func (r *ReplayReport) Print(out io.Writer) {
 		fmt.Fprintf(out, "    %d %s\n", r.Rebuild[reason], reason)
 	}
 	fmt.Fprintf(out, "  %d (%s) take an incremental request; the archive lacks the article of %d of their new reports\n", r.Eligible, share(r.Eligible, r.Steps), r.Missing)
+	if r.Sampled > 0 {
+		fmt.Fprintf(out, "    asked about: %d of them, one of each of %d equal runs of them in time (-sample, -seed)\n", r.Sampled, r.Sampled)
+	}
+	if r.Skipped > 0 {
+		fmt.Fprintf(out, "    the first %d of the %d stories to ask about, controls among them, were skipped (-offset)\n", r.Skipped, r.Selected)
+	}
 	verb := "sent"
 	if r.Dry {
 		verb = "built, none sent (-dry)"
@@ -630,6 +918,9 @@ func (r *ReplayReport) Print(out io.Writer) {
 	fmt.Fprintf(out, "%d requests %s: %d stories, the controls among them; %d characters in, %d a story\n", r.Requests, verb, r.Asked, r.CharsIn, r.CharsIn/max(r.Asked, 1))
 	if r.Stopped != "" {
 		fmt.Fprintf(out, "  %s\n", r.Stopped)
+	}
+	if r.Next > 0 && !r.Dry {
+		fmt.Fprintf(out, "  to go on from there, on the same days and with the same -batch, -sample and -seed: -offset %d\n", r.Next)
 	}
 	n := max(r.RealAsked, 1)
 	if r.Dry {
@@ -645,17 +936,32 @@ func (r *ReplayReport) Print(out io.Writer) {
 	live := r.LiveNewVersion + r.LiveNewQuiet
 	fmt.Fprintf(out, "  the live rewrite listed new facts in %d (%s); in %d (%s) they were not the version before's in other words\n", r.LiveListed, share(r.LiveListed, r.Real), live, share(live, r.Real))
 	fmt.Fprintf(out, "  live had new facts:  %d a version, %d none: recall %s\n", r.LiveNewVersion, r.LiveNewQuiet, share(r.LiveNewVersion, live))
+	if r.LiveNewQuiet > 0 {
+		either := r.MissedFound + r.MissedTripwire - r.MissedBoth
+		fmt.Fprintf(out, "    the %d without a version, by what Gemini answered: sound sentences that the version rule left out in %d; only sentences the other rules dropped in %d; no sentence in %d\n",
+			r.LiveNewQuiet, r.MissedFound, r.MissedDropped, r.LiveNewQuiet-r.MissedFound-r.MissedDropped)
+		fmt.Fprintf(out, "    the tripwire would write %d of the %d whole (%d of them with sound sentences left out); neither in %d\n", r.MissedTripwire, r.LiveNewQuiet, r.MissedBoth, r.LiveNewQuiet-either)
+		fmt.Fprintf(out, "    recall counting the sound sentences left out (Gemini found facts, a version or not): %s\n", share(r.LiveNewVersion+r.MissedFound, live))
+		fmt.Fprintf(out, "    recall counting the tripwire's whole writings (a version, or written whole): %s; counting both: %s\n",
+			share(r.LiveNewVersion+r.MissedTripwire, live), share(r.LiveNewVersion+either, live))
+	}
 	fmt.Fprintf(out, "  live had none:       %d a version, %d none\n", r.LiveQuietVersion, r.LiveQuietQuiet)
+	if r.LiveQuietQuiet > 0 {
+		fmt.Fprintf(out, "    the %d without a version: sound sentences that the version rule left out in %d; the tripwire would write %d whole (%d of them with sound sentences left out)\n",
+			r.LiveQuietQuiet, r.QuietFound, r.QuietTripwire, r.QuietBoth)
+	}
 	s := r.Stats
 	fmt.Fprintf(out, "\nsentences Gemini answered to insert or replace: %d\n", s.Asked)
 	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut\n",
 		s.Restated, share(s.Restated, s.Asked), s.Unsourced, s.Repeated, s.Unknown, s.Garbled)
 	fmt.Fprintf(out, "  left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
-	var byKind []string
+	var byKind, leftOut []string
 	for _, kind := range kinds {
 		byKind = append(byKind, fmt.Sprintf("%d %s", r.Kinds[kind], kind))
+		leftOut = append(leftOut, fmt.Sprintf("%d %s", r.LeftOutKinds[kind], kind))
 	}
-	fmt.Fprintf(out, "  by kind: %s\n", strings.Join(byKind, ", "))
+	fmt.Fprintf(out, "  in versions, by kind: %s\n", strings.Join(byKind, ", "))
+	fmt.Fprintf(out, "  left out with no version made, by kind: %s\n", strings.Join(leftOut, ", "))
 	fmt.Fprintf(out, "\ncontrols:\n")
 	fmt.Fprintf(out, "  an article the story has, shown as new, made nothing: %d of %d (%s)\n", r.RepeatPassed, r.RepeatAsked, share(r.RepeatPassed, r.RepeatAsked))
 	fmt.Fprintf(out, "  an article of another story was found unrelated:      %d of %d (%s)\n", r.StrangerPassed, r.StrangerAsked, share(r.StrangerPassed, r.StrangerAsked))

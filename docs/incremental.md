@@ -149,6 +149,8 @@ articles that joined before the next one), sends them through the incremental re
 news-server eval-incremental -dry -days 2          build the requests of the last 2 days, print their sizes
 news-server eval-incremental -days 2               the same, sent: at most 10 requests
 news-server eval-incremental -days 2 -max-requests 30 -batch 8
+news-server eval-incremental -days 2 -until 2026-11-10 -sample 120 -seed 1 -max-requests 20 -cases ../replay-cases.jsonl
+                                                   120 steps spread over two days that are over, each written out to read
 ```
 
 | Flag | |
@@ -156,6 +158,11 @@ news-server eval-incremental -days 2 -max-requests 30 -batch 8
 | `-days N` | the archive's last N days (0: all of it) |
 | `-batch N` | stories a request (8) |
 | `-max-requests N` | the most requests (10; 0: as many as it takes). Each is counted in the database's day, as the server's are, and it stops at `summary_budget` |
+| `-until day` | the last day replayed (UTC, `2026-11-10`), which `-days` counts back from; the archive's last when left out. The archive's last day still grows, so only a day that is over gives the same steps on every run |
+| `-sample N` | ask about N of the steps that take a request, spread over all of them in time: they are cut into N equal runs, oldest first, and one of each is asked. Without it: all of them, the oldest first, so `-max-requests` stops in the first hours |
+| `-seed N` | which one of each run `-sample` picks (1). The same archive days, sample and seed pick the same steps |
+| `-offset N` | skip the first N stories to ask about, controls among them. A replay that stopped (at `-max-requests`, the day's budget, a refusal) prints the offset that goes on from there; the days, `-batch`, `-sample` and `-seed` must be the same |
+| `-cases file` | write the cases to `file` (below). Not with `-dry` |
 | `-dry` | nothing is sent |
 | `-no-controls` | only real steps |
 
@@ -166,7 +173,15 @@ ids is joined to its story by its reports, as the server did then. It reports:
 - of the steps answered: a version or none, against the live rewrite of the same step. The live rewrite "had new
   facts" when its own "new" list has a sentence the version before didn't already say (the same check as above).
   **Recall** is the share of those steps where the incremental update made a version;
-- the sentences Gemini answered, and how many each rule dropped; the restatement rate;
+- the steps where the live rewrite had new facts and no version was made, by what Gemini answered: sound sentences
+  that the version rule left out (the rule lost the facts), only sentences the other rules dropped, or no sentence
+  (the model did). And how many of them the tripwire would send to be written whole. So recall is given three more
+  times: counting the steps with sound sentences left out ("Gemini found facts", a version or not), counting the
+  tripwire's whole writings (a whole writing of a step whose live rewrite had new facts makes a version), and
+  counting both. The same two counts are given for the steps where the live rewrite had nothing: there a whole
+  writing is a request spent for no version;
+- the sentences Gemini answered, and how many each rule dropped; the restatement rate; the ones in versions and
+  the ones left out with no version made, by kind;
 - the sizes: characters and tokens in and out a story, beside the live rewrite's request and answer for the same
   step (in characters, and in tokens at the rate the incremental requests measured);
 - three controls that need no labels, two in each request at places that move:
@@ -176,6 +191,30 @@ ids is joined to its story by its reports, as the server did then. It reports:
 
 The live rewrite is not the truth: it misses news too, and lists restatements. A step where only the incremental
 update found news is worth reading, not counting as an error.
+
+### The cases
+
+`-cases file` writes what the numbers are made of, to read a disagreement and judge who is right: a line of JSON
+for every real step answered and for every control answered wrong (`summary.ReplayCase`). The file holds the sites'
+headlines and articles as they are, so it is refused inside the archive folder and inside a repository (a folder
+with `.git`, or under one): keep it beside them. It is written anew, and added to with `-offset`.
+
+| Field | |
+|---|---|
+| `n` | the story's number among the ones to ask about, from 1: what `-offset` counts, and the same on every run with the same days, `-batch`, `-sample` and `-seed` |
+| `story`, `at` | the story's id, and the step's time: when the live rewrite wrote the next version |
+| `kind` | `missed` (the live rewrite had new facts, no version here), `extra` (a version here, none there), `agree-version`, `agree-none`; `control-repeat` and `control-stranger` for a control answered wrong |
+| `request`, `position`, `id` | where it was asked: the run's request, its place in it, and its id there (`s3`) |
+| `title`, `prevAt`, `prev` | the version before: its title, when it was written, and its sentences as the request numbered them (`n`, `text`, `sites`) |
+| `old` | the articles the story had: `site`, `url`, `title` (the request shows no more of them) |
+| `new` | the articles shown as new: `id` in the request (`a4`), `site`, `url`, `published`, `title`, `subtitle`, and `body` exactly as the request showed it (cleaned, without the paragraphs the story's articles gave, cut to its length; none when only the headline was shown) |
+| `target` | a control's article, by its id |
+| `answer` | what Gemini answered for the story: `unrelated`, `insert`, `replace`, `delete`, `cite`, `title`, `contradictions` |
+| `merge` | what the server made of it: `version` (one was made), `tripwire` and `tripwireWhy` (it would be written whole), `unrelated`, `stats` (the counts of the report), and `notes` |
+| `merge.notes` | one for each answered operation: `op`, `at`, `kind`, `text`, `sources`, and its `outcome`: `applied`, `left out` (sound, and the answer makes no version) or `dropped`, with `why` (says again what `s3.1` does, cites no new article of the story, garbled or cut short, ...). `makesVersion` marks a sentence the version rule takes |
+| `live` | the live rewrite's version of the step (none for a control): `at`, `title`, `new` (the sentences it gave as new, less the ones the version before said already: those are in `restated`), and `sentences`, all of it. A sentence has its `sites` and, in `articles`, the step's new articles among its sources: a "new" sentence without one stands on articles the story had |
+
+To read the misses, for one: `jq -c 'select(.kind == "missed")' file`.
 
 ## What turning it on still needs
 

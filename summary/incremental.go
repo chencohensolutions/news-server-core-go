@@ -462,6 +462,10 @@ type asked struct {
 	chars int // of the request's text
 	// shown is each new article's text as the request showed it, by URL.
 	shown map[string]string
+	// sent are the new articles the request showed, in its order, and bodies each one's body as it showed it ("" for
+	// one shown by its headline alone), by URL: for the replay's cases.
+	sent   []scrape.ArticleSummary
+	bodies map[string]string
 }
 
 // bodyChars is how much of an article's body a request shows.
@@ -476,7 +480,7 @@ func bodyChars(settings Settings) int {
 // sites each cites, the titles of the articles it has, and the new articles whole (without the paragraphs an
 // article it has already gave, word for word).
 func (w *Writer) storyText(ctx context.Context, ids *sources, id string, step Step, p Plan, settings Settings) (string, *asked) {
-	a := &asked{step: step, plan: p, shown: map[string]string{}}
+	a := &asked{step: step, plan: p, shown: map[string]string{}, bodies: map[string]string{}}
 	site := map[string]string{}
 	for _, r := range step.Story.Reports {
 		site[r.URL] = w.siteName(r.SourceID)
@@ -522,7 +526,9 @@ func (w *Writer) storyText(ctx context.Context, ids *sources, id string, step St
 		b.WriteString(w.reportOf(ids, r, body))
 		b.WriteString("\n")
 		a.shown[r.URL] = strings.TrimSpace(oneLine(r.Title) + ". " + oneLine(r.Subtitle) + ". " + body)
+		a.bodies[r.URL] = body
 	}
+	a.sent = added
 	a.chars = len([]rune(b.String()))
 	return b.String(), a
 }
@@ -622,7 +628,47 @@ type Merged struct {
 	// Unrelated are the new articles Gemini found to be about another event.
 	Unrelated []string
 	Stats     MergeStats
+	// Notes are what became of each operation of the answer, in the order the rules read them: the replaced
+	// sentences, the inserted ones, the citations, the deletions.
+	Notes []MergeNote
 }
+
+// What became of an operation of an answer (MergeNote.Outcome).
+const (
+	NoteApplied = "applied"  // in the version; of a citation, a footnote the sentence got
+	NoteLeftOut = "left out" // sound, and left out because the answer makes no version
+	NoteDropped = "dropped"  // dropped by a rule: Why says which
+)
+
+// MergeNote is what the server did with one operation of a story's answer: the replay's cases show them, so a
+// sentence that was dropped can be read beside the rule that dropped it.
+type MergeNote struct {
+	Op string `json:"op"` // "insert", "replace", "delete" or "cite"
+	// At is the sentence the operation named, as answered: "s1.3", or "top" of an inserted one.
+	At   string `json:"at,omitempty"`
+	Kind string `json:"kind,omitempty"` // of an inserted or replaced sentence: as answered, or as read when it is sound
+	Text string `json:"text,omitempty"`
+	// Sources are the ids of the articles it cited, as answered.
+	Sources []string `json:"sources,omitempty"`
+	Outcome string   `json:"outcome"`
+	// Why it was dropped or left out, in words.
+	Why string `json:"why,omitempty"`
+	// MakesVersion says a sound sentence is one the version rule takes: a development, a correction, or a detail
+	// with a number the story lacks.
+	MakesVersion bool `json:"makesVersion,omitempty"`
+}
+
+// What the rules say of an operation they drop (MergeNote.Why).
+const (
+	whyGarbled    = "garbled or cut short"
+	whyUnsourced  = "cites no new article of the story"
+	whyRepeated   = "says what another sentence of the answer does"
+	whyUnknown    = "names a sentence the story doesn't have"
+	whyReplaced   = "the sentence is replaced"
+	whyHalf       = "the answer deletes more than half the story"
+	whyNoFootnote = "adds no footnote: no new article of the story the sentence doesn't cite already"
+	whyNoVersion  = "no version: the answer has no development, no correction, and no detail with a number the story lacks"
+)
 
 var sentenceRef = regexp.MustCompile(`\bs(\d+)\.(\d+)\b`)
 
@@ -666,6 +712,7 @@ type edit struct {
 	kind     string
 	at       int
 	replace  bool
+	note     int // its note, among Merged.Notes
 }
 
 // merge applies what Gemini answered for a story (id in the request, "s1") to the version before. The rules:
@@ -699,24 +746,42 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 	answered := newWordIndex()
 	var edits []edit
 	replaced := map[int]bool{}
-	accept := func(text string, refs []string, kind string, at int, replace bool) {
-		s, why := ids.sentence(text, refs, allowed)
+	// note keeps what became of an operation; drop is a dropped one's.
+	note := func(n MergeNote) int {
+		m.Notes = append(m.Notes, n)
+		return len(m.Notes) - 1
+	}
+	drop := func(n MergeNote, why string) {
+		n.Outcome, n.Why = NoteDropped, why
+		note(n)
+	}
+	accept := func(op MergeNote, at int, replace bool) {
+		s, why := ids.sentence(op.Text, op.Sources, allowed)
 		switch {
 		case why == "garbled":
 			m.Stats.Garbled++
+			drop(op, whyGarbled)
 		case why == "unsourced":
 			m.Stats.Unsourced++
+			drop(op, whyUnsourced)
 		case index.restates(s.Text):
 			m.Stats.Restated++
+			why := "has no words"
+			if of, _ := index.restated(s.Text); of >= 0 {
+				why = fmt.Sprintf("says again what %s.%d does", id, of+1)
+			}
+			drop(op, why)
 		case answered.restates(s.Text):
 			m.Stats.Repeated++
+			drop(op, whyRepeated)
 		default:
-			kind = strings.ToLower(strings.TrimSpace(kind))
+			kind := strings.ToLower(strings.TrimSpace(op.Kind))
 			if !contains(kinds, kind) {
 				kind = Detail
 			}
 			answered.add(s.Text)
-			edits = append(edits, edit{sentence: s, kind: kind, at: at, replace: replace})
+			op.Kind = kind
+			edits = append(edits, edit{sentence: s, kind: kind, at: at, replace: replace, note: note(op)})
 			if replace {
 				replaced[at] = true
 			}
@@ -724,14 +789,17 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 	}
 	for _, r := range answer.Replace {
 		m.Stats.Asked++
+		op := MergeNote{Op: "replace", At: r.Sentence, Kind: r.Kind, Text: r.Text, Sources: r.Sources}
 		at, ok := sentenceNumber(r.Sentence, id, n)
 		switch {
 		case !ok:
 			m.Stats.Unknown++
+			drop(op, whyUnknown)
 		case replaced[at]:
 			m.Stats.Repeated++
+			drop(op, "another sentence of the answer replaces the same one")
 		default:
-			accept(r.Text, r.Sources, r.Kind, at, true)
+			accept(op, at, true)
 		}
 	}
 	for _, in := range answer.Insert {
@@ -743,11 +811,19 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 				m.Stats.Unanchored++
 			}
 		}
-		accept(in.Text, in.Sources, in.Kind, at, false)
+		accept(MergeNote{Op: "insert", At: in.After, Kind: in.Kind, Text: in.Text, Sources: in.Sources}, at, false)
 	}
 	for _, e := range edits {
 		if e.kind == Development || e.kind == Correction || e.kind == Detail && index.hasNewNumber(e.sentence.Text) {
 			m.Version = true
+			m.Notes[e.note].MakesVersion = true
+		}
+	}
+	for _, e := range edits {
+		if m.Version {
+			m.Notes[e.note].Outcome = NoteApplied
+		} else {
+			m.Notes[e.note].Outcome, m.Notes[e.note].Why = NoteLeftOut, whyNoVersion
 		}
 	}
 	// Footnotes: a new article that states an old sentence's fact.
@@ -756,9 +832,11 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		kept[i] = Sentence{Text: s.Text, Sources: append([]string{}, s.Sources...)}
 	}
 	for _, c := range answer.Cite {
+		op := MergeNote{Op: "cite", At: c.Sentence, Sources: c.Sources}
 		at, ok := sentenceNumber(c.Sentence, id, n)
 		if !ok {
 			m.Stats.Unknown++
+			drop(op, whyUnknown)
 			continue
 		}
 		cited := false
@@ -772,6 +850,10 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		}
 		if cited {
 			m.Stats.Cited++
+			op.Outcome = NoteApplied
+			note(op)
+		} else {
+			drop(op, whyNoFootnote)
 		}
 	}
 	var unrelated []string
@@ -779,24 +861,37 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 	contradictions := ids.newContradictions(answer.Contradictions, id, kept, allowed, a.step.Story)
 	if !m.Version {
 		m.Stats.Unapplied = len(edits)
+		for _, ref := range answer.Delete {
+			note(MergeNote{Op: "delete", At: ref, Outcome: NoteLeftOut, Why: whyNoVersion})
+		}
 		m.Story = render(a.step, p, kept, nil, nil, contradictions, "", unrelated, now)
 		m.Story.HeadlineOnly = append(m.Story.HeadlineOnly, headlineOnly(ids, p, allowed)...)
 		return m
 	}
 	deleted := map[int]bool{}
+	deletions := map[int]int{} // a deleted sentence's note
 	for _, ref := range answer.Delete {
+		op := MergeNote{Op: "delete", At: ref}
 		at, ok := sentenceNumber(ref, id, n)
 		switch {
 		case !ok:
 			m.Stats.Unknown++
-		case !replaced[at]:
+			drop(op, whyUnknown)
+		case replaced[at]:
+			drop(op, whyReplaced)
+		case !deleted[at]:
 			deleted[at] = true
+			op.Outcome = NoteApplied
+			deletions[at] = note(op)
 		}
 	}
 	// Deleting half the story is no update of it: the sentences stay.
 	if 2*len(deleted) > n {
 		m.Stats.Unknown += len(deleted)
 		deleted = map[int]bool{}
+		for _, i := range deletions {
+			m.Notes[i].Outcome, m.Notes[i].Why = NoteDropped, whyHalf
+		}
 	}
 	m.Stats.Deleted = len(deleted)
 	var sentences, added []Sentence

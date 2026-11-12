@@ -38,8 +38,10 @@ const usage = `usage:
   news-server incremental [off|shadow]
                                    the incremental story update: turn its shadow on or off, and print what the shadow
                                    recorded (docs/incremental.md)
-  news-server eval-incremental [-days N] [-batch 8] [-max-requests 10] [-dry]
-                                   replay the archive's rewrites through the incremental update and report
+  news-server eval-incremental [-days N] [-until day] [-batch 8] [-max-requests 10] [-sample N] [-seed 1] [-offset N]
+                               [-cases file] [-dry]
+                                   replay the archive's rewrites through the incremental update and report; -cases
+                                   writes every step with what was sent and answered, to read (docs/incremental.md)
   news-server archive              bring the archive folder (archive_dir) up to date now; the server does it after each read
   news-server restore              make a new database_file from the archive folder (after installing from scratch)
 

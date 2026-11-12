@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -101,21 +103,69 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 	fmt.Fprintf(out, "    live had none:       %d a version, %d none\n", r.LiveQuietVersion, r.LiveQuietQuiet)
 }
 
+// geminiBaseURL is where eval-incremental finds Gemini: "" is the Gemini API. A test's recorded answers are served
+// from another address.
+var geminiBaseURL = ""
+
+// casesFile opens the file the replay writes its cases to: anew, or to add to when the replay goes on from an
+// offset. The cases hold the sites' headlines and articles as they are, so a file inside the archive (a restore reads
+// that folder, and it is copied whole) or inside a repository (a folder with .git, or any folder under one) is
+// refused.
+func casesFile(path, archive string, add bool) (*os.File, error) {
+	full, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	inArchive, _ := os.Stat(archive)
+	for dir := filepath.Dir(full); ; dir = filepath.Dir(dir) {
+		if info, err := os.Stat(dir); err == nil && inArchive != nil && os.SameFile(info, inArchive) {
+			return nil, fmt.Errorf("-cases %s is inside the archive (%s): the cases are written outside it", path, archive)
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return nil, fmt.Errorf("-cases %s is inside a repository (%s): the cases hold the sites' headlines and articles, which stay out of it", path, dir)
+		}
+		if dir == filepath.Dir(dir) {
+			break
+		}
+	}
+	mode := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+	if add {
+		mode = os.O_CREATE | os.O_WRONLY | os.O_APPEND
+	}
+	return os.OpenFile(full, mode, 0o600)
+}
+
 // evalIncremental is the eval-incremental command: the archive's rewrites through the incremental request, on the
 // real Gemini key, each request counted in the database's day (summary.Writer.Replay).
 func evalIncremental(config auth.AppConfig, args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("eval-incremental", flag.ContinueOnError)
 	flags.SetOutput(out)
 	days := flags.Int("days", 0, "replay the archive's last `N` days (0: all of it)")
+	until := flags.String("until", "", "the last `day` to replay (UTC, 2026-11-10), which -days counts back from: a day that is over gives the same steps on every run (default: the archive's last)")
 	batch := flags.Int("batch", summary.IncrementalPerRequest, "stories in one request")
 	maxRequests := flags.Int("max-requests", 10, "the most requests to send; each one is counted in the day's budget (0: as many as it takes)")
+	sample := flags.Int("sample", 0, "ask about `N` of the steps, spread over all of them in time (0: all, the oldest first)")
+	seed := flags.Int64("seed", 1, "which steps -sample picks: the same `seed` picks the same ones")
+	offset := flags.Int("offset", 0, "skip the first `N` stories to ask about, controls among them: a replay that stopped prints the offset that goes on from there")
+	cases := flags.String("cases", "", "write every real step answered and every control answered wrong to `file`, a line of JSON each (outside the archive and any repository; with -offset it is added to)")
 	dry := flags.Bool("dry", false, "build the requests and print their sizes; nothing is sent")
 	noControls := flags.Bool("no-controls", false, "leave the controls out")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if flags.NArg() > 0 || *batch < 1 {
-		return fmt.Errorf("usage: news-server eval-incremental [-days N] [-batch N] [-max-requests N] [-dry] [-no-controls]")
+	if flags.NArg() > 0 || *batch < 1 || *sample < 0 || *offset < 0 {
+		return fmt.Errorf("usage: news-server eval-incremental [-days N] [-until day] [-batch N] [-max-requests N] [-sample N] [-seed N] [-offset N] [-cases file] [-dry] [-no-controls]")
+	}
+	var last time.Time
+	if *until != "" {
+		day, err := time.Parse(time.DateOnly, *until)
+		if err != nil {
+			return fmt.Errorf("-until %s is not a day (2026-11-10)", *until)
+		}
+		last = day
+	}
+	if *cases != "" && *dry {
+		return fmt.Errorf("-cases needs the answers: not with -dry")
 	}
 	if config.ArchiveDir == "-" {
 		return fmt.Errorf("the archive is off (archive_dir is \"-\")")
@@ -143,16 +193,28 @@ func evalIncremental(config auth.AppConfig, args []string, out io.Writer) error 
 		if err != nil {
 			return fmt.Errorf("no Gemini key (%w): -dry builds the requests without one", err)
 		}
-		w.Gemini = &gemini.Client{Key: key, Model: config.GeminiModel}
+		w.Gemini = &gemini.Client{Key: key, Model: config.GeminiModel, BaseURL: geminiBaseURL}
+	}
+	opts := summary.ReplayOptions{Archive: config.ArchiveDir, Days: *days, Until: last, Batch: *batch, MaxRequests: *maxRequests,
+		Sample: *sample, Seed: *seed, Offset: *offset, Dry: *dry, NoControls: *noControls}
+	if *cases != "" {
+		file, err := casesFile(*cases, config.ArchiveDir, *offset > 0)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		opts.Cases = file
 	}
 	start := time.Now()
-	report, err := w.Replay(context.Background(), summary.ReplayOptions{Archive: config.ArchiveDir, Days: *days, Batch: *batch,
-		MaxRequests: *maxRequests, Dry: *dry, NoControls: *noControls})
+	report, err := w.Replay(context.Background(), opts)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(out)
 	report.Print(out)
+	if *cases != "" {
+		fmt.Fprintf(out, "%d cases written to %s\n", report.Cases, *cases)
+	}
 	fmt.Fprintf(out, "in %s\n", time.Since(start).Round(time.Second))
 	return nil
 }

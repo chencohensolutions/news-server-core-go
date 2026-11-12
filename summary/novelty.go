@@ -149,11 +149,18 @@ func indexOf(sentences []Sentence) *wordIndex {
 // (restatedAt), and the rest are words the story has elsewhere. A number that sentence lacks, or a word the story
 // lacks (a name, mostly), makes it news: "three were hurt" after "two were hurt" is not a restatement.
 func (x *wordIndex) restates(text string) bool {
+	_, ok := x.restated(text)
+	return ok
+}
+
+// restated is restates with the sentence text says again: the first of them, from 0; -1 for a text without words.
+func (x *wordIndex) restated(text string) (sentence int, ok bool) {
 	now := words(text)
 	if len(now) == 0 {
-		return true
+		return -1, true
 	}
-	for _, has := range x.covered(now) {
+	sentence = -1
+	for at, has := range x.covered(now) {
 		n := 0
 		for _, ok := range has {
 			if ok {
@@ -170,11 +177,11 @@ func (x *wordIndex) restates(text string) bool {
 				break
 			}
 		}
-		if !news {
-			return true
+		if !news && (sentence < 0 || at < sentence) {
+			sentence = at
 		}
 	}
-	return false
+	return sentence, sentence >= 0
 }
 
 // hasNewNumber says text has a number the story lacks.
