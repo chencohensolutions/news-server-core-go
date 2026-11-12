@@ -88,6 +88,10 @@ type AppConfig struct {
 	// Whether the server publishes its addresses in the BitTorrent DHT, so the app finds it when its address
 	// changes (a home IP); on unless false.
 	Discovery *bool `json:"discovery"`
+	// How many of the server's addresses go in its DHT record, the likeliest first (public_url, the router's
+	// mapping, the public IP, IPv6, then the LAN ones); 0 is all of them. 1 publishes only the outside address.
+	// serverInfo still gives a connected phone every address.
+	DiscoveryAddresses int `json:"discovery_addresses"`
 }
 
 // DiscoveryOn says whether the server uses the DHT: on unless "discovery": false.

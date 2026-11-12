@@ -17,7 +17,8 @@ and the same code (`enroll/`, `auth/access.go`, `middleware.go`). The difference
 - **When the home IP changes:** the server publishes its addresses in the BitTorrent DHT (journal-server-go's
   `discovery`, BEP 44 with salt `news-server/v1`), signed with a key derived from its TLS key and sealed so only
   someone holding the link's `key=` can read them. The app looks there when no known address answers, and
-  `serverInfo.discovery` gives it the current list while connected. `"discovery": false` turns it off;
+  `serverInfo.discovery` gives it the current list while connected. `"discovery_addresses": N` publishes only the first N
+  (1: just the outside address; 0, the default, all); `"discovery": false` turns it off;
   `news-server discovery` publishes and reads it back, to check it works.
 - Port 56399 and admin API 127.0.0.1:8082 by default, beside the journal server's 56398 and 8081.
 
