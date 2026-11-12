@@ -88,6 +88,7 @@ Key files:
 | Scheduler | [refresh/](../refresh/), [refresh/refresh_test.go](../refresh/refresh_test.go) |
 | Story clustering | [stories/](../stories/), eval in [stories/eval.go](../stories/eval.go) |
 | Summaries, threads, prompts | [summary/](../summary/), [summary/prompts.go](../summary/prompts.go), [summary/summary_test.go](../summary/summary_test.go) |
+| Incremental story updates: rules, shadow, replay | [incremental.md](incremental.md), [summary/incremental.go](../summary/incremental.go), [summary/shadow.go](../summary/shadow.go), [summary/replay.go](../summary/replay.go), tests beside them |
 | Gemini client | [gemini/gemini.go](../gemini/gemini.go) |
 | Gemini grouping eval | [evalgemini.go](../evalgemini.go) |
 | GraphQL schema | [graph/schema/](../graph/schema/) |
@@ -146,7 +147,9 @@ mostly say what a recent one does (the grouping split it off, or grouped the new
 story's next version, under its id, so the app shows one story. A report Gemini finds
 unrelated is moved to the closest other story. Once a day Gemini links stories into threads, affairs that run over
 months. Grouping by Gemini instead of the embedding model is a setting. The app changes the summary settings
-(`setSummarySettings`, admins only).
+(`setSummarySettings`, admins only). An incremental update of a story, from its version before and its new articles
+only, runs in shadow beside the rewrite and is replayed on the archive ([incremental.md](incremental.md)); it writes
+nothing the app reads yet.
 
 ## Related repositories
 
@@ -171,6 +174,7 @@ bundle/                            downloads ONNX Runtime and the models, checke
 storyjob.go                        groups stories after each read; the models, stories and eval-stories commands
 summary/  gemini/  summaries.go    prompts, summaries, threads, Gemini grouping; the Gemini client
 evalgemini.go                      eval-gemini-grouping
+incremental.go                     the incremental and eval-incremental commands (summary/incremental.go, shadow.go, replay.go)
 backup/  archive.go                the plain-file archive and restore
 portmap/  portmapping.go           UPnP / NAT-PMP port forwarding on the home router
 discovery/  discover.go            the server's addresses in the BitTorrent DHT, sealed and signed

@@ -25,6 +25,8 @@ go run ./cmd/news-server stories                # group the stored headlines now
 go run ./cmd/news-server summarize              # group the stories and summarize what changed with Gemini now
 go run ./cmd/news-server eval-stories           # the story model on the 348 labeled pairs, against the app's numbers
 go run ./cmd/news-server eval-gemini-grouping   # Gemini's grouping on the same pairs
+go run ./cmd/news-server incremental shadow     # the incremental story update in shadow (off turns it off; alone: what it recorded)
+go run ./cmd/news-server eval-incremental -dry  # replay the archive's rewrites through it (docs/incremental.md)
 go run ./cmd/news-server archive                # bring the archive folder up to date now
 go run ./cmd/news-server restore                # make a new database from the archive folder
 go run ./cmd/news-server help                   # every command
