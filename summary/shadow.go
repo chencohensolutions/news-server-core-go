@@ -31,6 +31,11 @@ const (
 	shadowKeep = 7 * 24 * time.Hour
 	// shadowSentKey is where the day's count of shadow requests is kept.
 	shadowSentKey = "incremental_shadow_sent"
+	// shadowTries is how many times the shadow asks about a story whose answers name none of its new articles,
+	// before it is left to be written whole.
+	shadowTries = 2
+	// whySkipped is why a story Gemini skipped that often is written whole.
+	whySkipped = "Gemini skipped it twice: its answers named none of the story's new articles"
 )
 
 // What a shadow step started from.
@@ -60,6 +65,12 @@ type Shadow struct {
 	Story *StorySummary `json:"story,omitempty"`
 	// Version says the step made a new version: the story's latest update is what's new.
 	Version bool `json:"version"`
+	// Skipped is how many answers in a row named none of the story's new articles (Merged.Skipped). Such an answer
+	// is no step: with Again the story is asked about again in the next run, and until then the row doesn't count
+	// as the story's (the next step starts where this one did). After shadowTries of them it is left to be written
+	// whole (Reason says so, and Again is off).
+	Skipped int  `json:"skipped,omitempty"`
+	Again   bool `json:"again,omitempty"`
 	// Full is how many articles the story had when it was last written whole.
 	Full    int            `json:"full"`
 	Stats   *MergeStats    `json:"stats,omitempty"`
@@ -158,7 +169,9 @@ func (w *Writer) shadowSafely(ctx context.Context, window []stories.Story, first
 // shadow makes the next version of window's changed stories as incremental updates, in shadow: the ones without
 // a new article and the ones to be written whole are only recorded; of the others, the freshest that fit go in one
 // request, when the day has one to spare, tried once. A story is recorded under its StoryKey whatever came of it
-// (nothing new too), so it is asked once; one that Gemini didn't answer waits for the next run.
+// (nothing new too), so it is asked once; one that Gemini didn't answer waits for the next run. So does one whose
+// answer names none of its new articles: that is recorded as to be asked again, first in the next request, and
+// the story's line doesn't move; after shadowTries such answers it is left to be written whole.
 func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen map[string]time.Time, day string, now time.Time, settings Settings) error {
 	if err := w.Store.PruneShadows(ctx, now.Add(-shadowKeep)); err != nil {
 		return err
@@ -168,8 +181,13 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 		return err
 	}
 	done := map[string]bool{}
+	again := map[string]bool{} // skipped by Gemini: to be asked again
 	latest := map[string]store.ShadowRef{}
 	for _, r := range refs {
+		if r.Again {
+			again[r.Key] = true
+			continue
+		}
 		done[r.Key] = true
 		latest[r.ID] = r
 	}
@@ -177,9 +195,15 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 	if err != nil {
 		return err
 	}
-	// The stories that changed last first: the shadow follows the news, and what it has no request for grows old.
+	// The stories to ask about again first, then the ones that changed last: the shadow follows the news, and what
+	// it has no request for grows old.
 	order := append([]stories.Story{}, window...)
-	sort.SliceStable(order, func(i, j int) bool { return newestSeen(order[i], firstSeen).After(newestSeen(order[j], firstSeen)) })
+	sort.SliceStable(order, func(i, j int) bool {
+		if a, b := again[StoryKey(order[i])], again[StoryKey(order[j])]; a != b {
+			return a
+		}
+		return newestSeen(order[i], firstSeen).After(newestSeen(order[j], firstSeen))
+	})
 	var steps []Step
 	var plans []Plan
 	var rows []Shadow
@@ -200,8 +224,18 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 		if prev == nil {
 			continue // a first version: written whole
 		}
-		step := Step{Story: s, Prev: *prev}
+		step := Step{Story: s, Prev: *prev, Seen: firstSeen}
 		row := Shadow{ID: prev.ID, Key: key, At: now, Base: BaseLive, BaseAt: prev.WrittenAt}
+		if again[key] {
+			data, err := w.Store.Shadow(ctx, key)
+			if err != nil {
+				return err
+			}
+			var before Shadow
+			if data != nil && json.Unmarshal(data, &before) == nil {
+				row.Skipped = before.Skipped
+			}
+		}
 		if ref, ok := latest[prev.ID]; ok {
 			data, err := w.Store.Shadow(ctx, ref.Key)
 			if err != nil {
@@ -229,6 +263,7 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 			steps, plans, rows = append(steps, step), append(plans, p), append(rows, row)
 			continue
 		}
+		row.Skipped = 0 // no request: nothing of the answers that skipped it stands
 		if err := w.saveShadow(ctx, row); err != nil {
 			return err
 		}
@@ -262,7 +297,7 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 		}
 	}
 	answers, whole := readAnswers(raw)
-	versions, quiet, rebuilt := 0, 0, 0
+	versions, quiet, rebuilt, skipped := 0, 0, 0, 0
 	var dropped MergeStats
 	for _, answer := range answers {
 		id := storyID(answer.Story)
@@ -283,10 +318,22 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 		row.Answer, row.Stats, row.Version = &answer, &m.Stats, m.Version
 		row.Request = &ShadowRequest{Stories: sent, Position: position + 1, Chars: a.chars, Salvaged: !whole,
 			TokensIn: usage.PromptTokens, TokensOut: usage.AnswerTokens, TokensThoughts: usage.ThoughtsTokens}
-		if why := w.tripwire(ctx, a, m); why != "" {
+		if m.Skipped {
+			// No answer for the story: its line stays where it was, and it is asked about again; or, asked often
+			// enough, left to be written whole.
+			row.Skipped++
+			if row.Again = row.Skipped < shadowTries; row.Again {
+				skipped++
+			} else {
+				row.Reason = whySkipped
+				rebuilt++
+			}
+		} else if why := w.tripwire(ctx, a, m); why != "" {
+			row.Skipped = 0
 			row.Reason = why
 			rebuilt++
 		} else {
+			row.Skipped = 0
 			row.Story = &m.Story
 			if m.Version {
 				versions++
@@ -303,8 +350,8 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 	if !whole {
 		cutShort = " (the answer was cut: the whole stories of it)"
 	}
-	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d, nothing new: %d, to be written whole: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled",
-		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, quiet, rebuilt, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled)
+	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d, nothing new: %d, to be written whole: %d, skipped by Gemini and asked again next run: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled; %d kept from making a version by their articles' time",
+		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, quiet, rebuilt, skipped, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled, dropped.Old)
 	return nil
 }
 
@@ -350,6 +397,10 @@ type ShadowReport struct {
 	Asked   int
 	// Of the asked: a new version, nothing new, or sent to be written whole after the answer (the tripwire).
 	Versions, Quiet, Tripwire int
+	// Skipped are the asked whose answer named none of their new articles and that wait to be asked again (or were
+	// never asked again: the story changed first); GaveUp the ones left to be written whole after shadowTries such
+	// answers. Neither is compared with the live rewrite.
+	Skipped, GaveUp int
 	// FromShadow are the asked steps that started from the shadow's own story, not a live version.
 	FromShadow int
 	Salvaged   int // read from an answer that was cut
@@ -383,6 +434,11 @@ func ReportShadow(ctx context.Context, db *store.Store, since time.Time) (Shadow
 		default:
 			report.Asked++
 			switch {
+			case s.Again:
+				report.Skipped++
+			case s.Story == nil && s.Skipped > 0:
+				report.GaveUp++
+				report.Rebuild[whySkipped]++
 			case s.Story == nil:
 				report.Tripwire++
 				report.Rebuild["Gemini found nothing new in an article that is clearly news (the tripwire)"]++
@@ -407,8 +463,10 @@ func ReportShadow(ctx context.Context, db *store.Store, since time.Time) (Shadow
 					report.Salvaged++
 				}
 			}
-			asked = append(asked, s)
-			ids = append(ids, s.ID)
+			if s.Skipped == 0 {
+				asked = append(asked, s)
+				ids = append(ids, s.ID)
+			}
 		}
 		return nil
 	})

@@ -263,6 +263,185 @@ func TestADetailWithANewNumberMakesAVersion(t *testing.T) {
 	}
 }
 
+// answerOf is the first story of a recorded answer.
+func answerOf(t *testing.T, raw string) Answer {
+	t.Helper()
+	answers, whole := readAnswers([]byte(raw))
+	if !whole || len(answers) == 0 {
+		t.Fatalf("the recorded answer: %s", raw)
+	}
+	return answers[0]
+}
+
+// Recorded answers about the rain story with two new articles: a1 published before the story was written, a2
+// after it.
+const (
+	// A development and a detail with a number, both from the older article alone; the later one only says the
+	// story again.
+	oldNews = `{"stories": [{"story": "s1", "unrelated": [],
+		"insert": [{"after": "top", "kind": "development", "text": "נחל הקישון עלה על גדותיו.", "sources": ["a1"]},
+			{"after": "s1.2", "kind": "detail", "text": "הכבישים נסגרו בשעה 7 בבוקר.", "sources": ["a1"]}],
+		"replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": ["a2"]}], "title": "הקישון עלה על גדותיו", "contradictions": []}]}`
+	// The same, and a development from the later article.
+	oldAndNewNews = `{"stories": [{"story": "s1", "unrelated": [],
+		"insert": [{"after": "top", "kind": "development", "text": "נחל הקישון עלה על גדותיו.", "sources": ["a1"]},
+			{"after": "s1.2", "kind": "detail", "text": "הכבישים נסגרו בשעה 7 בבוקר.", "sources": ["a1"]},
+			{"after": "top", "kind": "development", "text": "המשטרה פתחה את כביש החוף לתנועה.", "sources": ["a2"]}],
+		"replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
+)
+
+func TestOnlyAnArticlePublishedSinceTheStoryMakesAVersion(t *testing.T) {
+	prev := rainStory() // written an hour ago
+	before, after := rainSiteg, rainSited
+	before.PublishedAt = scrape.FormatInstant(prev.WrittenAt.Add(-2 * time.Hour))
+	after.PublishedAt = scrape.FormatInstant(prev.WrittenAt.Add(20 * time.Minute))
+	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, before, after)
+
+	// What an article from before the story tells is no news of it, whatever kind Gemini gave it: no version, and
+	// the text, the title and the time stay. The later article is a footnote.
+	m := merge(a, answerOf(t, oldNews), "s1", ids, now)
+	if m.Version || texts(m.Story.Sentences) != texts(prev.Sentences) || m.Story.Title != prev.Title || !m.Story.WrittenAt.Equal(prev.WrittenAt) || len(m.Story.Updates) != 1 ||
+		len(m.Story.Reports) != 4 || len(m.Story.Sentences[0].Sources) != 3 {
+		t.Fatalf("%+v", m.Story)
+	}
+	if m.Stats != (MergeStats{Asked: 2, Unapplied: 2, Old: 2, Cited: 1}) {
+		t.Fatalf("%+v", m.Stats)
+	}
+	want := "insert top: left out (" + whyOld + "); insert s1.2: left out (" + whyOld + "); cite s1.1: applied"
+	if got := strings.Join(notesOf(m), "; "); got != want || !m.Notes[0].Old || !m.Notes[1].Old {
+		t.Fatalf("notes\n got %s\nwant %s", got, want)
+	}
+
+	// With a development from the later article there is a version, and the older article's sentences go in too:
+	// they are true of the story, and only make no version alone.
+	m = merge(a, answerOf(t, oldAndNewNews), "s1", ids, now)
+	if !m.Version || m.Stats != (MergeStats{Asked: 3, Inserted: 3, Old: 2}) || !m.Story.WrittenAt.Equal(now) {
+		t.Fatalf("%+v %+v", m.Stats, m.Story)
+	}
+	if got := texts(m.Story.Sentences); got != "נחל הקישון עלה על גדותיו. | המשטרה פתחה את כביש החוף לתנועה. | גשם כבד ירד הבוקר בצפון. | 2 כבישים נסגרו בגלל הגשם. | הכבישים נסגרו בשעה 7 בבוקר. | ראש העיר אמר שהכבישים ייפתחו מחר." {
+		t.Fatalf("sentences: %s", got)
+	}
+	want = "insert top: applied; insert s1.2: applied; insert top: applied, makes a version"
+	if got := strings.Join(notesOf(m), "; "); got != want {
+		t.Fatalf("notes\n got %s\nwant %s", got, want)
+	}
+	// So does a sentence that the later article states too.
+	both := answerOf(t, strings.Replace(oldNews, `"sources": ["a1"]`, `"sources": ["a1", "a2"]`, 1))
+	if m = merge(a, both, "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 2, Inserted: 2, Old: 1, Cited: 1}) || !m.Notes[0].MakesVersion || m.Notes[1].MakesVersion {
+		t.Fatalf("%+v %v", m.Stats, notesOf(m))
+	}
+
+	// An article whose time isn't known can make a version: the rule keeps old articles out, not news.
+	undated := rainSiteg
+	a, ids = askedOf(t, prev, rainSiteh, rainSiteE, undated, after)
+	if m = merge(a, answerOf(t, oldNews), "s1", ids, now); !m.Version || m.Stats.Old != 0 {
+		t.Fatalf("%+v", m.Stats)
+	}
+	// Without a time from the site, the article is as old as the server's first sight of it.
+	a.step.Seen = map[string]time.Time{undated.URL: prev.WrittenAt.Add(-time.Minute)}
+	if m = merge(a, answerOf(t, oldNews), "s1", ids, now); m.Version || m.Stats.Old != 2 {
+		t.Fatalf("%+v", m.Stats)
+	}
+	a.step.Seen[undated.URL] = prev.WrittenAt.Add(time.Minute)
+	if m = merge(a, answerOf(t, oldNews), "s1", ids, now); !m.Version {
+		t.Fatalf("%+v", m.Stats)
+	}
+}
+
+func TestTheRequestSaysWhenANewArticleWasPublished(t *testing.T) {
+	prev := rainStory()
+	written := prev.WrittenAt
+	at := func(d time.Duration) string { return scrape.FormatInstant(written.Add(d)) }
+	seen := func(d time.Duration) map[string]time.Time { return map[string]time.Time{rainSiteg.URL: written.Add(d)} }
+	for name, c := range map[string]struct {
+		published    string
+		seen         map[string]time.Time
+		fresh, known bool
+	}{
+		"the site's time, after":                       {published: at(20 * time.Minute), fresh: true, known: true},
+		"the site's time, before":                      {published: at(-2 * time.Hour), known: true},
+		"long before, though first seen after":         {published: at(-2 * time.Hour), seen: seen(5 * time.Minute), known: true},
+		"minutes before, and first seen after":         {published: at(-5 * time.Minute), seen: seen(5 * time.Minute), fresh: true, known: true},
+		"minutes before, and seen before":              {published: at(-5 * time.Minute), seen: seen(-time.Minute), known: true},
+		"minutes before, first sight unknown":          {published: at(-5 * time.Minute), known: true},
+		"no time of the site's, first seen after":      {seen: seen(time.Minute), fresh: true, known: true},
+		"no time of the site's, first seen before":     {seen: seen(-time.Minute), known: true},
+		"no time at all":                               {},
+		"a time that can't be read, nor a first sight": {published: "אתמול"},
+	} {
+		r := rainSiteg
+		r.PublishedAt = c.published
+		step := Step{Prev: prev, Seen: c.seen}
+		if fresh, known := step.fresh(r); fresh != c.fresh || known != c.known {
+			t.Errorf("%s: fresh %v, known %v", name, fresh, known)
+		}
+	}
+	// A version before without a time: nothing is known.
+	if _, known := (Step{}).fresh(scrape.ArticleSummary{PublishedAt: at(0)}); known {
+		t.Error("a version before without a time")
+	}
+
+	// In the request, on the article's first line, after the site's time; nothing for an article of no known time.
+	before, after, undated, sighted := rainSiteg, rainSited, scrape.ArticleSummary{SourceID: "sitef", URL: "https://sitef/rain", Title: "גשם"},
+		scrape.ArticleSummary{SourceID: "sitek", URL: "https://sitek/rain", Title: "מבול"}
+	before.PublishedAt, after.PublishedAt = at(-2*time.Hour), at(20*time.Minute)
+	step := Step{Story: stories.Story{Reports: []scrape.ArticleSummary{rainSiteh, rainSiteE, before, after, undated, sighted}}, Prev: prev,
+		Seen: map[string]time.Time{sighted.URL: written.Add(time.Minute)}}
+	w := &Writer{Articles: func(context.Context, string) *scrape.Article { return nil }}
+	text, _ := w.storyText(context.Background(), newSources(), "s1", step, plan(step, DefaultSettings, false), DefaultSettings)
+	for _, want := range []string{
+		"[a1] siteg · 2026-11-10T17:00:00Z · פורסמה לפני שהסיפור נכתב\nכותרת: גשם בגליל\n",
+		"[a2] sited · 2026-11-10T19:20:00Z · פורסמה אחרי שהסיפור נכתב\nכותרת: הצפות בצפון\n",
+		"[a3] sitef\nכותרת: גשם\n",
+		"[a4] sitek · פורסמה אחרי שהסיפור נכתב\nכותרת: מבול\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the request lacks %q:\n%s", want, text)
+		}
+	}
+	// The instructions say what the two notes are, to the letter.
+	if !strings.Contains(incrementalSystem, `"`+publishedBefore+`"`) || !strings.Contains(incrementalSystem, `"`+publishedAfter+`"`) {
+		t.Fatal("the instructions lack the notes of when an article was published")
+	}
+}
+
+// Recorded answers that name none of the rain story's two new articles: an empty one, and one whose only sentence
+// cites an article the request doesn't have.
+const (
+	skippedAnswer = `{"stories": [{"story": "s1", "unrelated": [], "insert": [], "replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
+	strayAnswer   = `{"stories": [{"story": "s1", "unrelated": [], "insert": [{"after": "top", "kind": "development", "text": "נחל הקישון עלה על גדותיו.", "sources": ["a9"]}],
+		"replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": []}], "title": "", "contradictions": []}]}`
+)
+
+func TestAnAnswerThatNamesNoNewArticleIsNoAnswer(t *testing.T) {
+	prev := rainStory()
+	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, rainSiteg, rainSited)
+	for name, raw := range map[string]string{"empty": skippedAnswer, "an article the request doesn't have": strayAnswer} {
+		m := merge(a, answerOf(t, raw), "s1", ids, now)
+		if !m.Skipped || strings.Join(m.Unmentioned, " ") != rainSiteg.URL+" "+rainSited.URL || m.Version || texts(m.Story.Sentences) != texts(prev.Sentences) {
+			t.Errorf("%s: skipped %v, unmentioned %v", name, m.Skipped, m.Unmentioned)
+		}
+	}
+	// Naming one of them anywhere is an answer, whatever the rules make of what names it: a citation, a sentence
+	// that only says the story again, another event (named or not), a contradiction.
+	for name, answer := range map[string]Answer{
+		"a citation":      {Cite: []AnswerCite{{Sentence: "s1.1", Sources: []string{"a1"}}}},
+		"a restatement":   {Insert: []AnswerInsert{{After: "top", Kind: "development", Text: "בצפון ירד הבוקר גשם כבד.", Sources: []string{"[a1]"}}}},
+		"a replacement":   {Replace: []AnswerReplace{{Sentence: "s1.9", Kind: "correction", Text: "5 כבישים נסגרו בגלל הגשם.", Sources: []string{"a1"}}}},
+		"another event":   {Unrelated: []answerUnrelated{{ID: "a1"}}},
+		"a contradiction": answerOf(t, `{"stories": [{"story": "s1", "contradictions": [{"text": "x", "sides": [{"value": "2", "sources": ["s1.2"]}, {"value": "3", "sources": ["a1"]}]}]}]}`),
+	} {
+		m := merge(a, answer, "s1", ids, now)
+		if m.Skipped || strings.Join(m.Unmentioned, " ") != rainSited.URL {
+			t.Errorf("%s: skipped %v, unmentioned %v", name, m.Skipped, m.Unmentioned)
+		}
+	}
+	// And naming all of them leaves none out.
+	if m := merge(a, Answer{Cite: []AnswerCite{{Sentence: "s1.1", Sources: []string{"a1, a2"}}}}, "s1", ids, now); m.Skipped || len(m.Unmentioned) != 0 {
+		t.Errorf("skipped %v, unmentioned %v", m.Skipped, m.Unmentioned)
+	}
+}
+
 func TestAnUnrelatedNewArticleIsNoSource(t *testing.T) {
 	a, ids := askedOf(t, rainStory(), rainSiteh, rainSiteE, rainSiteg, rainSited)
 	m := merge(a, Answer{
@@ -427,7 +606,7 @@ func TestTheSchemaGoesOutInItsOrder(t *testing.T) {
 		t.Fatalf("%+v %v", answers, whole)
 	}
 	// The whole writing's instructions tell Gemini not to stand on the version before: these are apart from them.
-	if strings.Contains(incrementalSystem, "Don't base the story on the previous version") || !strings.Contains(incrementalSystem, "When unsure, it belongs") {
+	if strings.Contains(incrementalSystem, "Don't base the story on the previous version") || !strings.Contains(incrementalSystem, "Account for every new article") {
 		t.Fatal("the instructions")
 	}
 }

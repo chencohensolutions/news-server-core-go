@@ -23,6 +23,8 @@ const (
 	// Nothing new: the new article states the first sentence's fact.
 	shadowQuiet = `{"stories": [{"story": "s1", "unrelated": [], "insert": [], "replace": [], "delete": [],
 		"cite": [{"sentence": "s1.2", "sources": ["a1"]}], "title": "", "contradictions": []}]}`
+	// No answer: the story's new article is named nowhere.
+	shadowSkipped = `{"stories": [{"story": "s1", "unrelated": [], "insert": [], "replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
 )
 
 // shadowed is setup with the shadow on and the incremental requests answered from answers.
@@ -88,7 +90,7 @@ func TestTheShadowUpdatesAStoryBesideItsRewrite(t *testing.T) {
 	}
 	prompt := rec.requests[0].Prompt
 	for _, want := range []string{"=== סיפור s1 ===", "כותרת הסיפור: גשם כבד בצפון", "s1.1 גשם כבד ירד הבוקר בצפון. (siteh, SiteE)", "s1.2 שני כבישים נסגרו. (SiteE)",
-		"כתבות שכבר בסיפור:\n- siteh: גשם בצפון\n- SiteE: סערה בצפון", "כתבות חדשות:\n[a1] siteg\nכותרת: גשם בגליל\nגוף: " + news[0]} {
+		"כתבות שכבר בסיפור:\n- siteh: גשם בצפון\n- SiteE: סערה בצפון", "כתבות חדשות:\n[a1] siteg · פורסמה אחרי שהסיפור נכתב\nכותרת: גשם בגליל\nגוף: " + news[0]} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("the shadow's request lacks %q:\n%s", want, prompt)
 		}
@@ -139,7 +141,7 @@ func TestTheShadowUpdatesAStoryBesideItsRewrite(t *testing.T) {
 		t.Fatalf("%+v, %d shadow requests", result, len(rec.requests))
 	}
 	prompt = rec.requests[1].Prompt
-	if !strings.Contains(prompt, "s1.1 נחל הקישון עלה על גדותיו. (siteg)") || !strings.Contains(prompt, "[a1] sited\nכותרת: הצפות בצפון\n") || strings.Contains(prompt, "גוף:") {
+	if !strings.Contains(prompt, "s1.1 נחל הקישון עלה על גדותיו. (siteg)") || !strings.Contains(prompt, "[a1] sited · פורסמה אחרי שהסיפור נכתב\nכותרת: הצפות בצפון\n") || strings.Contains(prompt, "גוף:") {
 		t.Fatalf("the second request:\n%s", prompt)
 	}
 	quiet := shadowOf(t, w, found[0])
@@ -265,5 +267,87 @@ func TestABusyOrCutShadowAnswer(t *testing.T) {
 	}
 	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 3 || shadowOf(t, w, waiting) == nil || strings.Contains(rec.requests[2].Prompt, "s2") {
 		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+}
+
+func TestAStoryGeminiSkippedIsAskedAgain(t *testing.T) {
+	w, _, rec, found := shadowed(t, shadowNews, shadowSkipped, shadowQuiet, shadowQuiet, shadowSkipped)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	// The shadow's own story of the rain: a version with the development on top.
+	join(t, w, found, rainSiteg, news...)
+	first := shadowOf(t, w, found[0])
+	if first == nil || !first.Version || len(rec.requests) != 1 {
+		t.Fatalf("%+v, %d shadow requests", first, len(rec.requests))
+	}
+	// A fourth report, and an answer that names it nowhere. That is not "nothing new": the step is recorded as to
+	// be asked again, with the answer, and without a story for the next step to start from.
+	join(t, w, found, rainSited)
+	skipped := shadowOf(t, w, found[0])
+	if len(rec.requests) != 2 || skipped == nil || !skipped.Again || skipped.Skipped != 1 || skipped.Story != nil || skipped.Version || skipped.Answer == nil || skipped.Base != BaseShadow {
+		t.Fatalf("%+v, %d shadow requests", skipped, len(rec.requests))
+	}
+	if report, err := ReportShadow(ctx, w.Store, now.Add(-time.Hour)); err != nil || report.Asked != 2 || report.Versions != 1 || report.Skipped != 1 || report.Quiet != 0 || report.Tripwire != 0 || report.Compared != 1 {
+		t.Fatalf("%+v %v", report, err)
+	}
+	// The next run asks about it again, before the budget story that changed since: the very request of the run
+	// before comes first, from the shadow's own story as it was. This time the article is named: a step.
+	at := w.Now().Add(time.Minute)
+	w.Now = func() time.Time { return at }
+	third := scrape.ArticleSummary{SourceID: "sitee", URL: "https://sitee/budget", Title: "התקציב עבר"}
+	if err := w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{third}, at); err != nil {
+		t.Fatal(err)
+	}
+	found[1].Reports = append(found[1].Reports, third)
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 3 {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	if again := rec.requests[2].Prompt; !strings.HasPrefix(again, rec.requests[1].Prompt) || !strings.Contains(again, "=== סיפור s2 ===") {
+		t.Fatalf("asked again:\n%s\nafter:\n%s", again, rec.requests[1].Prompt)
+	}
+	quiet := shadowOf(t, w, found[0])
+	if quiet == nil || quiet.Again || quiet.Skipped != 0 || quiet.Version || quiet.Base != BaseShadow || !quiet.BaseAt.Equal(first.At) || quiet.Story == nil ||
+		texts(quiet.Story.Sentences) != texts(first.Story.Sentences) || len(quiet.Story.Reports) != 4 || *quiet.Stats != (MergeStats{Cited: 1}) {
+		t.Fatalf("%+v", quiet)
+	}
+	// Answered now, and not asked again; the budget story, which the answer left out, is.
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 4 || strings.Contains(rec.requests[3].Prompt, "גשם") || shadowOf(t, w, found[1]) == nil {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+
+	report, err := ReportShadow(ctx, w.Store, now.Add(-time.Hour))
+	if err != nil || report.Asked != 3 || report.Versions != 1 || report.Quiet != 2 || report.Skipped != 0 || report.GaveUp != 0 {
+		t.Fatalf("%+v %v", report, err)
+	}
+}
+
+func TestAStoryGeminiSkippedTwiceIsLeftToBeWrittenWhole(t *testing.T) {
+	w, _, rec, found := shadowed(t, shadowSkipped)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	join(t, w, found, rainSiteg, news...)
+	if again := shadowOf(t, w, found[0]); len(rec.requests) != 1 || again == nil || !again.Again || again.Skipped != 1 || again.Base != BaseLive {
+		t.Fatalf("%+v, %d shadow requests", again, len(rec.requests))
+	}
+	// Asked again, and skipped again: no third time. The story is left to be written whole, which the live rewrite
+	// of these reports is: the next step starts from it.
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 2 || rec.requests[1].Prompt != rec.requests[0].Prompt {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	left := shadowOf(t, w, found[0])
+	if left == nil || left.Again || left.Skipped != 2 || left.Story != nil || left.Version || left.Reason != whySkipped {
+		t.Fatalf("%+v", left)
+	}
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 2 {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	report, err := ReportShadow(ctx, w.Store, now.Add(-time.Hour))
+	if err != nil || report.Asked != 1 || report.Versions != 0 || report.Quiet != 0 || report.Skipped != 0 || report.GaveUp != 1 || report.Tripwire != 0 || report.Rebuild[whySkipped] != 1 ||
+		report.Compared != 0 {
+		t.Fatalf("%+v %v", report, err)
 	}
 }

@@ -712,12 +712,18 @@ func (w *Writer) body(ctx context.Context, r scrape.ArticleSummary, bodyChars in
 	return ""
 }
 
-// reportOf is report with the body given.
-func (w *Writer) reportOf(ids *sources, r scrape.ArticleSummary, body string) string {
+// reportOf is report with the body given. Each of notes that isn't "" follows the time on the first line (the
+// incremental request's: whether the article was published before or after the story was written).
+func (w *Writer) reportOf(ids *sources, r scrape.ArticleSummary, body string, notes ...string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%s] %s", ids.id(r.URL), w.siteName(r.SourceID))
 	if r.PublishedAt != "" {
 		fmt.Fprintf(&b, " · %s", r.PublishedAt)
+	}
+	for _, note := range notes {
+		if note != "" {
+			fmt.Fprintf(&b, " · %s", note)
+		}
 	}
 	fmt.Fprintf(&b, "\nכותרת: %s\n", oneLine(r.Title))
 	if r.Subtitle != "" {

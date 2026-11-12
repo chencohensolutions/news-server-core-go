@@ -29,18 +29,23 @@ func filler(subject string) string {
 //	strike  a report left that no sentence stood on: no new article
 //	fire    written before ids (only summaries rows, by key); a third site joined
 //	vote    a report left that a sentence stood on, and another joined
+//
+// The articles that joined were first seen after the first versions were written, and the sites give them no time.
 func replayArchiveOf(t *testing.T, more ...func(a *archiveMaker)) (dir string, db *store.Store) {
 	t.Helper()
 	a := newArchiveMaker(t, now.Add(-3*time.Hour))
 	t0, report, version := a.t0, a.report, a.version
+	joined := func(site, subject, title string, body ...string) scrape.ArticleSummary {
+		return a.reportAt(t0.Add(50*time.Minute), site, subject, title, body...)
+	}
 	rain := []scrape.ArticleSummary{report("siteh", "rain", "גשם בצפון", "גשם כבד ירד הבוקר בצפון.", filler("הגשם")), report("sitee", "rain", "סערה בצפון"),
-		report("siteg", "rain", "הקישון עלה על גדותיו", "נחל הקישון עלה על גדותיו.", filler("הקישון"))}
+		joined("siteg", "rain", "הקישון עלה על גדותיו", "נחל הקישון עלה על גדותיו.", filler("הקישון"))}
 	rainText := []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rain[0].URL, rain[1].URL}}, {"2 כבישים נסגרו בגלל הגשם.", []string{rain[1].URL}}}
 	version("rain1", "rain", t0, rainText, nil, rain[:2]...)
 	version("rain2", "rain", t0.Add(60*time.Minute), rainText, []Sentence{{"נחל הקישון עלה על גדותיו.", []string{rain[2].URL}}}, rain...)
 
 	budget := []scrape.ArticleSummary{report("sited", "budget", "התקציב אושר", "הכנסת אישרה את התקציב בקריאה שלישית.", filler("התקציב")), report("siteg", "budget", "הכנסת אישרה את התקציב"),
-		report("sitee", "budget", "התקציב עבר", "התקציב עבר בכנסת.", filler("ההצבעה"))}
+		joined("sitee", "budget", "התקציב עבר", "התקציב עבר בכנסת.", filler("ההצבעה"))}
 	budgetText := []Sentence{{"הכנסת אישרה את התקציב בקריאה שלישית.", []string{budget[0].URL, budget[1].URL}}, {"61 חברי כנסת תמכו בתקציב.", []string{budget[0].URL}}}
 	version("budget1", "budget", t0.Add(10*time.Minute), budgetText, nil, budget[:2]...)
 	version("budget2", "budget", t0.Add(70*time.Minute), budgetText, []Sentence{{"בקריאה שלישית אישרה הכנסת את התקציב.", []string{budget[2].URL}}}, budget...)
@@ -51,12 +56,12 @@ func replayArchiveOf(t *testing.T, more ...func(a *archiveMaker)) (dir string, d
 	version("strike2", "strike", t0.Add(80*time.Minute), strikeText, nil, strike[:2]...)
 
 	fire := []scrape.ArticleSummary{report("siteh", "fire", "שריפה בדרום", "שריפה פרצה בדרום.", filler("השריפה")), report("sitee", "fire", "שריפה גדולה"),
-		report("siteg", "fire", "השריפה כובתה", "השריפה בדרום כובתה לאחר 5 שעות.", filler("הכיבוי"))}
+		joined("siteg", "fire", "השריפה כובתה", "השריפה בדרום כובתה לאחר 5 שעות.", filler("הכיבוי"))}
 	fireText := []Sentence{{"שריפה פרצה בדרום.", []string{fire[0].URL, fire[1].URL}}, {"תושבים פונו מבתיהם.", []string{fire[1].URL}}}
 	version("fire1", "", t0.Add(30*time.Minute), fireText, nil, fire[:2]...)
 	version("fire2", "", t0.Add(90*time.Minute), append([]Sentence{{"השריפה כובתה לאחר 5 שעות.", []string{fire[2].URL}}}, fireText...), nil, fire...)
 
-	vote := []scrape.ArticleSummary{report("siteh", "vote", "הצבעה במועצה"), report("sitee", "vote", "המועצה הצביעה"), report("sited", "vote", "ההצבעה נדחתה")}
+	vote := []scrape.ArticleSummary{report("siteh", "vote", "הצבעה במועצה"), report("sitee", "vote", "המועצה הצביעה"), joined("sited", "vote", "ההצבעה נדחתה")}
 	voteText := []Sentence{{"מועצת העיר הצביעה על התוכנית.", []string{vote[0].URL}}, {"7 חברים תמכו בתוכנית.", []string{vote[1].URL}}}
 	version("vote1", "vote", t0.Add(40*time.Minute), voteText, nil, vote[:2]...)
 	version("vote2", "vote", t0.Add(100*time.Minute), voteText[:1], nil, vote[0], vote[2])
@@ -74,6 +79,8 @@ type archiveMaker struct {
 	db  *store.Store
 	// t0 is when the reports that follow are first seen, and the stories that follow first written.
 	t0 time.Time
+	// published is the site's time of the reports that follow; "" for none.
+	published string
 }
 
 func newArchiveMaker(t *testing.T, t0 time.Time) *archiveMaker {
@@ -90,13 +97,18 @@ func newArchiveMaker(t *testing.T, t0 time.Time) *archiveMaker {
 
 // report saves a site's headline about subject, and with a body its article.
 func (a *archiveMaker) report(site, subject, title string, body ...string) scrape.ArticleSummary {
+	return a.reportAt(a.t0, site, subject, title, body...)
+}
+
+// reportAt is report for an article first seen at at.
+func (a *archiveMaker) reportAt(at time.Time, site, subject, title string, body ...string) scrape.ArticleSummary {
 	ctx := context.Background()
-	r := scrape.ArticleSummary{SourceID: site, URL: "https://" + site + "/" + subject, Title: title}
-	if err := a.db.SaveHeadlines(ctx, []scrape.ArticleSummary{r}, a.t0); err != nil {
+	r := scrape.ArticleSummary{SourceID: site, URL: "https://" + site + "/" + subject, Title: title, PublishedAt: a.published}
+	if err := a.db.SaveHeadlines(ctx, []scrape.ArticleSummary{r}, at); err != nil {
 		a.t.Fatal(err)
 	}
 	if len(body) > 0 {
-		if err := a.db.SaveArticle(ctx, &scrape.Article{SourceID: site, URL: r.URL, Title: title, Body: body}, "<html>page</html>", a.t0); err != nil {
+		if err := a.db.SaveArticle(ctx, &scrape.Article{SourceID: site, URL: r.URL, Title: title, Body: body}, "<html>page</html>", at); err != nil {
 			a.t.Fatal(err)
 		}
 	}
@@ -213,8 +225,8 @@ func TestTheReplayAsksAboutTheArchivesSteps(t *testing.T) {
 		t.Fatalf("%+v", report)
 	}
 	prompt := rec.requests[0].Prompt
-	for _, want := range []string{"s1.2 2 כבישים נסגרו בגלל הגשם. (sitee)", "כתבות שכבר בסיפור:\n- siteh: גשם בצפון\n- sitee: סערה בצפון\nכתבות חדשות:\n[a1] siteg\nכותרת: הקישון עלה על גדותיו\nגוף: נחל הקישון עלה על גדותיו.",
-		"=== סיפור s2 ===\nכותרת הסיפור: כותרת budget1", "=== סיפור s3 ===\nכותרת הסיפור: כותרת fire1", "[a3] siteg\nכותרת: השריפה כובתה"} {
+	for _, want := range []string{"s1.2 2 כבישים נסגרו בגלל הגשם. (sitee)", "כתבות שכבר בסיפור:\n- siteh: גשם בצפון\n- sitee: סערה בצפון\nכתבות חדשות:\n[a1] siteg · פורסמה אחרי שהסיפור נכתב\nכותרת: הקישון עלה על גדותיו\nגוף: נחל הקישון עלה על גדותיו.",
+		"=== סיפור s2 ===\nכותרת הסיפור: כותרת budget1", "=== סיפור s3 ===\nכותרת הסיפור: כותרת fire1", "[a3] siteg · פורסמה אחרי שהסיפור נכתב\nכותרת: השריפה כובתה"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("the request lacks %q:\n%s", want, prompt)
 		}
@@ -239,7 +251,8 @@ func TestTheReplayAsksAboutTheArchivesSteps(t *testing.T) {
 	if n, _ := db.GeminiRequests(ctx, Day(now)); n != 1 {
 		t.Fatalf("%d requests counted", n)
 	}
-	for _, want := range []string{"10 story versions in the archive, 5 of them rewrites", "live had new facts:  1 a version, 1 none: recall 50%", "restatements: 33%"} {
+	for _, want := range []string{"10 story versions in the archive, 5 of them rewrites", "live had new facts:  1 a version, 1 none, 0 skipped by Gemini: recall 50% without the skipped, 50% with them as misses", "restatements: 33%",
+		"the real steps' 3 new articles: 3 (100%) published after the version before, 0 (0%) before it, 0 of no known time"} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("the report lacks %q:\n%s", want, log.String())
 		}
@@ -264,8 +277,9 @@ func TestTheReplayAsksAboutTheArchivesSteps(t *testing.T) {
 
 // Recorded answers for the replay's two requests with controls. The first: a story shown one of its own articles
 // as new (s1), where nothing is found; the rain step (s2); a story shown the rain story's article (s3), found
-// unrelated; the budget step (s4). The second: the fire step (s1); a story shown one of its own articles (s2), and a
-// sentence written from it all the same; a story shown another's article (s3), not found unrelated.
+// unrelated; the budget step (s4), whose new article is named nowhere. The second: the fire step (s1), its article
+// named nowhere either; a story shown one of its own articles (s2), and a development written from it all the same;
+// a story shown another's article (s3), not found unrelated: named nowhere.
 var controlAnswers = []string{`{"stories": [
 	{"story": "s1", "unrelated": [], "insert": [], "replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": ["a1"]}], "title": "", "contradictions": []},
 	{"story": "s2", "unrelated": [], "insert": [{"after": "top", "kind": "development", "text": "נחל הקישון עלה על גדותיו.", "sources": ["a2"]}], "replace": [], "delete": [], "cite": [], "title": "", "contradictions": []},
@@ -291,25 +305,30 @@ func TestTheReplaysControls(t *testing.T) {
 	}
 	first, second := rec.requests[0].Prompt, rec.requests[1].Prompt
 	// An article the story has, shown as new with its body, while the story's sentences still cite its site.
-	if !strings.Contains(first, "s1.2 השביתה החלה בשעה 6 בבוקר. (siteh)\nכתבות שכבר בסיפור:\n- sitee: הנמלים שובתים\nכתבות חדשות:\n[a1] siteh\nכותרת: שביתה בנמלים\nגוף: עובדי הנמלים פתחו בשביתה.") {
+	if !strings.Contains(first, "s1.2 השביתה החלה בשעה 6 בבוקר. (siteh)\nכתבות שכבר בסיפור:\n- sitee: הנמלים שובתים\nכתבות חדשות:\n[a1] siteh · פורסמה לפני שהסיפור נכתב\nכותרת: שביתה בנמלים\nגוף: עובדי הנמלים פתחו בשביתה.") {
 		t.Fatalf("the first request:\n%s", first)
 	}
 	// And an article of another story, after a story's own.
-	if !strings.Contains(first, "- sited: ההצבעה נדחתה\nכתבות חדשות:\n[a3] siteh\nכותרת: גשם בצפון") || !strings.Contains(second, "=== סיפור s1 ===\nכותרת הסיפור: כותרת fire1") {
+	if !strings.Contains(first, "- sited: ההצבעה נדחתה\nכתבות חדשות:\n[a3] siteh · פורסמה לפני שהסיפור נכתב\nכותרת: גשם בצפון") || !strings.Contains(second, "=== סיפור s1 ===\nכותרת הסיפור: כותרת fire1") {
 		t.Fatalf("the requests:\n%s\n%s", first, second)
 	}
-	if report.RepeatAsked != 2 || report.RepeatPassed != 1 || report.StrangerAsked != 2 || report.StrangerPassed != 1 {
+	// Nothing comes of a story's own article, whatever was written from it: it was published before the story was
+	// written, so its development makes no version. The stranger that was named nowhere is not found.
+	if report.RepeatAsked != 2 || report.RepeatPassed != 2 || report.RepeatSkipped != 0 || report.StrangerAsked != 2 || report.StrangerPassed != 1 || report.StrangerSkipped != 1 {
 		t.Fatalf("%+v", report)
 	}
-	// The controls stay out of the steps' measures.
-	if report.LiveNewVersion != 1 || report.LiveNewQuiet != 1 || report.LiveQuietQuiet != 1 || report.Stats != (MergeStats{Asked: 1, Inserted: 1}) {
+	// The controls stay out of the steps' measures. Of the three steps, two were skipped by Gemini: they are
+	// neither a version nor "nothing new", and are counted apart, the one whose live rewrite had new facts (the
+	// fire) among them.
+	if report.LiveNewVersion != 1 || report.LiveNewQuiet != 0 || report.LiveQuietQuiet != 0 || report.Stats != (MergeStats{Asked: 1, Inserted: 1}) ||
+		report.GeminiSkipped != 2 || report.SkippedNews != 1 || report.SkippedTripwire != 0 || report.Unmentioned != 2 || report.Tripwire != 0 {
 		t.Fatalf("%+v", report)
 	}
 	want := []PositionStats{
-		{Asked: 2, Answered: 2, Steps: 1, Controls: 1, Passed: 1},
-		{Asked: 2, Answered: 2, Steps: 1, Agree: 1, Controls: 1},
+		{Asked: 2, Answered: 2, Controls: 1, Passed: 1},
+		{Asked: 2, Answered: 2, Steps: 1, Agree: 1, Controls: 1, Passed: 1},
 		{Asked: 2, Answered: 2, Controls: 2, Passed: 1},
-		{Asked: 1, Answered: 1, Steps: 1, Agree: 1},
+		{Asked: 1, Answered: 1},
 	}
 	for i, p := range report.Positions {
 		if p != want[i] {
@@ -318,7 +337,12 @@ func TestTheReplaysControls(t *testing.T) {
 	}
 	var log bytes.Buffer
 	report.Print(&log)
-	for _, want := range []string{"an article the story has, shown as new, made nothing: 1 of 2 (50%)", "an article of another story was found unrelated:      1 of 2 (50%)", "    3: 2 of 2; 1 of 2; 0 of 0"} {
+	for _, want := range []string{"an article the story has, shown as new, made nothing: 2 of 2 (100%); 0 of the answers named no new article",
+		"an article of another story was found unrelated:      1 of 2 (50%); 1 of the answers named no new article", "    3: 2 of 2; 1 of 2; 0 of 0",
+		`skipped by Gemini (the answer names none of the story's new articles; not "nothing new": asked again): 2 (67%); the live rewrite had new facts in 1 of them`,
+		"of the 1 not skipped, a new version: 1 (100%); no version: 0 (0%)",
+		"live had new facts:  1 a version, 0 none, 1 skipped by Gemini: recall 100% without the skipped, 50% with them as misses",
+		"the tripwire would write 0 of the 1 skipped whole"} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("the report lacks %q:\n%s", want, log.String())
 		}
@@ -346,13 +370,13 @@ func casesOf(t *testing.T, data []byte) []ReplayCase {
 // words alone (news), and the rewrite gave a new fact.
 func lake(a *archiveMaker) {
 	reports := []scrape.ArticleSummary{a.report("siteh", "lake", "מפלס הכנרת נמדד", "מפלס הכנרת נמדד הבוקר.", filler("המדידה")), a.report("sitee", "lake", "מדידה בכנרת"),
-		a.report("siteg", "lake", "הכנרת עלתה", news...)}
+		a.reportAt(a.t0.Add(100*time.Minute), "siteg", "lake", "הכנרת עלתה", news...)}
 	text := []Sentence{{"מפלס הכנרת נמדד הבוקר.", []string{reports[0].URL, reports[1].URL}}, {"המדידה נערכה בתחנה שבצפון האגם.", []string{reports[1].URL}}}
 	a.version("lake1", "lake", a.t0.Add(50*time.Minute), text, nil, reports[:2]...)
 	a.version("lake2", "lake", a.t0.Add(110*time.Minute), text, []Sentence{{"מפלס הכנרת עלה ב-14 סנטימטרים.", []string{reports[2].URL}}}, reports...)
 }
 
-// The replay's answer (replayAnswer) with a fourth story, the lake's, in which Gemini found nothing.
+// The replay's answer (replayAnswer) with a fourth story, the lake's, whose new article Gemini named nowhere.
 var lakeAnswer = strings.TrimSuffix(replayAnswer, "]}") + `,
 	{"story": "s4", "unrelated": [], "insert": [], "replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
 
@@ -369,10 +393,12 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 	report.Print(&log)
 	t.Log(log.String())
 	// The live rewrite had new facts in three of the four steps, and the update made a version of one (the rain).
-	// Of the two it missed: in the fire story Gemini answered a sound sentence, background, that the version rule
-	// left out; the lake story would be written whole by the tripwire.
-	if report.Real != 4 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 2 || report.LiveQuietQuiet != 1 || report.Tripwire != 1 ||
-		report.MissedFound != 1 || report.MissedTripwire != 1 || report.MissedBoth != 0 || report.MissedDropped != 0 || report.QuietFound != 0 || report.QuietTripwire != 0 {
+	// In the fire story Gemini answered a sound sentence, background, that the version rule left out: a miss. The
+	// lake story it skipped: counted apart, and recall is given without it and with it as a miss. The tripwire would
+	// write it whole.
+	if report.Real != 4 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 1 || report.LiveQuietQuiet != 1 || report.Tripwire != 0 ||
+		report.MissedFound != 1 || report.MissedTripwire != 0 || report.MissedBoth != 0 || report.MissedDropped != 0 || report.QuietFound != 0 || report.QuietTripwire != 0 ||
+		report.GeminiSkipped != 1 || report.SkippedNews != 1 || report.SkippedTripwire != 1 || report.Unmentioned != 1 || report.ArticlesAfter != 4 || report.ArticlesBefore != 0 {
 		t.Fatalf("%+v", report)
 	}
 	if report.LeftOutKinds[Background] != 1 || len(report.LeftOutKinds) != 1 || report.Kinds[Development] != 1 || report.Cases != 4 {
@@ -380,11 +406,13 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 	}
 	for _, want := range []string{
 		"the archive's days up to 2026-11-10 (UTC)",
-		"live had new facts:  1 a version, 2 none: recall 33%",
-		"the 2 without a version, by what Gemini answered: sound sentences that the version rule left out in 1; only sentences the other rules dropped in 0; no sentence in 1",
-		"the tripwire would write 1 of the 2 whole (0 of them with sound sentences left out); neither in 0",
-		"recall counting the sound sentences left out (Gemini found facts, a version or not): 67%",
-		"recall counting the tripwire's whole writings (a version, or written whole): 67%; counting both: 100%",
+		`skipped by Gemini (the answer names none of the story's new articles; not "nothing new": asked again): 1 (25%); the live rewrite had new facts in 1 of them`,
+		"live had new facts:  1 a version, 1 none, 1 skipped by Gemini: recall 50% without the skipped, 33% with them as misses",
+		"the tripwire would write 1 of the 1 skipped whole",
+		"the 1 without a version, by what Gemini answered: sound sentences that the version rule left out in 1; only sentences the other rules dropped in 0; no sentence in 0",
+		"the tripwire would write 0 of the 1 whole (0 of them with sound sentences left out); neither in 0",
+		"recall counting the sound sentences left out (Gemini found facts, a version or not): 100%",
+		"recall counting the tripwire's whole writings (a version, or written whole): 50%; counting both: 100%",
 		"the 1 without a version: sound sentences that the version rule left out in 0; the tripwire would write 0 whole (0 of them with sound sentences left out)",
 		"left out with no version made, by kind: 0 development, 0 correction, 0 detail, 1 background, 0 reaction",
 	} {
@@ -399,7 +427,7 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 	for _, c := range got {
 		kinds = append(kinds, c.Story+" "+c.Kind)
 	}
-	if strings.Join(kinds, ", ") != "rain agree-version, budget agree-none, fire1 missed, lake missed" {
+	if strings.Join(kinds, ", ") != "rain agree-version, budget agree-none, fire1 missed, lake skipped" {
 		t.Fatalf("cases: %s", strings.Join(kinds, ", "))
 	}
 	prompt := rec.requests[0].Prompt
@@ -417,7 +445,7 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 		t.Fatalf("%+v", rain.Old)
 	}
 	if len(rain.New) != 1 || rain.New[0].ID != "a1" || rain.New[0].Site != "siteg" || rain.New[0].URL != "https://siteg/rain" || rain.New[0].Title != "הקישון עלה על גדותיו" ||
-		!strings.HasPrefix(rain.New[0].Body, "נחל הקישון עלה על גדותיו.") || !strings.Contains(prompt, "[a1] siteg\nכותרת: הקישון עלה על גדותיו\nגוף: "+rain.New[0].Body+"\n") {
+		!strings.HasPrefix(rain.New[0].Body, "נחל הקישון עלה על גדותיו.") || !strings.Contains(prompt, "[a1] siteg · פורסמה אחרי שהסיפור נכתב\nכותרת: הקישון עלה על גדותיו\nגוף: "+rain.New[0].Body+"\n") || rain.New[0].When != "after" {
 		t.Fatalf("%+v", rain.New)
 	}
 	// The answer as it came, and what the rules made of it.
@@ -444,30 +472,91 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 		len(fire.Live.New) != 1 || fire.Live.New[0].Text != "השריפה כובתה לאחר 5 שעות." {
 		t.Fatalf("%+v %+v", fire.Merge, fire.Live)
 	}
-	// A miss the tripwire catches: Gemini answered nothing, and the article is news by its words.
+	// The story Gemini skipped: its article is named nowhere, and is news by its words.
 	lake := got[3]
-	if lake.Merge.Version || !lake.Merge.Tripwire || !strings.Contains(lake.Merge.TripwireWhy, "6 of an article's 6 sentences") || len(lake.Merge.Notes) != 0 ||
+	if lake.Merge.Version || !lake.Merge.Skipped || strings.Join(lake.Merge.Unmentioned, ",") != "a4" || !lake.Merge.Tripwire ||
+		!strings.Contains(lake.Merge.TripwireWhy, "6 of an article's 6 sentences") || len(lake.Merge.Notes) != 0 ||
 		!strings.Contains(cases.String(), `"notes":[]`) || len(lake.Live.New) != 1 || !strings.Contains(lake.New[0].Body, news[5]) {
 		t.Fatalf("%+v %+v", lake.Merge, lake.Live)
 	}
+	if rain.Merge.Skipped || fire.Merge.Skipped || len(fire.Merge.Unmentioned) != 0 {
+		t.Fatalf("%+v %+v", rain.Merge, fire.Merge)
+	}
 
 	// When every sentence Gemini answered is dropped by the other rules, the miss is counted apart: here the lake's
-	// only sentence cites an article the request doesn't have.
+	// only sentence is cut short. It names the article, so the story was not skipped: a miss the tripwire catches.
 	rec = &recorded{answers: []string{strings.Replace(lakeAnswer, `{"story": "s4", "unrelated": [], "insert": []`,
-		`{"story": "s4", "unrelated": [], "insert": [{"after": "top", "kind": "development", "text": "מפלס הכנרת עלה ב-14 סנטימטרים.", "sources": ["a9"]}]`, 1)}}
+		`{"story": "s4", "unrelated": [], "insert": [{"after": "top", "kind": "development", "text": "מפלס הכנרת עלה ב", "sources": ["a4"]}]`, 1)}}
 	w.Gemini = rec
 	cases.Reset()
 	report, err = w.Replay(context.Background(), ReplayOptions{Archive: dir, NoControls: true, Cases: &cases})
-	if err != nil || report.MissedDropped != 1 || report.MissedFound != 1 || report.MissedTripwire != 1 || report.Stats.Unsourced != 1 {
+	if err != nil || report.MissedDropped != 1 || report.MissedFound != 1 || report.MissedTripwire != 1 || report.Tripwire != 1 || report.Stats.Garbled != 1 || report.GeminiSkipped != 0 ||
+		report.LiveNewQuiet != 2 {
 		t.Fatalf("%v %+v", err, report)
 	}
-	if got := casesOf(t, cases.Bytes()); strings.Join(notesOf(Merged{Notes: got[3].Merge.Notes}), "; ") != "insert top: dropped ("+whyUnsourced+")" || !got[3].Merge.Tripwire {
+	if got := casesOf(t, cases.Bytes()); got[3].Kind != CaseMissed || strings.Join(notesOf(Merged{Notes: got[3].Merge.Notes}), "; ") != "insert top: dropped ("+whyGarbled+")" || !got[3].Merge.Tripwire {
 		t.Fatalf("%+v", got[3].Merge)
+	}
+}
+
+// festival adds a story to the replay's archive whose third article is a preview: the site published it before the
+// story's first version was written, and it joined the story after it. The rewrite gave a fact of it as new.
+func festival(a *archiveMaker) {
+	reports := []scrape.ArticleSummary{a.report("siteh", "festival", "הפסטיבל נפתח", "פסטיבל הסרטים נפתח הערב בעיר.", filler("הפתיחה")), a.report("sitee", "festival", "ערב הפתיחה של הפסטיבל")}
+	a.published = scrape.FormatInstant(a.t0.Add(-time.Hour))
+	reports = append(reports, a.reportAt(a.t0.Add(100*time.Minute), "siteg", "festival", "לקראת הפסטיבל", "בפסטיבל יוקרנו 40 סרטים.", filler("התוכנית")))
+	a.published = ""
+	text := []Sentence{{"פסטיבל הסרטים נפתח הערב בעיר.", []string{reports[0].URL, reports[1].URL}}, {"ראש העיר נשא דברים בטקס הפתיחה.", []string{reports[1].URL}}}
+	a.version("festival1", "festival", a.t0.Add(50*time.Minute), text, nil, reports[:2]...)
+	a.version("festival2", "festival", a.t0.Add(110*time.Minute), text, []Sentence{{"בפסטיבל יוקרנו 40 סרטים.", []string{reports[2].URL}}}, reports...)
+}
+
+// The replay's answer (replayAnswer) with a fourth story, the festival's: a detail with a number from the preview.
+var festivalAnswer = strings.TrimSuffix(replayAnswer, "]}") + `,
+	{"story": "s4", "unrelated": [], "insert": [{"after": "s4.1", "kind": "detail", "text": "בפסטיבל יוקרנו 40 סרטים.", "sources": ["a4"]}],
+		"replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
+
+func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
+	dir, db := replayArchiveOf(t, festival)
+	rec := &recorded{answers: []string{festivalAnswer}}
+	var cases bytes.Buffer
+	w := &Writer{Gemini: rec, Store: db, Now: func() time.Time { return now }, Log: t.Logf}
+	report, err := w.Replay(context.Background(), ReplayOptions{Archive: dir, NoControls: true, Cases: &cases})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The request says the preview is older than the story, and its detail with a number makes no version: counted
+	// as a step the articles' time kept from one, where the live rewrite had new facts.
+	if want := "[a4] siteg · 2026-11-10T16:00:00Z · פורסמה לפני שהסיפור נכתב\nכותרת: לקראת הפסטיבל\n"; !strings.Contains(rec.requests[0].Prompt, want) {
+		t.Fatalf("the request lacks %q:\n%s", want, rec.requests[0].Prompt)
+	}
+	if report.Real != 4 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 2 || report.MissedOld != 1 || report.QuietOld != 0 || report.Stats.Old != 1 || report.MissedFound != 2 ||
+		report.ArticlesAfter != 3 || report.ArticlesBefore != 1 || report.ArticlesUndated != 0 || report.GeminiSkipped != 0 {
+		t.Fatalf("%+v", report)
+	}
+	var log bytes.Buffer
+	report.Print(&log)
+	for _, want := range []string{
+		"the real steps' 4 new articles: 3 (75%) published after the version before, 1 (25%) before it, 0 of no known time",
+		"in 1 steps without one: 1 where live had new facts, 0 where it had none",
+		"of a kind that makes a version, but from articles published before the version before: 1",
+	} {
+		if !strings.Contains(log.String(), want) {
+			t.Fatalf("the report lacks %q:\n%s", want, log.String())
+		}
+	}
+	got := casesOf(t, cases.Bytes())
+	preview := got[len(got)-1]
+	if preview.Story != "festival" || preview.Kind != CaseMissed || preview.Merge.Version || preview.New[0].When != "before" || preview.New[0].Published != "2026-11-10T16:00:00Z" ||
+		strings.Join(notesOf(Merged{Notes: preview.Merge.Notes}), "; ") != "insert s4.1: left out ("+whyOld+")" || !preview.Merge.Notes[0].Old || got[0].New[0].When != "after" {
+		t.Fatalf("%+v", preview)
 	}
 }
 
 func TestTheReplaysCasesHoldTheControlsAnsweredWrong(t *testing.T) {
 	dir, db := replayArchiveOf(t)
+	// The controls' answers, with the second request's own article (s2) found to be about another event.
+	controlAnswers := []string{controlAnswers[0], strings.Replace(controlAnswers[1], `{"story": "s2", "unrelated": []`, `{"story": "s2", "unrelated": [{"id": "a2", "event": "הצבעה אחרת"}]`, 1)}
 	rec := &recorded{answers: controlAnswers}
 	var cases bytes.Buffer
 	w := &Writer{Gemini: rec, Store: db, Now: func() time.Time { return now }, Log: t.Logf}
@@ -475,22 +564,27 @@ func TestTheReplaysCasesHoldTheControlsAnsweredWrong(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The three steps, and of the four controls the two answered wrong: a story shown its own article, and a
-	// sentence written from it; a story shown another's article, not found unrelated.
+	// The three steps, two of them skipped by Gemini, and of the four controls the two answered wrong: a story
+	// shown its own article, found to be about another event; a story shown another's article, not found unrelated.
 	got := casesOf(t, cases.Bytes())
 	var kinds []string
 	for _, c := range got {
 		kinds = append(kinds, fmt.Sprintf("%d %s", c.N, c.Kind))
 	}
-	if strings.Join(kinds, ", ") != "2 agree-version, 4 agree-none, 5 missed, 6 control-repeat, 7 control-stranger" || report.Cases != 5 || report.Selected != 7 {
+	if strings.Join(kinds, ", ") != "2 agree-version, 4 skipped, 5 skipped, 6 control-repeat, 7 control-stranger" || report.Cases != 5 || report.Selected != 7 {
 		t.Fatalf("cases: %s; %+v", strings.Join(kinds, ", "), report)
 	}
+	// A skipped step has the live rewrite of it, to see what was skipped.
+	if skipped := got[2]; !skipped.Merge.Skipped || strings.Join(skipped.Merge.Unmentioned, ",") != "a1" || skipped.Live == nil || len(skipped.Live.New) != 1 || skipped.Merge.Version {
+		t.Fatalf("%+v", skipped)
+	}
 	repeat, stranger := got[3], got[4]
-	if repeat.Live != nil || repeat.Request != 2 || repeat.Position != 2 || repeat.Target != "a2" || len(repeat.New) != 1 || repeat.New[0].ID != "a2" || !repeat.Merge.Version ||
-		repeat.Merge.Notes[0].Text != "שר האוצר בירך על אישור התקציב." || repeat.Merge.Notes[0].Outcome != NoteApplied {
+	if repeat.Live != nil || repeat.Request != 2 || repeat.Position != 2 || repeat.Target != "a2" || len(repeat.New) != 1 || repeat.New[0].ID != "a2" || repeat.New[0].When != "before" ||
+		repeat.Merge.Version || strings.Join(repeat.Merge.Unrelated, ",") != "a2" || repeat.Merge.Skipped ||
+		repeat.Merge.Notes[0].Text != "שר האוצר בירך על אישור התקציב." || repeat.Merge.Notes[0].Outcome != NoteDropped {
 		t.Fatalf("%+v", repeat)
 	}
-	if stranger.Live != nil || stranger.Target != "a3" || stranger.New[0].ID != "a3" || stranger.Merge.Version || len(stranger.Merge.Unrelated) != 0 {
+	if stranger.Live != nil || stranger.Target != "a3" || stranger.New[0].ID != "a3" || stranger.Merge.Version || len(stranger.Merge.Unrelated) != 0 || !stranger.Merge.Skipped {
 		t.Fatalf("%+v", stranger)
 	}
 
@@ -507,7 +601,7 @@ func TestTheReplaysCasesHoldTheControlsAnsweredWrong(t *testing.T) {
 	for _, c := range casesOf(t, cases.Bytes()) {
 		kinds = append(kinds, fmt.Sprintf("%d %s", c.N, c.Kind))
 	}
-	if strings.Join(kinds, ", ") != "5 missed, 6 control-repeat, 7 control-stranger" {
+	if strings.Join(kinds, ", ") != "5 skipped, 6 control-repeat, 7 control-stranger" {
 		t.Fatalf("cases: %s", strings.Join(kinds, ", "))
 	}
 	// And a replay that stopped says the offset to go on from.

@@ -74,6 +74,50 @@ type Step struct {
 	Full int
 	// Forced are articles of the version before shown as new all the same: the replay's control.
 	Forced map[string]bool
+	// Seen is when the server first saw each report, by URL: the time of an article whose site gives none. nil when
+	// it isn't known.
+	Seen map[string]time.Time
+}
+
+// seenLate is how long before a version an article may have been published and still be after it, when the server
+// first saw it only after that version: the version was written from the reading of the sites before it, which such
+// an article was not in yet. It is the time between two runs.
+const seenLate = 10 * time.Minute
+
+// fresh says r was published after the version before was written; known is false when that can't be told, and
+// such an article is taken as published after it (the rule that keeps old articles from making a version must not
+// keep news from making one). The time is the site's for the article (PublishedAt); when it gives none, when the
+// server first saw it (Seen); with neither, or a version before without a time, it is not known. An article
+// published up to seenLate before the version that the server first saw after it is after it too.
+func (s Step) fresh(r scrape.ArticleSummary) (fresh, known bool) {
+	written := s.Prev.WrittenAt
+	if written.IsZero() {
+		return false, false
+	}
+	seen, wasSeen := s.Seen[r.URL]
+	published, err := time.Parse(time.RFC3339, r.PublishedAt)
+	if err != nil {
+		return wasSeen && seen.After(written), wasSeen
+	}
+	return published.After(written) || wasSeen && seen.After(written) && published.After(written.Add(-seenLate)), true
+}
+
+// When a new article was published, as the request says it on the article's first line. The instructions
+// (incrementalSystem) quote both.
+const (
+	publishedBefore = "פורסמה לפני שהסיפור נכתב"
+	publishedAfter  = "פורסמה אחרי שהסיפור נכתב"
+)
+
+// published is what the request says of when r was published; "" when it isn't known.
+func (s Step) published(r scrape.ArticleSummary) string {
+	switch fresh, known := s.fresh(r); {
+	case !known:
+		return ""
+	case fresh:
+		return publishedAfter
+	}
+	return publishedBefore
 }
 
 // Plan is how a step is made, and what it is made from.
@@ -266,7 +310,9 @@ func render(step Step, p Plan, sentences, added []Sentence, addedKinds []string,
 const incrementalSystem = `You keep the stories of a personal newspaper from Israeli news sites up to date. The input is several stories.
 Each story shows its title, the story so far as numbered sentences (each ends with the sites it cites, in
 parentheses), the titles of the articles it was written from, and then its new articles: each with an id in
-brackets, its site, time, title, subtitle and its body (the whole article, or its start).
+brackets, its site, time, whether it was published before or after the story so far was written
+("פורסמה לפני שהסיפור נכתב" or "פורסמה אחרי שהסיפור נכתב"; nothing when that isn't known), its title, subtitle
+and its body (the whole article, or its start).
 
 The story so far is written and stays as it is. You answer only what the new articles change in it. Never write a
 sentence of the story again, and never reword one.
@@ -275,9 +321,11 @@ For every story answer, in this order:
 - "story": its id ("s1").
 - "unrelated": the new articles that are clearly about a different event than the story (the grouping can be
   wrong), each as its "id" and the "event" it is about instead, in a few Hebrew words. That event must be another
-  incident: another person, place or happening. An article about the same finding, decision or incident in other
-  words, one that teases it without naming it, covers another side of it, or reacts to it belongs to the story.
-  When unsure, it belongs. Don't use unrelated ones anywhere else in the answer. Usually none: then an empty list.
+  incident: another person, place or happening. An article that shares no person, no place and no event with the
+  story is unrelated, even though the grouping put it here. An article about the same finding, decision or incident
+  in other words, one that teases it without naming it, covers another side of it, or reacts to it belongs to the
+  story. Only when an article shares a person, a place or an event with the story and you are unsure, it belongs.
+  Don't use unrelated ones anywhere else in the answer. Usually none: then an empty list.
 - "insert": a sentence for each fact the new articles state and the story so far does not. Each has "after": the
   number of the sentence it follows ("s1.3"), or "top" for what happened since the story was written, which leads;
   its "kind"; its "text"; and "sources": the ids of the new articles that state it. A fact the story already has,
@@ -299,11 +347,16 @@ A sentence's "kind" is one of:
 - "development": something that happened or became known since the story was written; a new stage of the event.
 - "correction": a fact of the story changed or was wrong.
 - "detail": a fact about what the story already tells that it lacks: a name, a number, a place, a time, a quote.
-- "background": what was before the event, or context.
+  A breakdown of figures the story already sums up is a detail, not a development.
+- "background": what was before the event, or context. So is whatever an article published before the story was
+  written reports (a preview of the event, the run-up to it): it is not something that happened since.
 - "reaction": what someone said about it.
 
-Most new articles repeat what the story has. Then the story's answer is its id, what it cites, and empty lists:
-never invent a difference to have something to answer.
+Account for every new article: the id of each one appears in "unrelated", or among the "sources" of an "insert", a
+"replace" or a "cite". Before you decide that an article only repeats the story, check it for what the story lacks:
+a new stage or decision, a person named for the first time, a number (a count, an age, an amount, a date), an
+official response. Each such fact is an insert. An article that has none of them repeats the story: cite the
+sentences it states. Never invent a difference to have something to answer.
 
 Writing rules, all of them strict:
 - Write in Hebrew, in the plain, neutral register of a news agency.
@@ -523,7 +576,7 @@ func (w *Writer) storyText(ctx context.Context, ids *sources, id string, step St
 	each := min(bodyChars(settings), max(articleChars, storyBodyChars/max(len(added), 1)))
 	for _, r := range added {
 		body := w.body(ctx, r, each, seen)
-		b.WriteString(w.reportOf(ids, r, body))
+		b.WriteString(w.reportOf(ids, r, body, step.published(r)))
 		b.WriteString("\n")
 		a.shown[r.URL] = strings.TrimSpace(oneLine(r.Title) + ". " + oneLine(r.Subtitle) + ". " + body)
 		a.bodies[r.URL] = body
@@ -600,6 +653,9 @@ type MergeStats struct {
 	Unapplied int `json:"unapplied"`
 	// Unanchored are inserted sentences whose place wasn't a sentence of the story: they lead.
 	Unanchored int `json:"unanchored"`
+	// Old are sound sentences of a kind that makes a version, all of whose articles were published before the
+	// version before: they make none (they go in when another sentence does).
+	Old int `json:"old"`
 }
 
 // add adds o's counts to s's.
@@ -616,6 +672,7 @@ func (s *MergeStats) add(o MergeStats) {
 	s.Garbled += o.Garbled
 	s.Unapplied += o.Unapplied
 	s.Unanchored += o.Unanchored
+	s.Old += o.Old
 }
 
 // Merged is a story's answer applied to the version before.
@@ -627,7 +684,12 @@ type Merged struct {
 	Version bool
 	// Unrelated are the new articles Gemini found to be about another event.
 	Unrelated []string
-	Stats     MergeStats
+	// Unmentioned are the new articles the request showed that the answer names nowhere: not as unrelated, and not
+	// among the sources of an inserted or replaced sentence, a citation or a contradiction. Skipped says that is
+	// every one of them: Gemini skipped the story, which is not an answer that it has nothing new.
+	Unmentioned []string
+	Skipped     bool
+	Stats       MergeStats
 	// Notes are what became of each operation of the answer, in the order the rules read them: the replaced
 	// sentences, the inserted ones, the citations, the deletions.
 	Notes []MergeNote
@@ -654,8 +716,11 @@ type MergeNote struct {
 	// Why it was dropped or left out, in words.
 	Why string `json:"why,omitempty"`
 	// MakesVersion says a sound sentence is one the version rule takes: a development, a correction, or a detail
-	// with a number the story lacks.
+	// with a number the story lacks, with an article published after the version before among its sources.
 	MakesVersion bool `json:"makesVersion,omitempty"`
+	// Old says a sound sentence is of such a kind, and every article it cites was published before the version
+	// before: it makes no version.
+	Old bool `json:"old,omitempty"`
 }
 
 // What the rules say of an operation they drop (MergeNote.Why).
@@ -668,6 +733,7 @@ const (
 	whyHalf       = "the answer deletes more than half the story"
 	whyNoFootnote = "adds no footnote: no new article of the story the sentence doesn't cite already"
 	whyNoVersion  = "no version: the answer has no development, no correction, and no detail with a number the story lacks"
+	whyOld        = "no version: every article it cites was published before the story was written"
 )
 
 var sentenceRef = regexp.MustCompile(`\bs(\d+)\.(\d+)\b`)
@@ -721,16 +787,26 @@ type edit struct {
 //   - An old sentence changes only by being replaced or deleted, by its number; an operation on a number the story
 //     doesn't have is dropped. Its text and footnotes are otherwise kept exactly; a citation adds a footnote.
 //   - A version is made only when a development or a correction survives, or a detail with a number the story
-//     lacks. Otherwise the text stays as it was (background and reactions alone don't make a version, and are left
-//     out), and the new articles are only among the story's reports and, where cited, its footnotes.
+//     lacks, and one of that sentence's articles was published after the version before was written (Step.fresh;
+//     an article whose time isn't known counts as one). Otherwise the text stays as it was (background and
+//     reactions alone don't make a version, and are left out), and the new articles are only among the story's
+//     reports and, where cited, its footnotes.
+//   - An answer that names none of the new articles is no answer (Skipped): the story is to be asked about again.
 func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merged {
 	p := a.plan
 	var m Merged
 	n := len(p.Kept)
 	allowed := map[string]bool{}
+	// old are the new articles known to be published before the version before was written.
+	old := map[string]bool{}
 	for _, r := range p.New {
 		allowed[r.URL] = true
+		if fresh, known := a.step.fresh(r); known && !fresh {
+			old[r.URL] = true
+		}
 	}
+	m.Unmentioned = ids.unmentioned(answer, p)
+	m.Skipped = len(m.Unmentioned) > 0 && len(m.Unmentioned) == len(ids.asked(p))
 	for _, u := range answer.Unrelated {
 		if strings.TrimSpace(u.Event) == "" {
 			continue // no other event named: not shown to be about another one
@@ -814,15 +890,30 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		accept(MergeNote{Op: "insert", At: in.After, Kind: in.Kind, Text: in.Text, Sources: in.Sources}, at, false)
 	}
 	for _, e := range edits {
-		if e.kind == Development || e.kind == Correction || e.kind == Detail && index.hasNewNumber(e.sentence.Text) {
+		if e.kind != Development && e.kind != Correction && !(e.kind == Detail && index.hasNewNumber(e.sentence.Text)) {
+			continue
+		}
+		// News is what an article published since the story was written tells: a sentence that stands only on
+		// older ones (a preview that joined the story late, a source of the story shown again) makes no version.
+		since := false
+		for _, url := range e.sentence.Sources {
+			since = since || !old[url]
+		}
+		if since {
 			m.Version = true
 			m.Notes[e.note].MakesVersion = true
+		} else {
+			m.Stats.Old++
+			m.Notes[e.note].Old = true
 		}
 	}
 	for _, e := range edits {
-		if m.Version {
+		switch {
+		case m.Version:
 			m.Notes[e.note].Outcome = NoteApplied
-		} else {
+		case m.Notes[e.note].Old:
+			m.Notes[e.note].Outcome, m.Notes[e.note].Why = NoteLeftOut, whyOld
+		default:
 			m.Notes[e.note].Outcome, m.Notes[e.note].Why = NoteLeftOut, whyNoVersion
 		}
 	}
@@ -927,6 +1018,55 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 	m.Story = render(a.step, p, sentences, added, addedKinds, contradictions, strings.TrimSpace(answer.Title), unrelated, now)
 	m.Story.HeadlineOnly = append(m.Story.HeadlineOnly, headlineOnly(ids, p, allowed)...)
 	return m
+}
+
+// asked are the new articles of p the request showed: the ones with an id in it.
+func (s *sources) asked(p Plan) []string {
+	var out []string
+	for _, r := range p.New {
+		if _, ok := s.urls[r.URL]; ok {
+			out = append(out, r.URL)
+		}
+	}
+	return out
+}
+
+// unmentioned are the new articles of p the request showed that answer names nowhere: not as unrelated (with or
+// without the other event), and not among the sources of an inserted or replaced sentence, a citation or a side of
+// a contradiction, whatever the rules then make of it.
+func (s *sources) unmentioned(answer Answer, p Plan) []string {
+	named := map[string]bool{}
+	name := func(refs ...string) {
+		for _, ref := range refs {
+			for _, id := range articleRef.FindAllString(ref, -1) {
+				named[s.ids[id]] = true
+			}
+		}
+	}
+	for _, u := range answer.Unrelated {
+		name(u.ID)
+	}
+	for _, in := range answer.Insert {
+		name(in.Sources...)
+	}
+	for _, r := range answer.Replace {
+		name(r.Sources...)
+	}
+	for _, c := range answer.Cite {
+		name(c.Sources...)
+	}
+	for _, c := range answer.Contradictions {
+		for _, side := range c.Sides {
+			name(side.Sources...)
+		}
+	}
+	var out []string
+	for _, url := range s.asked(p) {
+		if !named[url] {
+			out = append(out, url)
+		}
+	}
+	return out
 }
 
 // headlineOnly are the story's new articles the request showed without a body.

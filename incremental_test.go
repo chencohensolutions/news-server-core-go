@@ -118,7 +118,11 @@ func TestTheReplayWritesItsCasesToAFile(t *testing.T) {
 		at := time.Date(2026, 11, 9+i, 9, 0, 0, 0, time.UTC)
 		first := scrape.ArticleSummary{SourceID: "siteh", URL: "https://siteh/" + name, Title: "ידיעה ראשונה " + name}
 		second := scrape.ArticleSummary{SourceID: "sitee", URL: "https://sitee/" + name, Title: "ידיעה שנייה " + name}
-		if err := db.SaveHeadlines(ctx, []scrape.ArticleSummary{first, second}, at); err != nil {
+		// The second site's article is first seen after the first version was written: it can be news to it.
+		if err := db.SaveHeadlines(ctx, []scrape.ArticleSummary{first}, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.SaveHeadlines(ctx, []scrape.ArticleSummary{second}, at.Add(30*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 		body := []string{"הנחל עלה על גדותיו.", "הכתבה המלאה כוללת פרטים רבים שנמסרו לכתבים במהלך היום, ובהם תגובות של גורמים רשמיים, נתונים שפורסמו לציבור, ותיאור של מהלך האירועים כפי שנמסר מפי עדים שהיו במקום בזמן האירוע ולאחריו, לצד הערכות של גורמי המקצוע להמשך."}

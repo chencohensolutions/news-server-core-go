@@ -22,6 +22,22 @@ Measured on the live archive, Nov 10 to 12, 2026 (`rewriteMinutes` 0):
 - A check by words alone of whether a new article has news was replayed and is useless as a gate: the stories it
   would have skipped had news as often as the rest. So Gemini is still asked; it is asked less.
 
+### What the second replay found
+
+36 real steps and 10 controls, every disagreement with the live rewrite read against the articles (Nov 12, 2026):
+
+- Of 13 steps with real news the update made a version of 9 (69%), 10 with the tripwire; the live rewrite's own
+  "new" list had 5 of them. One of 10 versions was false, and so were two of five "repeat" controls.
+- **Gemini skips a story** (4 misses): it cites only, or answers nothing at all for it: no article is named
+  anywhere. Hence the instruction to account for every new article, and the answer that names none is no answer
+  (below).
+- **Old material read as news** (3 false versions): an article published before the version before (a preview of
+  the event, or the very articles the story was written from, in the control) gave a "detail" with numbers or a
+  mislabelled "development". Hence the articles' time in the request and in the version rule.
+- **An article of another story** was not found unrelated in two controls: an empty answer instead. Hence the
+  sharper rule for `unrelated`.
+- A story's place in the request made no difference.
+
 ## The design
 
 A changed story with a version before it goes one of three ways (`plan`):
@@ -46,7 +62,9 @@ characters or the expected answer passes 12,000 (200 a story and 500 a new artic
   sites it still cites;
 - the titles of the articles it already has, not their bodies;
 - the new articles whole, as the rewrite cleans them (`a1`, `a2`, …), without the paragraphs an article the story
-  already has gave word for word.
+  already has gave word for word. An article's first line says, after the site and its time, whether it was
+  published before or after the story was written: `[a2] site · 2026-11-10T19:20:00Z · פורסמה אחרי שהסיפור נכתב`,
+  or `פורסמה לפני שהסיפור נכתב`; nothing when that isn't known (see the version rule).
 
 The instructions are their own ([incrementalSystem](../summary/incremental.go)): the rewrite's tell Gemini not to
 base the story on the version before, and here the version before is what stays.
@@ -56,7 +74,7 @@ The answer, for each story, in this order:
 | Key | What |
 |---|---|
 | `story` | its id |
-| `unrelated` | new articles about another event: `id` and the `event`; when unsure, it belongs |
+| `unrelated` | new articles about another event: `id` and the `event`. One that shares no person, place or event with the story is unrelated, though the grouping put it there; one that shares them belongs when unsure |
 | `insert` | `after` (`top` or a sentence number), `kind`, `text`, `sources` (new articles' ids) |
 | `replace` | `sentence`, `kind`, `text`, `sources` |
 | `delete` | sentence numbers |
@@ -64,8 +82,15 @@ The answer, for each story, in this order:
 | `title` | a new title, or `""` for none |
 | `contradictions` | sides citing new articles or a sentence of the story |
 
-`kind` is `development`, `correction`, `detail`, `background` or `reaction`. Gemini never sends a sentence that
-stays, so the old text and its footnotes are kept exactly.
+`kind` is `development`, `correction`, `detail`, `background` or `reaction`. What an article published before the
+story was written reports (a preview, the run-up) is background, and a breakdown of figures the story already sums
+up is a detail, not a development. Gemini never sends a sentence that stays, so the old text and its footnotes are
+kept exactly.
+
+Gemini is told to **account for every new article**: each one's id is in `unrelated`, or among the sources of an
+`insert`, a `replace` or a `cite`. Before it decides that an article only repeats the story, it checks the article
+for what the story lacks: a new stage or decision, a person named for the first time, a number (a count, an age, an
+amount, a date), an official response. Each is an insert; an article with none of them is cited.
 
 **Key order.** Gemini writes an answer's keys in the order of the schema's `properties` ("the model will produce
 outputs in the same order as the keys in the schema",
@@ -86,9 +111,19 @@ among the JSON Schema keywords the API documents for `responseJsonSchema`.
   have, or another story's, is dropped. An insert whose place is unknown leads. Deleting more than half the story is
   refused.
 - **A version is made only when a development or a correction survives, or a detail with a number the story lacks**
-  (a toll, a sum, a date). Background, reactions and other details alone make none, and are then left out: the text
-  stays to the letter. When a version is made, every surviving sentence goes in, and what was inserted and replaced
-  is the version's update (`Update.Sentences`, with `Update.Kinds`).
+  (a toll, a sum, a date), **and one of that sentence's articles was published after the version before was
+  written.** Background, reactions and other details alone make none, and are then left out: the text
+  stays to the letter. When a version is made, every surviving sentence goes in, the ones from older articles too,
+  and what was inserted and replaced is the version's update (`Update.Sentences`, with `Update.Kinds`).
+- **When an article was published** (`Step.fresh`) is the site's time for it (`publishedAt`) against the version
+  before's `writtenAt`. A site that gives no time: when the server first saw the article. With neither, it is not
+  known, and the article counts as published after: the rule keeps old articles from making a version, and must
+  not keep news from one. One more case counts as after: an article published in the ten minutes before the
+  version that the server first saw only after it. The version was written from the reading of the sites before
+  it, which that article was not in yet.
+- **An answer that names none of the story's new articles is no answer** (`Merged.Skipped`): not as unrelated, and
+  not among the sources of an insert, a replace, a cite or a contradiction, whatever the other rules make of those.
+  It is not "nothing new": the story is asked about again (see the shadow), and the replay counts it apart.
 - With or without a version, the new articles join the story's reports, and `cite` adds them to the footnotes of the
   sentences they state (up to five a sentence). The reports are what the story has seen; the footnotes are its
   sources.
@@ -131,7 +166,13 @@ In shadow a run does everything it did, then (`shadow`):
 
 Every step is kept in `story_shadow` under the story's `StoryKey`, whatever came of it, so a story answered
 "nothing new" is not asked again. A row holds the plan, what Gemini answered, the story after the step, whether a
-version was made, the counts of what the rules dropped, and the request's size. The archive keeps the table
+version was made, the counts of what the rules dropped, and the request's size.
+
+A story Gemini skipped (its answer names none of the new articles) is the exception. Its row is kept with the
+answer, `skipped` 1 and `again`: it is no step, so the shadow's line of the story stays where it was, and the next
+run asks about the story again, first in its request, before the stories that changed since. Skipped a second time,
+it is left to be written whole (`again` off, the reason in `reason`), as the mode would do; it is not asked a third
+time. The archive keeps the table
 (`story_shadow/`, restored like the others); the database keeps 7 days. Nothing reads it for the app, and nothing
 it does reaches `summaries`, `story_records`, `story_versions`, the threads or the grouping's unrelated flags.
 
@@ -170,9 +211,16 @@ It reads `summaries/` and `story_versions/` (a version once), `headlines/` and `
 ids is joined to its story by its reports, as the server did then. It reports:
 
 - how many rewrites need no request, how many are written whole and why, and how many are asked;
-- of the steps answered: a version or none, against the live rewrite of the same step. The live rewrite "had new
-  facts" when its own "new" list has a sentence the version before didn't already say (the same check as above).
-  **Recall** is the share of those steps where the incremental update made a version;
+- how many of the real steps' new articles were published after the version before, before it, or at no known
+  time (dry too: it shows how much the version rule's time has to stand on);
+- the steps **skipped by Gemini**: the answer names none of the story's new articles. They are neither a version
+  nor "nothing new", and are in none of the counts that follow; and how many new articles the answers named
+  nowhere in all;
+- of the other steps answered: a version or none, against the live rewrite of the same step. The live rewrite "had
+  new facts" when its own "new" list has a sentence the version before didn't already say (the same check as
+  above). **Recall** is the share of those steps where the incremental update made a version. It is given twice:
+  without the skipped steps, and with the skipped steps whose live rewrite had new facts counted as misses (and how
+  many of those the tripwire would write whole);
 - the steps where the live rewrite had new facts and no version was made, by what Gemini answered: sound sentences
   that the version rule left out (the rule lost the facts), only sentences the other rules dropped, or no sentence
   (the model did). And how many of them the tripwire would send to be written whole. So recall is given three more
@@ -180,13 +228,19 @@ ids is joined to its story by its reports, as the server did then. It reports:
   tripwire's whole writings (a whole writing of a step whose live rewrite had new facts makes a version), and
   counting both. The same two counts are given for the steps where the live rewrite had nothing: there a whole
   writing is a request spent for no version;
+- the steps without a version where a sentence of a kind that makes one was kept from it by its articles' time
+  (all published before the version before), apart by whether the live rewrite had new facts: the rule's cost, and
+  what it saved;
 - the sentences Gemini answered, and how many each rule dropped; the restatement rate; the ones in versions and
   the ones left out with no version made, by kind;
 - the sizes: characters and tokens in and out a story, beside the live rewrite's request and answer for the same
   step (in characters, and in tokens at the rate the incremental requests measured);
 - three controls that need no labels, two in each request at places that move:
-  - an article the story already has, shown as new: nothing may come of it;
+  - an article the story already has, shown as new: nothing may come of it (it is older than the story, so the
+    version rule holds whatever is written from it; found unrelated, it still fails);
   - an article of another story (the least alike of a few), shown as new: it must be found unrelated;
+  - of each, how many answers named no new article at all: a skipped repeat passes (nothing came of it), a skipped
+    stranger fails;
   - both, and the steps' agreement with the live rewrite, by the story's place in the request.
 
 The live rewrite is not the truth: it misses news too, and lists restatements. A step where only the incremental
@@ -203,18 +257,19 @@ with `.git`, or under one): keep it beside them. It is written anew, and added t
 |---|---|
 | `n` | the story's number among the ones to ask about, from 1: what `-offset` counts, and the same on every run with the same days, `-batch`, `-sample` and `-seed` |
 | `story`, `at` | the story's id, and the step's time: when the live rewrite wrote the next version |
-| `kind` | `missed` (the live rewrite had new facts, no version here), `extra` (a version here, none there), `agree-version`, `agree-none`; `control-repeat` and `control-stranger` for a control answered wrong |
+| `kind` | `missed` (the live rewrite had new facts, no version here), `extra` (a version here, none there), `agree-version`, `agree-none`; `skipped` (the answer names none of the story's new articles: `live` tells what was skipped); `control-repeat` and `control-stranger` for a control answered wrong |
 | `request`, `position`, `id` | where it was asked: the run's request, its place in it, and its id there (`s3`) |
 | `title`, `prevAt`, `prev` | the version before: its title, when it was written, and its sentences as the request numbered them (`n`, `text`, `sites`) |
 | `old` | the articles the story had: `site`, `url`, `title` (the request shows no more of them) |
-| `new` | the articles shown as new: `id` in the request (`a4`), `site`, `url`, `published`, `title`, `subtitle`, and `body` exactly as the request showed it (cleaned, without the paragraphs the story's articles gave, cut to its length; none when only the headline was shown) |
+| `new` | the articles shown as new: `id` in the request (`a4`), `site`, `url`, `published`, `when` (`after` or `before` the version before, as the request said it; none when not known), `title`, `subtitle`, and `body` exactly as the request showed it (cleaned, without the paragraphs the story's articles gave, cut to its length; none when only the headline was shown) |
 | `target` | a control's article, by its id |
 | `answer` | what Gemini answered for the story: `unrelated`, `insert`, `replace`, `delete`, `cite`, `title`, `contradictions` |
-| `merge` | what the server made of it: `version` (one was made), `tripwire` and `tripwireWhy` (it would be written whole), `unrelated`, `stats` (the counts of the report), and `notes` |
-| `merge.notes` | one for each answered operation: `op`, `at`, `kind`, `text`, `sources`, and its `outcome`: `applied`, `left out` (sound, and the answer makes no version) or `dropped`, with `why` (says again what `s3.1` does, cites no new article of the story, garbled or cut short, ...). `makesVersion` marks a sentence the version rule takes |
+| `merge` | what the server made of it: `version` (one was made), `tripwire` and `tripwireWhy` (it would be written whole), `unrelated`, `unmentioned` (the new articles the answer names nowhere) and `skipped` (that is all of them), `stats` (the counts of the report), and `notes` |
+| `merge.notes` | one for each answered operation: `op`, `at`, `kind`, `text`, `sources`, and its `outcome`: `applied`, `left out` (sound, and the answer makes no version) or `dropped`, with `why` (says again what `s3.1` does, cites no new article of the story, garbled or cut short, ...). `makesVersion` marks a sentence the version rule takes, `old` one of such a kind whose articles were all published before the version before |
 | `live` | the live rewrite's version of the step (none for a control): `at`, `title`, `new` (the sentences it gave as new, less the ones the version before said already: those are in `restated`), and `sentences`, all of it. A sentence has its `sites` and, in `articles`, the step's new articles among its sources: a "new" sentence without one stands on articles the story had |
 
-To read the misses, for one: `jq -c 'select(.kind == "missed")' file`.
+To read the misses, for one: `jq -c 'select(.kind == "missed")' file`; the skipped: `select(.kind == "skipped")`;
+the sentences the articles' time held back: `select(any(.merge.notes[]; .old))`.
 
 ## What turning it on still needs
 
@@ -223,6 +278,8 @@ To read the misses, for one: `jq -c 'select(.kind == "missed")' file`.
 - **The run.** First versions keep their own requests and go first; rewrites are packed into incremental requests.
   A story to be written whole goes through today's rewrite, with its new articles marked, and publishes a version
   only when the result has facts the version before lacks.
+- **Skipped stories.** The shadow's rule becomes the run's: a story whose answer names none of its new articles
+  keeps its version, is asked about again in the next run, and after a second such answer is written whole.
 - **Bookkeeping.** A step that makes no version must still be saved in `summaries` under the new `StoryKey` (the
   version before, with the new reports and footnotes, its `writtenAt` unchanged), or `Run` asks about it every run;
   `previous`, `Latest` and `PruneSummaries` then find it as they find a rewrite. It adds no row to
