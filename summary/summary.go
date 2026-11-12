@@ -70,6 +70,8 @@ type StorySummary struct {
 type Update struct {
 	At        time.Time  `json:"at"`
 	Sentences []Sentence `json:"sentences"`
+	// Kinds are what each sentence is (development, correction, …), when the version is an incremental update's.
+	Kinds []string `json:"kinds,omitempty"`
 }
 
 // maxUpdates is how many updates a story keeps: the first and the latest.
@@ -214,6 +216,8 @@ type Writer struct {
 	Log      func(format string, args ...any)
 	// Sleep waits between tries when Gemini is busy; nil waits for real.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Articles reads an article's text for the prompt; nil reads the Store's. The replay reads the archive's.
+	Articles func(ctx context.Context, url string) *scrape.Article
 
 	mu     sync.Mutex
 	status Status
@@ -446,9 +450,19 @@ func newestSeen(s stories.Story, firstSeen map[string]time.Time) time.Time {
 // send counts the request against the day's budget, then sends it; when Gemini is busy it waits and tries again,
 // each try counted.
 func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json.RawMessage, error) {
+	answer, _, err := w.generate(ctx, day, req, len(busyWaits))
+	if err != nil {
+		return nil, err
+	}
+	return answer, nil
+}
+
+// generate is send with the answer's usage, trying a busy Gemini again up to retries times. With an error it
+// returns what Gemini answered all the same (the part of a cut answer), and that answer's tokens are not counted.
+func (w *Writer) generate(ctx context.Context, day string, req gemini.Request, retries int) (json.RawMessage, gemini.Usage, error) {
 	for try := 0; ; try++ {
 		if err := w.Store.CountGeminiRequest(ctx, day); err != nil {
-			return nil, err
+			return nil, gemini.Usage{}, err
 		}
 		start := time.Now()
 		answer, usage, err := w.Gemini.Generate(ctx, req)
@@ -456,26 +470,30 @@ func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json
 			// Busy is Google's failure, not a request of the quota. Counted first all the same: a stop mid-request
 			// errs toward the budget.
 			if err := w.Store.UncountGeminiRequest(ctx, day); err != nil {
-				return nil, err
+				return nil, gemini.Usage{}, err
 			}
 		}
-		if errors.Is(err, gemini.ErrUnavailable) && try < len(busyWaits) {
+		if errors.Is(err, gemini.ErrUnavailable) && try < min(retries, len(busyWaits)) {
 			w.logf("summaries: %v; trying again in %s", err, busyWaits[try])
 			if err := w.sleep(ctx, busyWaits[try]); err != nil {
-				return nil, err
+				return nil, gemini.Usage{}, err
 			}
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return answer, usage, err
 		}
-		if err := w.Store.CountGeminiTokens(ctx, day, store.Tokens{In: usage.PromptTokens, Cached: usage.CachedTokens, Out: usage.AnswerTokens, Thoughts: usage.ThoughtsTokens}); err != nil {
-			return nil, err
+		if err := w.countTokens(ctx, day, usage); err != nil {
+			return nil, usage, err
 		}
 		w.logf("summaries: Gemini answered in %s, %d tokens in (%d cached), %d out, %d thinking", time.Since(start).Round(time.Millisecond),
 			usage.PromptTokens, usage.CachedTokens, usage.AnswerTokens, usage.ThoughtsTokens)
-		return answer, nil
+		return answer, usage, nil
 	}
+}
+
+func (w *Writer) countTokens(ctx context.Context, day string, usage gemini.Usage) error {
+	return w.Store.CountGeminiTokens(ctx, day, store.Tokens{In: usage.PromptTokens, Cached: usage.CachedTokens, Out: usage.AnswerTokens, Thoughts: usage.ThoughtsTokens})
 }
 
 func (w *Writer) sleep(ctx context.Context, d time.Duration) error {
@@ -674,6 +692,19 @@ func (w *Writer) siteName(id string) string {
 // report is one article as the prompt shows it: its id, site, time, title, subtitle and its body (articleText: the
 // first bodyChars characters, without what isn't the article or what the story's earlier reports sent).
 func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSummary, bodyChars int, seen map[string]bool) string {
+	return w.reportOf(ids, r, w.body(ctx, r, bodyChars, seen))
+}
+
+// body is r's body as the prompt shows it (articleText), "" for a paywall stub or an article not read.
+func (w *Writer) body(ctx context.Context, r scrape.ArticleSummary, bodyChars int, seen map[string]bool) string {
+	if article := w.article(ctx, r.URL); article != nil {
+		return articleText(article.Body, seen, bodyChars)
+	}
+	return ""
+}
+
+// reportOf is report with the body given.
+func (w *Writer) reportOf(ids *sources, r scrape.ArticleSummary, body string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%s] %s", ids.id(r.URL), w.siteName(r.SourceID))
 	if r.PublishedAt != "" {
@@ -685,10 +716,6 @@ func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSumma
 	} else if r.Summary != "" {
 		fmt.Fprintf(&b, "תקציר: %s\n", oneLine(r.Summary))
 	}
-	body := ""
-	if article, err := w.Store.Article(ctx, r.URL); err == nil && article != nil {
-		body = articleText(article.Body, seen, bodyChars)
-	}
 	if body != "" {
 		fmt.Fprintf(&b, "גוף: %s\n", body)
 	} else {
@@ -698,6 +725,17 @@ func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSumma
 		ids.headlineOnly[r.URL] = true
 	}
 	return b.String()
+}
+
+// article is the article read from url, or nil.
+func (w *Writer) article(ctx context.Context, url string) *scrape.Article {
+	if w.Articles != nil {
+		return w.Articles(ctx, url)
+	}
+	if article, err := w.Store.Article(ctx, url); err == nil {
+		return article
+	}
+	return nil
 }
 
 // oneLine is s on one line, with Hebrew abbreviations' quote marks as the Hebrew ones: 'צה"ל' becomes 'צה״ל' and
