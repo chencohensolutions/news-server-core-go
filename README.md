@@ -108,3 +108,8 @@ Active, started Nov 9, 2026.
 - [docs/authentication.md](docs/authentication.md): mutual TLS, enrollment and roles.
 - [docs/source-config.md](docs/source-config.md): the site config schema.
 - [CLAUDE.md](CLAUDE.md): rules for AI coding agents working in this repository.
+
+## License
+
+Free for noncommercial use under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). For commercial use, ask for a
+separate license. Third-party code, models and data keep their own licenses.
