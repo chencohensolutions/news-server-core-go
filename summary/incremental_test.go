@@ -3,6 +3,10 @@ package summary
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -357,18 +361,32 @@ func TestAChangedStoryIsUpdatedKeptOrWrittenWhole(t *testing.T) {
 }
 
 func TestTheSchemaGoesOutInItsOrder(t *testing.T) {
-	// As the client sends it: inside a map, where a Go map of the schema would have its keys sorted.
-	body, err := json.Marshal(map[string]any{"generationConfig": map[string]any{"responseJsonSchema": gemini.Request{Schema: incrementalSchema}.Schema}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// As the client sends it: a Go map of the schema would go out with its keys sorted.
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		w.Write([]byte(`{"candidates": [{"content": {"parts": [{"text": "{\"stories\": [{\"story\": \"s1\", \"title\": \"\"}, {\"story\": \"s2\", \"ti"}]}, "finishReason": "MAX_TOKENS"}]}`))
+	}))
+	defer server.Close()
+	client := &gemini.Client{Key: "test-key", BaseURL: server.URL}
+	raw, _, err := client.Generate(context.Background(), gemini.Request{System: incrementalSystem, Prompt: "x", Schema: incrementalSchema})
 	at := -1
-	for _, key := range []string{`"story":`, `"unrelated":`, `"insert":`, `"replace":`, `"delete":`, `"cite":`, `"title":`, `"contradictions":`} {
+	for _, key := range []string{`"responseJsonSchema":`, `"story":`, `"unrelated":`, `"insert":`, `"replace":`, `"delete":`, `"cite":`, `"title":`, `"contradictions":`} {
 		next := strings.Index(string(body), key)
 		if next <= at {
 			t.Fatalf("%s is out of order in %s", key, body)
 		}
 		at = next
+	}
+	if strings.Contains(string(body), "propertyOrdering") {
+		t.Fatal("propertyOrdering is Gemini 2.0's: not sent")
+	}
+	// An answer that stopped early comes back with its error, and its whole stories are read.
+	if !errors.Is(err, gemini.ErrCut) || err.Error() != "gemini: the answer stopped early (MAX_TOKENS)" {
+		t.Fatalf("%v", err)
+	}
+	if answers, whole := readAnswers(raw); whole || len(answers) != 1 || answers[0].Story != "s1" {
+		t.Fatalf("%+v %v", answers, whole)
 	}
 	// The whole writing's instructions tell Gemini not to stand on the version before: these are apart from them.
 	if strings.Contains(incrementalSystem, "Don't base the story on the previous version") || !strings.Contains(incrementalSystem, "When unsure, it belongs") {
