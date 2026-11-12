@@ -193,3 +193,16 @@ func TestOwnAddresses(t *testing.T) {
 		t.Fatalf("host ports: %v", hp)
 	}
 }
+
+func TestPublishedKeepsTheFirstLimit(t *testing.T) {
+	all := []string{"https://203.0.113.5:56401", "https://192.168.1.2:56401", "https://192.168.9.1:56401"}
+	if got := (&Publisher{}).Published(all); len(got) != 3 {
+		t.Errorf("no limit: %v", got)
+	}
+	if got := (&Publisher{Limit: 1}).Published(all); len(got) != 1 || got[0] != all[0] {
+		t.Errorf("limit 1: %v", got)
+	}
+	if got := (&Publisher{Limit: 5}).Published(all); len(got) != 3 {
+		t.Errorf("limit above the count: %v", got)
+	}
+}

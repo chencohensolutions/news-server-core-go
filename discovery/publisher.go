@@ -24,6 +24,8 @@ type Publisher struct {
 	// The router's outside address forwarded to this server ("https://ip:port"), or ""; nil when the server doesn't
 	// map its port (portmap.Mapper).
 	Mapped func() string
+	// How many of the addresses go in the DHT record, the first ones; 0 is all.
+	Limit int
 
 	mu      sync.Mutex
 	seen    net.IP   // the public address a peer last saw us come from
@@ -65,6 +67,14 @@ func (p *Publisher) mapped() string {
 	return p.Mapped()
 }
 
+// Published is the part of addresses that goes in the DHT record: the first Limit of them.
+func (p *Publisher) Published(addresses []string) []string {
+	if p.Limit > 0 && len(addresses) > p.Limit {
+		return addresses[:p.Limit]
+	}
+	return addresses
+}
+
 // Current is where this server can be reached, as last worked out (without asking STUN before the first time).
 func (p *Publisher) Current() []string {
 	p.mu.Lock()
@@ -89,11 +99,12 @@ func (p *Publisher) Run(ctx context.Context) {
 	failures := 0
 	for {
 		ask, cancel := context.WithTimeout(ctx, 10*time.Second)
-		addresses := p.Addresses(ask)
+		all := p.Addresses(ask)
 		cancel()
+		addresses := p.Published(all)
 		p.mu.Lock()
 		changed := !slices.Equal(addresses, p.last.Addresses)
-		p.current = addresses
+		p.current = all
 		p.mu.Unlock()
 		if p.Node != nil && (changed || time.Since(publishedAt) >= RepublishEvery) {
 			r := Record{Addresses: addresses, At: time.Now().UTC()}
