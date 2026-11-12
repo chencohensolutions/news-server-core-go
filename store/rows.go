@@ -15,7 +15,7 @@ var jsonColumns = map[string]bool{"item": true, "article": true, "summary": true
 
 // tables are the tables Rows and PutRows take: no other name reaches the SQL.
 var tables = map[string]bool{
-	"headlines": true, "articles": true, "summaries": true, "digests": true, "story_records": true, "unrelated": true,
+	"headlines": true, "articles": true, "summaries": true, "digests": true, "story_records": true, "story_versions": true, "unrelated": true,
 	"gemini_groups": true, "threads": true, "story_threads": true, "thread_links": true, "server_settings": true,
 	"site_settings": true, "gemini_requests": true, "gemini_tokens": true, "user_hidden_sources": true, "user_reads": true,
 }

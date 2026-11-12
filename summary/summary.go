@@ -121,6 +121,55 @@ func previous(story stories.Story, saved map[string]StorySummary) *StorySummary 
 	return best
 }
 
+// similarStory is the latest version of the saved story whose sentences say what sentences do (Similar), the most
+// recently written first; nil when none does.
+func similarStory(sentences []Sentence, saved map[string]StorySummary) *StorySummary {
+	latest := map[string]StorySummary{}
+	for key, s := range saved {
+		if s.ID == "" {
+			s.ID = key
+		}
+		if l, ok := latest[s.ID]; !ok || s.WrittenAt.After(l.WrittenAt) {
+			latest[s.ID] = s
+		}
+	}
+	var best *StorySummary
+	for _, s := range latest {
+		if (best == nil || s.WrittenAt.After(best.WrittenAt)) && Similar(sentences, s.Sentences) {
+			s := s
+			best = &s
+		}
+	}
+	return best
+}
+
+// Latest is story's newest written version: the one written from its reports as they are (current), else, while the
+// reports that joined it wait for its next version, the one before (not current). ok is false for a story not written.
+func Latest(story stories.Story, written map[string]StorySummary) (latest StorySummary, current, ok bool) {
+	key := StoryKey(story)
+	if s, ok := written[key]; ok {
+		if s.ID == "" {
+			s.ID = key // written before ids: its key is its id
+		}
+		return s, true, true
+	}
+	prev := previous(story, written)
+	if prev == nil {
+		return StorySummary{}, false, false
+	}
+	// Its newest version: a split-off story may be closest to an earlier one.
+	latest = *prev
+	for key, s := range written {
+		if s.ID == "" {
+			s.ID = key
+		}
+		if s.ID == latest.ID && s.WrittenAt.After(latest.WrittenAt) {
+			latest = s
+		}
+	}
+	return latest, false, true
+}
+
 // unfolded is the updates of a story written now with sentences, whose new facts since prev are added.
 func unfolded(prev *StorySummary, sentences, added []Sentence, now time.Time) []Update {
 	if prev == nil {
@@ -782,12 +831,23 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			}
 		}
 		var added []Sentence
-		if prev := prevOf[storyID(a.Story)]; prev != nil {
+		prev := prevOf[storyID(a.Story)]
+		if prev != nil {
 			added = ids.sentences(a.New, own)
+		} else if like := similarStory(summary.Sentences, saved); like != nil {
+			// The grouping made a new story of what an earlier one already tells (a report that joined split it, or
+			// it grouped the newer reports apart): it is that story's next version, with what it says that's new.
+			prev = like
+			for i, c := range ChangesFrom(*like, summary).Sentences {
+				if c.Kind == New {
+					added = append(added, summary.Sentences[i])
+				}
+			}
+			w.logf("summaries: %q is a new version of %q (%s): it says the same", summary.Title, like.Title, like.ID)
 		}
-		summary.Updates = unfolded(prevOf[storyID(a.Story)], summary.Sentences, added, now)
+		summary.Updates = unfolded(prev, summary.Sentences, added, now)
 		summary.ID = StoryKey(s)
-		if prev := prevOf[storyID(a.Story)]; prev != nil {
+		if prev != nil {
 			summary.ID = prev.ID
 		}
 		data, err := json.Marshal(summary)
@@ -799,6 +859,10 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		}
 		// Kept for good, for its threads.
 		if err := w.Store.SaveStoryRecord(ctx, summary.ID, data, now); err != nil {
+			return written, asked, err
+		}
+		// And every version, for its history.
+		if err := w.Store.SaveStoryVersion(ctx, summary.ID, data, now); err != nil {
 			return written, asked, err
 		}
 		// The grouping moves it to a closer story, or out, from the next run on.

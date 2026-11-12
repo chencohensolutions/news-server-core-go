@@ -89,6 +89,12 @@ CREATE TABLE IF NOT EXISTS story_records (
 	linked INTEGER NOT NULL DEFAULT 0 -- 1 once Gemini placed it in its threads, or none
 );
 CREATE INDEX IF NOT EXISTS story_records_linked ON story_records (linked, first_written);
+CREATE TABLE IF NOT EXISTS story_versions (
+	id TEXT NOT NULL,            -- a story's id (story_records.id): every version of it, kept for good
+	written_at INTEGER NOT NULL,
+	summary TEXT NOT NULL,       -- that version, as JSON
+	PRIMARY KEY (id, written_at)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS story_threads (
 	story TEXT NOT NULL,         -- a story in a thread: a story can be in several, a thread has many
 	thread TEXT NOT NULL,
@@ -149,6 +155,10 @@ func Open(path string) (*Store, error) {
 	// One writer at a time is SQLite's rule; one connection keeps it simple and avoids "database is locked".
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: %s: %w", path, err)
+	}
+	if err := seedVersions(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: %s: %w", path, err)
 	}
@@ -727,6 +737,70 @@ func (s *Store) SaveStoryRecord(ctx context.Context, id string, summary json.Raw
 		ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, written_at = excluded.written_at`,
 		id, string(summary), millis(now), millis(now))
 	return err
+}
+
+// seedVersions fills story_versions, when it is empty, from what a server before it kept (Nov 12, 2026): each
+// story's latest version, and the versions still in summaries (the last hours').
+func seedVersions(db *sql.DB) error {
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM story_versions`).Scan(&n); err != nil || n > 0 {
+		return err
+	}
+	_, err := db.Exec(`INSERT OR IGNORE INTO story_versions (id, written_at, summary)
+		SELECT id, written_at, summary FROM story_records`)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`INSERT OR IGNORE INTO story_versions (id, written_at, summary)
+		SELECT COALESCE(NULLIF(json_extract(summary, '$.id'), ''), key), written_at, summary FROM summaries
+		WHERE json_valid(summary)`)
+	return err
+}
+
+// SaveStoryVersion keeps a version of story id, written at now, beside the ones before it.
+func (s *Store) SaveStoryVersion(ctx context.Context, id string, summary json.RawMessage, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO story_versions (id, written_at, summary) VALUES (?, ?, ?)
+		ON CONFLICT(id, written_at) DO UPDATE SET summary = excluded.summary`, id, millis(now), string(summary))
+	return err
+}
+
+// StoryVersion is one version of a story.
+type StoryVersion struct {
+	ID        string
+	WrittenAt time.Time
+	Summary   json.RawMessage
+}
+
+// StoryVersions are the versions of the stories ids, oldest first, by id; an id with none is left out.
+func (s *Store) StoryVersions(ctx context.Context, ids []string) (map[string][]StoryVersion, error) {
+	out := map[string][]StoryVersion{}
+	for start := 0; start < len(ids); start += 500 {
+		chunk := ids[start:min(start+500, len(ids))]
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := s.db.QueryContext(ctx, `SELECT id, written_at, summary FROM story_versions
+			WHERE id IN (?`+strings.Repeat(", ?", len(chunk)-1)+`) ORDER BY id, written_at`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var v StoryVersion
+			var at int64
+			var data string
+			if err := rows.Scan(&v.ID, &at, &data); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			v.WrittenAt, v.Summary = time.UnixMilli(at).UTC(), json.RawMessage(data)
+			out[v.ID] = append(out[v.ID], v)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 const recordColumns = `id, summary, first_written, written_at, linked`
