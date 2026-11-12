@@ -35,6 +35,11 @@ const usage = `usage:
   news-server summarize            group the stories and summarize what changed with Gemini now, and print them
   news-server eval-stories         score the story model on the app's 348 labeled headline pairs
   news-server eval-gemini-grouping score Gemini's grouping on the same pairs (one request of the day's budget)
+  news-server incremental [off|shadow]
+                                   the incremental story update: turn its shadow on or off, and print what the shadow
+                                   recorded (docs/incremental.md)
+  news-server eval-incremental [-days N] [-batch 8] [-max-requests 10] [-dry]
+                                   replay the archive's rewrites through the incremental update and report
   news-server archive              bring the archive folder (archive_dir) up to date now; the server does it after each read
   news-server restore              make a new database_file from the archive folder (after installing from scratch)
 
@@ -87,6 +92,14 @@ func Main() {
 		"eval-stories": evalStories, "eval-gemini-grouping": evalGeminiGrouping, "archive": archiveCommand, "restore": restoreCommand}
 	if run, ok := local[os.Args[1]]; ok && len(os.Args) == 2 {
 		if err := run(config, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	withArgs := map[string]func(auth.AppConfig, []string, io.Writer) error{"incremental": incrementalCommand, "eval-incremental": evalIncremental}
+	if run, ok := withArgs[os.Args[1]]; ok {
+		if err := run(config, os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
