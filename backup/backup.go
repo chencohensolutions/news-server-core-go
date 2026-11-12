@@ -7,7 +7,7 @@
 //	state.json                          how far each table is archived
 //	headlines/2026-11/2026-11-11.jsonl  one row a line, by the day it was first seen (UTC)
 //	articles/2026-11/2026-11-11.jsonl.gz  with the page each was read from; gzip, a member each archiving
-//	story_records/…  story_versions/…  summaries/…  digests/…  unrelated/…  gemini_groups/…  user_reads/…  the same, by the day written:
+//	story_records/…  story_versions/…  story_shadow/…  summaries/…  digests/…  unrelated/…  gemini_groups/…  user_reads/…  the same, by the day written:
 //	                                    a row written again is added again, so every version is kept
 //	threads.json  story_threads.json  thread_links.json  server_settings.json  site_settings.json
 //	gemini_requests.json  gemini_tokens.json  user_hidden_sources.json  the whole table, written again each time
@@ -44,6 +44,7 @@ var added = []struct{ table, by string }{
 	{"summaries", "written_at"},
 	{"story_records", "written_at"},
 	{"story_versions", "written_at"},
+	{"story_shadow", "written_at"},
 	{"digests", "written_at"},
 	{"unrelated", "flagged_at"},
 	{"gemini_groups", "placed_at"},
@@ -355,4 +356,76 @@ func rowOf(raw map[string]json.RawMessage) store.Row {
 		}
 	}
 	return row
+}
+
+// LastDay is the latest UTC day the archive in dir has a day file of table for; false when it has none.
+func LastDay(dir, table string) (time.Time, bool) {
+	files, _ := filepath.Glob(filepath.Join(dir, table, "*", "*.jsonl*"))
+	var last time.Time
+	for _, path := range files {
+		if day, ok := fileDay(path); ok && day.After(last) {
+			last = day
+		}
+	}
+	return last, !last.IsZero()
+}
+
+// fileDay is the UTC day of a day file.
+func fileDay(path string) (time.Time, bool) {
+	name := filepath.Base(path)
+	if len(name) < len(time.DateOnly) {
+		return time.Time{}, false
+	}
+	day, err := time.Parse(time.DateOnly, name[:len(time.DateOnly)])
+	return day, err == nil
+}
+
+// Read calls fn with the rows of table in dir's archive, read into a T by its column names, from the UTC day of
+// since on and the oldest day first. A row that was written again is there each time (every version of a story). A
+// line cut short is skipped, and a gzip member cut short ends its file. It reads the files only: the replay of the
+// archive needs no database.
+func Read[T any](dir, table string, since time.Time, fn func(row T) error) error {
+	files, err := filepath.Glob(filepath.Join(dir, table, "*", "*.jsonl*"))
+	if err != nil {
+		return err
+	}
+	sort.Strings(files)
+	from := since.UTC().Truncate(24 * time.Hour)
+	for _, path := range files {
+		if day, ok := fileDay(path); !ok || day.Before(from) {
+			continue
+		}
+		if err := readFile(path, fn); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func readFile[T any](path string, fn func(row T) error) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	var r io.Reader = f
+	if strings.HasSuffix(path, ".gz") {
+		zr, err := gzip.NewReader(f)
+		if err != nil {
+			return err
+		}
+		r = zr
+	}
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 1<<20), 64<<20) // a page can be megabytes
+	for scanner.Scan() {
+		var row T
+		if json.Unmarshal(scanner.Bytes(), &row) != nil {
+			continue
+		}
+		if err := fn(row); err != nil {
+			return err
+		}
+	}
+	return nil
 }

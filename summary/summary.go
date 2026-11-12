@@ -394,6 +394,15 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	if err := w.linkThreadsIfDue(ctx, day, now); err != nil {
 		w.logf("threads: %v", err)
 	}
+	// In shadow, the incremental update of the stories that got a new version, in the requests the day has to
+	// spare. What it does never reaches the stories above, and its failure is only logged.
+	switch settings.Incremental {
+	case "", IncrementalOff:
+	case IncrementalShadow:
+		w.shadowSafely(ctx, window, firstSeen, day, now, settings)
+	default:
+		w.logf("summaries: incremental %q is not built yet (off or shadow): off", settings.Incremental)
+	}
 	keep := map[string]bool{}
 	for _, s := range found {
 		keep[StoryKey(s)] = true

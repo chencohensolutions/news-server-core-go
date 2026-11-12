@@ -95,6 +95,13 @@ CREATE TABLE IF NOT EXISTS story_versions (
 	summary TEXT NOT NULL,       -- that version, as JSON
 	PRIMARY KEY (id, written_at)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS story_shadow (
+	key TEXT PRIMARY KEY,        -- a changed story (summary.StoryKey) as the incremental update handled it in shadow
+	id TEXT NOT NULL,            -- the story's id (story_records.id)
+	written_at INTEGER NOT NULL,
+	shadow TEXT NOT NULL         -- summary.Shadow as JSON: the plan, Gemini's operations, the story they make; not shown
+);
+CREATE INDEX IF NOT EXISTS story_shadow_id ON story_shadow (id, written_at);
 CREATE TABLE IF NOT EXISTS story_threads (
 	story TEXT NOT NULL,         -- a story in a thread: a story can be in several, a thread has many
 	thread TEXT NOT NULL,
@@ -801,6 +808,81 @@ func (s *Store) StoryVersions(ctx context.Context, ids []string) (map[string][]S
 		}
 	}
 	return out, nil
+}
+
+// ShadowRef is a row of story_shadow without its JSON.
+type ShadowRef struct {
+	Key, ID string
+	At      time.Time
+}
+
+// SaveShadow keeps what the incremental update made of the story key (of story id) in shadow, at now.
+func (s *Store) SaveShadow(ctx context.Context, key, id string, shadow json.RawMessage, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO story_shadow (key, id, written_at, shadow) VALUES (?, ?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET id = excluded.id, written_at = excluded.written_at, shadow = excluded.shadow`,
+		key, id, millis(now), string(shadow))
+	return err
+}
+
+// ShadowRefs are the shadow rows written since since, oldest first.
+func (s *Store) ShadowRefs(ctx context.Context, since time.Time) ([]ShadowRef, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, id, written_at FROM story_shadow WHERE written_at >= ? ORDER BY written_at`, millis(since))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ShadowRef
+	for rows.Next() {
+		var r ShadowRef
+		var at int64
+		if err := rows.Scan(&r.Key, &r.ID, &at); err != nil {
+			return nil, err
+		}
+		r.At = time.UnixMilli(at).UTC()
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// Shadow is the shadow row of the story key as JSON, or nil.
+func (s *Store) Shadow(ctx context.Context, key string) (json.RawMessage, error) {
+	var data string
+	err := s.db.QueryRowContext(ctx, `SELECT shadow FROM story_shadow WHERE key = ?`, key).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+// Shadows calls fn with every shadow row written since since, oldest first.
+func (s *Store) Shadows(ctx context.Context, since time.Time, fn func(ShadowRef, json.RawMessage) error) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, id, written_at, shadow FROM story_shadow WHERE written_at >= ? ORDER BY written_at`, millis(since))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r ShadowRef
+		var at int64
+		var data string
+		if err := rows.Scan(&r.Key, &r.ID, &at, &data); err != nil {
+			return err
+		}
+		r.At = time.UnixMilli(at).UTC()
+		if err := fn(r, json.RawMessage(data)); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// PruneShadows deletes the shadow rows written before before: the archive keeps them.
+func (s *Store) PruneShadows(ctx context.Context, before time.Time) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM story_shadow WHERE written_at < ?`, millis(before))
+	return err
 }
 
 const recordColumns = `id, summary, first_written, written_at, linked`

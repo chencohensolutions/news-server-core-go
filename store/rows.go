@@ -11,11 +11,11 @@ import (
 type Row map[string]any
 
 // jsonColumns are the columns that hold JSON: the archive writes them as JSON, not as a string of it.
-var jsonColumns = map[string]bool{"item": true, "article": true, "summary": true, "digest": true, "value": true}
+var jsonColumns = map[string]bool{"item": true, "article": true, "summary": true, "digest": true, "value": true, "shadow": true}
 
 // tables are the tables Rows and PutRows take: no other name reaches the SQL.
 var tables = map[string]bool{
-	"headlines": true, "articles": true, "summaries": true, "digests": true, "story_records": true, "story_versions": true, "unrelated": true,
+	"headlines": true, "articles": true, "summaries": true, "digests": true, "story_records": true, "story_versions": true, "story_shadow": true, "unrelated": true,
 	"gemini_groups": true, "threads": true, "story_threads": true, "thread_links": true, "server_settings": true,
 	"site_settings": true, "gemini_requests": true, "gemini_tokens": true, "user_hidden_sources": true, "user_reads": true,
 }

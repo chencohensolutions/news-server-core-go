@@ -1,0 +1,269 @@
+package summary
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/chencohensolutions/news-server-core-go/gemini"
+	"github.com/chencohensolutions/news-server-core-go/scrape"
+	"github.com/chencohensolutions/news-server-core-go/stories"
+)
+
+// Recorded answers of the incremental request.
+const (
+	// A development and a footnote; and a story the request didn't have.
+	shadowNews = `{"stories": [{"story": "s1", "unrelated": [],
+		"insert": [{"after": "top", "kind": "development", "text": "נחל הקישון עלה על גדותיו.", "sources": ["a1"]},
+			{"after": "s1.1", "kind": "development", "text": "גשם כבד ירד בצפון הבוקר.", "sources": ["a1"]}],
+		"replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": ["a1"]}], "title": "", "contradictions": []},
+		{"story": "s7", "unrelated": [], "insert": [], "replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
+	// Nothing new: the new article states the first sentence's fact.
+	shadowQuiet = `{"stories": [{"story": "s1", "unrelated": [], "insert": [], "replace": [], "delete": [],
+		"cite": [{"sentence": "s1.2", "sources": ["a1"]}], "title": "", "contradictions": []}]}`
+)
+
+// shadowed is setup with the shadow on and the incremental requests answered from answers.
+func shadowed(t *testing.T, answers ...string) (*Writer, *fakeGemini, *recorded, []stories.Story) {
+	t.Helper()
+	w, fake, found := setup(t)
+	rec := &recorded{live: w.Gemini, answers: answers}
+	w.Gemini = rec
+	if err := SaveSettings(context.Background(), w.Store, Settings{FullArticles: true, Length: "short", Incremental: IncrementalShadow}); err != nil {
+		t.Fatal(err)
+	}
+	return w, fake, rec, found
+}
+
+// join adds a report to the rain story (found[0]) at the next minute and runs.
+func join(t *testing.T, w *Writer, found []stories.Story, r scrape.ArticleSummary, body ...string) Result {
+	t.Helper()
+	ctx := context.Background()
+	at := w.Now().Add(time.Minute)
+	w.Now = func() time.Time { return at }
+	if err := w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{r}, at); err != nil {
+		t.Fatal(err)
+	}
+	if len(body) > 0 {
+		if err := w.Store.SaveArticle(ctx, &scrape.Article{SourceID: r.SourceID, URL: r.URL, Title: r.Title, Body: body}, "", at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	found[0].Reports = append(append([]scrape.ArticleSummary{}, found[0].Reports...), r)
+	result, err := w.Run(ctx, found)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func shadowOf(t *testing.T, w *Writer, s stories.Story) *Shadow {
+	t.Helper()
+	data, err := w.Store.Shadow(context.Background(), StoryKey(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data == nil {
+		return nil
+	}
+	var out Shadow
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return &out
+}
+
+func TestTheShadowUpdatesAStoryBesideItsRewrite(t *testing.T) {
+	w, fake, rec, found := shadowed(t, shadowNews, shadowQuiet)
+	ctx := context.Background()
+	// First versions are written whole: nothing for the shadow.
+	if result, err := w.Run(ctx, found); err != nil || result != (Result{Written: 2}) || len(rec.requests) != 0 {
+		t.Fatalf("%+v %v, %d shadow requests", result, err, len(rec.requests))
+	}
+	// A third site reports the rain: the story is written again as ever, and the shadow asks what the article adds.
+	if result := join(t, w, found, rainSiteg, news...); result != (Result{Written: 1}) || fake.count() != 2 || len(rec.requests) != 1 {
+		t.Fatalf("%+v, %d live and %d shadow requests", result, fake.count(), len(rec.requests))
+	}
+	prompt := rec.requests[0].Prompt
+	for _, want := range []string{"=== סיפור s1 ===", "כותרת הסיפור: גשם כבד בצפון", "s1.1 גשם כבד ירד הבוקר בצפון. (siteh, SiteE)", "s1.2 שני כבישים נסגרו. (SiteE)",
+		"כתבות שכבר בסיפור:\n- siteh: גשם בצפון\n- SiteE: סערה בצפון", "כתבות חדשות:\n[a1] siteg\nכותרת: גשם בגליל\nגוף: " + news[0]} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("the shadow's request lacks %q:\n%s", want, prompt)
+		}
+	}
+	// The articles the story has are titles: their bodies are not sent again. Nor are other stories asked about.
+	if strings.Contains(prompt, rainBody) || strings.Contains(prompt, "s2") {
+		t.Fatalf("the shadow's request:\n%s", prompt)
+	}
+	// The live story is the rewrite's, as without the shadow.
+	saved, err := Summaries(ctx, w.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := saved[StoryKey(found[0])]
+	if live.Title != "גשם כבד בצפון" || len(live.Updates) != 2 || live.Updates[1].Sentences[0].Text != "גשם ירד גם בגליל." || len(live.Updates[1].Kinds) != 0 {
+		t.Fatalf("live %+v", live)
+	}
+	if versions, err := w.Store.StoryVersions(ctx, []string{live.ID}); err != nil || len(versions[live.ID]) != 2 {
+		t.Fatalf("versions %+v %v", versions, err)
+	}
+	// The shadow's: the version before with the development on top; the restatement dropped; the footnote added.
+	shadow := shadowOf(t, w, found[0])
+	if shadow == nil || shadow.Plan != PlanIncremental || !shadow.Version || shadow.Base != BaseLive || shadow.ID != live.ID || shadow.Full != 2 ||
+		strings.Join(shadow.New, " ") != rainSiteg.URL || *shadow.Stats != (MergeStats{Asked: 2, Inserted: 1, Restated: 1, Cited: 1}) {
+		t.Fatalf("shadow %+v", shadow)
+	}
+	if got := texts(shadow.Story.Sentences); got != "נחל הקישון עלה על גדותיו. | גשם כבד ירד הבוקר בצפון. | שני כבישים נסגרו." {
+		t.Fatalf("shadow story: %s", got)
+	}
+	if got := shadow.Story.Sentences[1].Sources; strings.Join(got, " ") != rainSiteh.URL+" "+rainSiteE.URL+" "+rainSiteg.URL {
+		t.Fatalf("footnotes %v", got)
+	}
+	if r := shadow.Request; r == nil || r.Stories != 1 || r.Position != 1 || r.TokensIn != 500 || r.TokensOut != 80 || len(shadow.Answer.Insert) != 2 {
+		t.Fatalf("request %+v", r)
+	}
+	// Its request is one of the day's, and its tokens are counted.
+	if n, _ := w.Store.GeminiRequests(ctx, Day(now)); n != 3 {
+		t.Fatalf("%d requests counted", n)
+	}
+	// Nothing changed: the story is not asked about again.
+	if result, err := w.Run(ctx, found); err != nil || result != (Result{}) || len(rec.requests) != 1 {
+		t.Fatalf("%+v %v, %d shadow requests", result, err, len(rec.requests))
+	}
+
+	// A fourth report with nothing new. The shadow goes on from its own story, and records the step all the same:
+	// no version, the article among the reports and the footnotes.
+	if result := join(t, w, found, rainSited); result != (Result{Written: 1}) || len(rec.requests) != 2 {
+		t.Fatalf("%+v, %d shadow requests", result, len(rec.requests))
+	}
+	prompt = rec.requests[1].Prompt
+	if !strings.Contains(prompt, "s1.1 נחל הקישון עלה על גדותיו. (siteg)") || !strings.Contains(prompt, "[a1] sited\nכותרת: הצפות בצפון\n") || strings.Contains(prompt, "גוף:") {
+		t.Fatalf("the second request:\n%s", prompt)
+	}
+	quiet := shadowOf(t, w, found[0])
+	if quiet == nil || quiet.Version || quiet.Base != BaseShadow || quiet.Full != 2 || *quiet.Stats != (MergeStats{Cited: 1}) ||
+		texts(quiet.Story.Sentences) != texts(shadow.Story.Sentences) || !quiet.Story.WrittenAt.Equal(shadow.Story.WrittenAt) ||
+		len(quiet.Story.Reports) != 4 || len(quiet.Story.Sentences[1].Sources) != 4 || len(quiet.Story.Updates) != 2 ||
+		strings.Join(quiet.Story.HeadlineOnly, " ") != rainSiteE.URL+" "+rainSited.URL {
+		t.Fatalf("quiet %+v\n%+v", quiet, quiet.Story)
+	}
+	// Answered "nothing new", and still not asked again.
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 2 {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	// The story loses a report no sentence stood on alone: kept by the server, no request.
+	found[0].Reports = found[0].Reports[1:]
+	w.Now = func() time.Time { return now.Add(time.Hour) }
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 2 {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	kept := shadowOf(t, w, found[0])
+	if kept == nil || kept.Plan != PlanLocal || kept.Version || strings.Join(kept.Gone, " ") != rainSiteh.URL || len(kept.Story.Sentences) != 3 || len(kept.Story.Reports) != 3 {
+		t.Fatalf("kept %+v", kept)
+	}
+	// What the shadow recorded: three steps, one of them a version; the live rewrites had new facts in both asked.
+	report, err := ReportShadow(ctx, w.Store, now.Add(-time.Hour))
+	if err != nil || report.Steps != 3 || report.Local != 1 || report.Asked != 2 || report.Versions != 1 || report.Quiet != 1 || report.FromShadow != 1 ||
+		report.Compared != 2 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 1 {
+		t.Fatalf("%+v %v", report, err)
+	}
+}
+
+func TestTheShadowTakesOnlyWhatTheDaySpares(t *testing.T) {
+	w, fake, rec, found := shadowed(t, shadowNews)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	// A budget that leaves no two requests for each run left in the day: the story is written, the shadow waits.
+	w.Budget = 100
+	if result := join(t, w, found, rainSiteg); result != (Result{Written: 1}) || fake.count() != 2 || len(rec.requests) != 0 {
+		t.Fatalf("%+v, %d live and %d shadow requests", result, fake.count(), len(rec.requests))
+	}
+	// Past the mark from which only new stories are written: none either.
+	w.Budget = 0
+	if err := SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", Incremental: IncrementalShadow, ReserveAfter: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 0 {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	// The shadow's own share of the day, used.
+	if err := SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", Incremental: IncrementalShadow, ShadowDaily: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.countShadow(ctx, Day(now)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 0 || shadowOf(t, w, found[0]) != nil {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	// With room, the story that waited is asked about.
+	if err := SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", Incremental: IncrementalShadow}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 1 || shadowOf(t, w, found[0]) == nil {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	// Off: the shadow is not run. "on" is not built: off too.
+	for _, mode := range []string{IncrementalOff, "", "on"} {
+		if err := SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", Incremental: mode}); err != nil {
+			t.Fatal(err)
+		}
+		if result := join(t, w, found, scrape.ArticleSummary{SourceID: "sited", URL: "https://sited/rain/" + mode, Title: "גשם"}); result != (Result{Written: 1}) || len(rec.requests) != 1 {
+			t.Fatalf("%q: %+v, %d shadow requests", mode, result, len(rec.requests))
+		}
+	}
+}
+
+func TestABusyOrCutShadowAnswer(t *testing.T) {
+	// Two stories asked about; the answer is cut inside the second.
+	cut := shadowNews[:strings.Index(shadowNews, `{"story": "s7"`)] + `{"story": "s2", "unrelated": [], "insert": [{"after": "top", "kind": "deve`
+	w, _, rec, found := shadowed(t, "", cut, shadowQuiet)
+	rec.errs = []error{gemini.ErrUnavailable, gemini.ErrCut}
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	// Gemini is busy: the shadow tries once, the request isn't counted, and the run is none the worse.
+	if result := join(t, w, found, rainSiteg); result != (Result{Written: 1}) || len(rec.requests) != 1 || shadowOf(t, w, found[0]) != nil {
+		t.Fatalf("%+v, %d shadow requests", result, len(rec.requests))
+	}
+	if n, _ := w.Store.GeminiRequests(ctx, Day(now)); n != 2 {
+		t.Fatalf("%d requests counted", n)
+	}
+	if sent, _ := w.shadowSent(ctx, Day(now)); sent != 0 {
+		t.Fatalf("%d shadow requests counted", sent)
+	}
+	// The budget story gains a report too. The next run asks about both; the cut answer's whole story is kept, the
+	// other waits for the run after.
+	at := w.Now().Add(time.Minute)
+	w.Now = func() time.Time { return at }
+	third := scrape.ArticleSummary{SourceID: "sitee", URL: "https://sitee/budget", Title: "התקציב עבר"}
+	if err := w.Store.SaveHeadlines(ctx, []scrape.ArticleSummary{third}, at); err != nil {
+		t.Fatal(err)
+	}
+	found[1].Reports = append(found[1].Reports, third)
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 2 {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+	if !strings.Contains(rec.requests[1].Prompt, "=== סיפור s2 ===") {
+		t.Fatalf("the request:\n%s", rec.requests[1].Prompt)
+	}
+	rain, budget := shadowOf(t, w, found[0]), shadowOf(t, w, found[1])
+	asked, waiting := rain, found[1]
+	if rain == nil {
+		asked, waiting = budget, found[0]
+	}
+	if asked == nil || !asked.Request.Salvaged || asked.Request.Stories != 2 || shadowOf(t, w, waiting) != nil {
+		t.Fatalf("rain %+v, budget %+v", rain, budget)
+	}
+	if sent, _ := w.shadowSent(ctx, Day(now)); sent != 1 {
+		t.Fatalf("%d shadow requests counted", sent)
+	}
+	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 3 || shadowOf(t, w, waiting) == nil || strings.Contains(rec.requests[2].Prompt, "s2") {
+		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
+	}
+}
