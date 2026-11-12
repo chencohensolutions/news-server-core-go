@@ -43,7 +43,7 @@ func openDiscovery(config auth.AppConfig) (*serverDiscovery, error) {
 	}
 	d := &serverDiscovery{fingerprint: Fingerprint(leaf)}
 	d.publisher = &discovery.Publisher{Fingerprint: d.fingerprint, PublicURL: config.PublicURL, Port: config.Port,
-		STUN: discovery.STUNServers, Mapped: mappedURL}
+		STUN: discovery.STUNServers, Mapped: mappedURL, Limit: config.DiscoveryAddresses}
 	if config.DiscoveryOn() {
 		if d.key, err = discovery.KeyFor(pair.PrivateKey); err != nil {
 			return nil, err
@@ -120,7 +120,8 @@ func discoveryCommand(config auth.AppConfig) error {
 	for _, a := range addresses {
 		fmt.Printf("  %s\n", a)
 	}
-	fmt.Printf("\nPublishing them in the DHT (joining it takes a few seconds)...\n")
+	addresses = d.publisher.Published(addresses)
+	fmt.Printf("\nPublishing %s in the DHT (joining it takes a few seconds)...\n", strings.Join(addresses, ", "))
 	if err := dhtNode.Publish(ctx, d.key, d.fingerprint, discovery.Record{Addresses: addresses, At: time.Now().UTC()}); err != nil {
 		fmt.Printf("  failed: %v\n", err)
 	} else {
