@@ -9,8 +9,9 @@ const writingRules = `Writing rules, all of them strict:
 - Facts only: what happened, who, where, when, numbers, quotes attributed to who said them. No opinions, no
   commentary, no speculation, no adjectives that judge, nothing the sources don't say.
 - Each fact once. When several sources report the same fact, write it in one sentence and cite all of them.
-- Every sentence cites the articles it comes from, by their ids ("a3"): one to four, the ones that state that fact
-  most directly. Cite only ids from the input. A fact no article states is not written.
+- Every sentence cites the articles it comes from, by their ids ("a3"): every site whose article states that fact,
+  one article a site (the one that states it most directly), not only the first few. Cite only ids from the input. A
+  fact no article states is not written.
 - A claim, an accusation, a concern or an assessment is not a fact: write it only attributed to who says it ("לפי
   ...", "X אמר ש..."), or leave it out.
 - Short sentences, newest and most important facts first. Every sentence is complete and ends with a period.
