@@ -168,6 +168,14 @@ type Sentence struct {
 	Footnotes []*Footnote `json:"footnotes"`
 }
 
+// How a sentence differs from the closest one in the version before.
+type SentenceChange struct {
+	Kind SentenceChangeKind `json:"kind"`
+	// The sentence's text in order, the parts together the whole of it: each added in this version or kept from the
+	// closest sentence before. Highlight the added ones.
+	Parts []*TextPart `json:"parts"`
+}
+
 // Who this server is and where it is now. The app pins the fingerprint (checking the server's key instead of the host
 // name, so any address works), keeps the addresses to try when the one it uses stops answering, and looks the server up
 // in the BitTorrent DHT under key when none answers. The DHT record is a BEP 44 mutable item under key with salt
@@ -227,6 +235,19 @@ type SiteStats struct {
 	Error *string `json:"error,omitempty"`
 }
 
+// What a version of a story changed from the version before it: each sentence new, reworded or the same, with the words
+// it added, and the sentences it dropped.
+type StoryChanges struct {
+	// When the version before was written.
+	Since time.Time `json:"since"`
+	// The version before's title.
+	Title string `json:"title"`
+	// One for each of the version's sentences, in order.
+	Sentences []*SentenceChange `json:"sentences"`
+	// The version before's sentences this one has nothing like.
+	Removed []*Sentence `json:"removed"`
+}
+
 type StorySummary struct {
 	Title     string      `json:"title"`
 	Sentences []*Sentence `json:"sentences"`
@@ -245,6 +266,17 @@ type StorySummary struct {
 	HeadlineOnly []string `json:"headlineOnly"`
 	// The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026).
 	WrittenWith *SummarySettings `json:"writtenWith,omitempty"`
+	// Which version of the story this is, 1 for the first; the others are storyVersions(id). Versions written before the
+	// server kept them all (Nov 12, 2026) aren't counted.
+	Version int `json:"version"`
+	// How many versions the story has so far: version is the newest when they are equal.
+	Versions int `json:"versions"`
+	// In stories: this version was written from the story's reports as they are. False while reports that joined it
+	// wait for its next version (rewriteMinutes, or the day's budget): this is the version before, and new ones follow.
+	// Always true in storyVersions.
+	Current bool `json:"current"`
+	// What it changed from the version before; null for the first version, or when the version before isn't kept.
+	Changes *StoryChanges `json:"changes,omitempty"`
 	// The story's id, kept by its later versions.
 	ID string `json:"id"`
 	// The threads the story is in, latest updated first; none until the day's linking placed it.
@@ -281,6 +313,11 @@ type SummarySettings struct {
 	// After this many of the day's Gemini requests, only new stories are written, not new versions of written ones
 	// (default 300); 0 is off. Takes 0 to the daily budget.
 	ReserveAfter int `json:"reserveAfter"`
+}
+
+type TextPart struct {
+	Text  string `json:"text"`
+	Added bool   `json:"added"`
 }
 
 type Thread struct {
@@ -562,6 +599,66 @@ func (e *Role) UnmarshalJSON(b []byte) error {
 }
 
 func (e Role) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type SentenceChangeKind string
+
+const (
+	// The version before has it word for word.
+	SentenceChangeKindSame SentenceChangeKind = "SAME"
+	// The version before has it reworded, or with fewer words.
+	SentenceChangeKindChanged SentenceChangeKind = "CHANGED"
+	// The version before has nothing like it.
+	SentenceChangeKindNew SentenceChangeKind = "NEW"
+)
+
+var AllSentenceChangeKind = []SentenceChangeKind{
+	SentenceChangeKindSame,
+	SentenceChangeKindChanged,
+	SentenceChangeKindNew,
+}
+
+func (e SentenceChangeKind) IsValid() bool {
+	switch e {
+	case SentenceChangeKindSame, SentenceChangeKindChanged, SentenceChangeKindNew:
+		return true
+	}
+	return false
+}
+
+func (e SentenceChangeKind) String() string {
+	return string(e)
+}
+
+func (e *SentenceChangeKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SentenceChangeKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SentenceChangeKind", str)
+	}
+	return nil
+}
+
+func (e SentenceChangeKind) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SentenceChangeKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SentenceChangeKind) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

@@ -199,6 +199,7 @@ type ComplexityRoot struct {
 		Sources           func(childComplexity int) int
 		Stats             func(childComplexity int) int
 		Stories           func(childComplexity int) int
+		StoryVersions     func(childComplexity int, id string) int
 		SummarySettings   func(childComplexity int) int
 		Thread            func(childComplexity int, id string) int
 		Threads           func(childComplexity int, first *int) int
@@ -214,6 +215,11 @@ type ComplexityRoot struct {
 	Sentence struct {
 		Footnotes func(childComplexity int) int
 		Text      func(childComplexity int) int
+	}
+
+	SentenceChange struct {
+		Kind  func(childComplexity int) int
+		Parts func(childComplexity int) int
 	}
 
 	ServerDiscovery struct {
@@ -269,13 +275,22 @@ type ComplexityRoot struct {
 		Summary func(childComplexity int) int
 	}
 
+	StoryChanges struct {
+		Removed   func(childComplexity int) int
+		Sentences func(childComplexity int) int
+		Since     func(childComplexity int) int
+		Title     func(childComplexity int) int
+	}
+
 	StoryList struct {
 		GroupedAt func(childComplexity int) int
 		Stories   func(childComplexity int) int
 	}
 
 	StorySummary struct {
+		Changes        func(childComplexity int) int
 		Contradictions func(childComplexity int) int
+		Current        func(childComplexity int) int
 		HeadlineOnly   func(childComplexity int) int
 		ID             func(childComplexity int) int
 		Reports        func(childComplexity int) int
@@ -284,6 +299,8 @@ type ComplexityRoot struct {
 		Title          func(childComplexity int) int
 		Unrelated      func(childComplexity int) int
 		Updates        func(childComplexity int) int
+		Version        func(childComplexity int) int
+		Versions       func(childComplexity int) int
 		WrittenAt      func(childComplexity int) int
 		WrittenWith    func(childComplexity int) int
 	}
@@ -306,6 +323,11 @@ type ComplexityRoot struct {
 		ReserveAfter     func(childComplexity int) int
 		RewriteMinutes   func(childComplexity int) int
 		RewriteOnNewSite func(childComplexity int) int
+	}
+
+	TextPart struct {
+		Added func(childComplexity int) int
+		Text  func(childComplexity int) int
 	}
 
 	Thread struct {
@@ -366,6 +388,7 @@ type QueryResolver interface {
 	Sources(ctx context.Context) ([]*sites.Source, error)
 	Stats(ctx context.Context) (*model.ServerStats, error)
 	SummarySettings(ctx context.Context) (*model.SummarySettings, error)
+	StoryVersions(ctx context.Context, id string) ([]*model.StorySummary, error)
 	Threads(ctx context.Context, first *int) ([]*model.Thread, error)
 	Thread(ctx context.Context, id string) (*model.Thread, error)
 	Me(ctx context.Context) (*model.Me, error)
@@ -1140,6 +1163,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Stories(childComplexity), true
+	case "Query.storyVersions":
+		if e.ComplexityRoot.Query.StoryVersions == nil {
+			break
+		}
+
+		args, err := ec.field_Query_storyVersions_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.StoryVersions(childComplexity, args["id"].(string)), true
 	case "Query.summarySettings":
 		if e.ComplexityRoot.Query.SummarySettings == nil {
 			break
@@ -1211,6 +1245,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Sentence.Text(childComplexity), true
+
+	case "SentenceChange.kind":
+		if e.ComplexityRoot.SentenceChange.Kind == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SentenceChange.Kind(childComplexity), true
+	case "SentenceChange.parts":
+		if e.ComplexityRoot.SentenceChange.Parts == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SentenceChange.Parts(childComplexity), true
 
 	case "ServerDiscovery.addresses":
 		if e.ComplexityRoot.ServerDiscovery.Addresses == nil {
@@ -1428,6 +1475,31 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Story.Summary(childComplexity), true
 
+	case "StoryChanges.removed":
+		if e.ComplexityRoot.StoryChanges.Removed == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StoryChanges.Removed(childComplexity), true
+	case "StoryChanges.sentences":
+		if e.ComplexityRoot.StoryChanges.Sentences == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StoryChanges.Sentences(childComplexity), true
+	case "StoryChanges.since":
+		if e.ComplexityRoot.StoryChanges.Since == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StoryChanges.Since(childComplexity), true
+	case "StoryChanges.title":
+		if e.ComplexityRoot.StoryChanges.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StoryChanges.Title(childComplexity), true
+
 	case "StoryList.groupedAt":
 		if e.ComplexityRoot.StoryList.GroupedAt == nil {
 			break
@@ -1441,12 +1513,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.StoryList.Stories(childComplexity), true
 
+	case "StorySummary.changes":
+		if e.ComplexityRoot.StorySummary.Changes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Changes(childComplexity), true
 	case "StorySummary.contradictions":
 		if e.ComplexityRoot.StorySummary.Contradictions == nil {
 			break
 		}
 
 		return e.ComplexityRoot.StorySummary.Contradictions(childComplexity), true
+	case "StorySummary.current":
+		if e.ComplexityRoot.StorySummary.Current == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Current(childComplexity), true
 	case "StorySummary.headlineOnly":
 		if e.ComplexityRoot.StorySummary.HeadlineOnly == nil {
 			break
@@ -1495,6 +1579,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StorySummary.Updates(childComplexity), true
+	case "StorySummary.version":
+		if e.ComplexityRoot.StorySummary.Version == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Version(childComplexity), true
+	case "StorySummary.versions":
+		if e.ComplexityRoot.StorySummary.Versions == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StorySummary.Versions(childComplexity), true
 	case "StorySummary.writtenAt":
 		if e.ComplexityRoot.StorySummary.WrittenAt == nil {
 			break
@@ -1576,6 +1672,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SummarySettings.RewriteOnNewSite(childComplexity), true
+
+	case "TextPart.added":
+		if e.ComplexityRoot.TextPart.Added == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TextPart.Added(childComplexity), true
+	case "TextPart.text":
+		if e.ComplexityRoot.TextPart.Text == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TextPart.Text(childComplexity), true
 
 	case "Thread.id":
 		if e.ComplexityRoot.Thread.ID == nil {
@@ -2196,6 +2305,12 @@ type SiteStats {
 extend type Query {
   "How the summaries are written, which the app's settings change; null when summaries are off."
   summarySettings: SummarySettings
+  """
+  Every version of story id (StorySummary.id), newest first, each with what it changed from the one before; empty
+  when the server has none. Every version is kept from Nov 12, 2026; of a story written before, its latest and the
+  ones of its last hours.
+  """
+  storyVersions(id: ID!): [StorySummary!]!
 }
 
 extend type Mutation {
@@ -2274,6 +2389,60 @@ type StorySummary {
   headlineOnly: [String!]!
   "The settings its latest version was written with; null for a story written before they were kept (Nov 11, 2026)."
   writtenWith: SummarySettings
+  """
+  Which version of the story this is, 1 for the first; the others are storyVersions(id). Versions written before the
+  server kept them all (Nov 12, 2026) aren't counted.
+  """
+  version: Int!
+  "How many versions the story has so far: version is the newest when they are equal."
+  versions: Int!
+  """
+  In stories: this version was written from the story's reports as they are. False while reports that joined it
+  wait for its next version (rewriteMinutes, or the day's budget): this is the version before, and new ones follow.
+  Always true in storyVersions.
+  """
+  current: Boolean!
+  "What it changed from the version before; null for the first version, or when the version before isn't kept."
+  changes: StoryChanges
+}
+
+"""
+What a version of a story changed from the version before it: each sentence new, reworded or the same, with the words
+it added, and the sentences it dropped.
+"""
+type StoryChanges {
+  "When the version before was written."
+  since: Time!
+  "The version before's title."
+  title: String!
+  "One for each of the version's sentences, in order."
+  sentences: [SentenceChange!]!
+  "The version before's sentences this one has nothing like."
+  removed: [Sentence!]!
+}
+
+"How a sentence differs from the closest one in the version before."
+type SentenceChange {
+  kind: SentenceChangeKind!
+  """
+  The sentence's text in order, the parts together the whole of it: each added in this version or kept from the
+  closest sentence before. Highlight the added ones.
+  """
+  parts: [TextPart!]!
+}
+
+enum SentenceChangeKind {
+  "The version before has it word for word."
+  SAME
+  "The version before has it reworded, or with fewer words."
+  CHANGED
+  "The version before has nothing like it."
+  NEW
+}
+
+type TextPart {
+  text: String!
+  added: Boolean!
 }
 
 "What one version of a story added, and when it was written."
@@ -2683,6 +2852,16 @@ func (ec *executionContext) childFields_Sentence(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Sentence", field.Name)
 }
 
+func (ec *executionContext) childFields_SentenceChange(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "kind":
+		return ec.fieldContext_SentenceChange_kind(ctx, field)
+	case "parts":
+		return ec.fieldContext_SentenceChange_parts(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SentenceChange", field.Name)
+}
+
 func (ec *executionContext) childFields_ServerDiscovery(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "fingerprint":
@@ -2789,6 +2968,20 @@ func (ec *executionContext) childFields_Story(ctx context.Context, field graphql
 	return nil, fmt.Errorf("no field named %q was found under type Story", field.Name)
 }
 
+func (ec *executionContext) childFields_StoryChanges(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "since":
+		return ec.fieldContext_StoryChanges_since(ctx, field)
+	case "title":
+		return ec.fieldContext_StoryChanges_title(ctx, field)
+	case "sentences":
+		return ec.fieldContext_StoryChanges_sentences(ctx, field)
+	case "removed":
+		return ec.fieldContext_StoryChanges_removed(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type StoryChanges", field.Name)
+}
+
 func (ec *executionContext) childFields_StoryList(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "groupedAt":
@@ -2819,6 +3012,14 @@ func (ec *executionContext) childFields_StorySummary(ctx context.Context, field 
 		return ec.fieldContext_StorySummary_headlineOnly(ctx, field)
 	case "writtenWith":
 		return ec.fieldContext_StorySummary_writtenWith(ctx, field)
+	case "version":
+		return ec.fieldContext_StorySummary_version(ctx, field)
+	case "versions":
+		return ec.fieldContext_StorySummary_versions(ctx, field)
+	case "current":
+		return ec.fieldContext_StorySummary_current(ctx, field)
+	case "changes":
+		return ec.fieldContext_StorySummary_changes(ctx, field)
 	case "id":
 		return ec.fieldContext_StorySummary_id(ctx, field)
 	case "threads":
@@ -2865,6 +3066,16 @@ func (ec *executionContext) childFields_SummarySettings(ctx context.Context, fie
 		return ec.fieldContext_SummarySettings_reserveAfter(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type SummarySettings", field.Name)
+}
+
+func (ec *executionContext) childFields_TextPart(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "text":
+		return ec.fieldContext_TextPart_text(ctx, field)
+	case "added":
+		return ec.fieldContext_TextPart_added(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type TextPart", field.Name)
 }
 
 func (ec *executionContext) childFields_Thread(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -3402,6 +3613,20 @@ func (ec *executionContext) field_Query_readArticles_args(ctx context.Context, r
 		return nil, err
 	}
 	args["since"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_storyVersions_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
 	return args, nil
 }
 
@@ -6515,6 +6740,50 @@ func (ec *executionContext) fieldContext_Query_summarySettings(_ context.Context
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_storyVersions(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_storyVersions(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().StoryVersions(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.StorySummary) graphql.Marshaler {
+			return ec.marshalNStorySummary2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStorySummaryᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_storyVersions(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StorySummary(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_storyVersions_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_threads(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -6896,6 +7165,61 @@ func (ec *executionContext) fieldContext_Sentence_footnotes(_ context.Context, f
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_Footnote(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SentenceChange_kind(ctx context.Context, field graphql.CollectedField, obj *model.SentenceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SentenceChange_kind(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Kind, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SentenceChangeKind) graphql.Marshaler {
+			return ec.marshalNSentenceChangeKind2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceChangeKind(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SentenceChange_kind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SentenceChange", field, false, false, errors.New("field of type SentenceChangeKind does not have child fields"))
+}
+
+func (ec *executionContext) _SentenceChange_parts(ctx context.Context, field graphql.CollectedField, obj *model.SentenceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SentenceChange_parts(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Parts, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.TextPart) graphql.Marshaler {
+			return ec.marshalNTextPart2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐTextPartᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SentenceChange_parts(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SentenceChange",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_TextPart(ctx, field)
 		},
 	}
 	return fc, nil
@@ -7760,6 +8084,116 @@ func (ec *executionContext) fieldContext_Story_summary(_ context.Context, field 
 	return fc, nil
 }
 
+func (ec *executionContext) _StoryChanges_since(ctx context.Context, field graphql.CollectedField, obj *model.StoryChanges) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StoryChanges_since(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Since, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StoryChanges_since(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StoryChanges", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _StoryChanges_title(ctx context.Context, field graphql.CollectedField, obj *model.StoryChanges) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StoryChanges_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StoryChanges_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StoryChanges", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _StoryChanges_sentences(ctx context.Context, field graphql.CollectedField, obj *model.StoryChanges) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StoryChanges_sentences(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Sentences, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.SentenceChange) graphql.Marshaler {
+			return ec.marshalNSentenceChange2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceChangeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StoryChanges_sentences(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StoryChanges",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SentenceChange(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StoryChanges_removed(ctx context.Context, field graphql.CollectedField, obj *model.StoryChanges) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StoryChanges_removed(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Removed, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StoryChanges_removed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StoryChanges",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Sentence(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _StoryList_groupedAt(ctx context.Context, field graphql.CollectedField, obj *model.StoryList) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -8053,6 +8487,107 @@ func (ec *executionContext) fieldContext_StorySummary_writtenWith(_ context.Cont
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_SummarySettings(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StorySummary_version(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_version(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Version, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_version(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _StorySummary_versions(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_versions(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Versions, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_versions(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _StorySummary_current(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_current(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Current, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_current(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StorySummary", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _StorySummary_changes(ctx context.Context, field graphql.CollectedField, obj *model.StorySummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StorySummary_changes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Changes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StoryChanges) graphql.Marshaler {
+			return ec.marshalOStoryChanges2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryChanges(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_StorySummary_changes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StorySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StoryChanges(ctx, field)
 		},
 	}
 	return fc, nil
@@ -8373,6 +8908,52 @@ func (ec *executionContext) _SummarySettings_reserveAfter(ctx context.Context, f
 }
 func (ec *executionContext) fieldContext_SummarySettings_reserveAfter(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SummarySettings", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _TextPart_text(ctx context.Context, field graphql.CollectedField, obj *model.TextPart) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TextPart_text(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Text, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TextPart_text(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("TextPart", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _TextPart_added(ctx context.Context, field graphql.CollectedField, obj *model.TextPart) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TextPart_added(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Added, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TextPart_added(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("TextPart", field, false, false, errors.New("field of type Boolean does not have child fields"))
 }
 
 func (ec *executionContext) _Thread_id(ctx context.Context, field graphql.CollectedField, obj *model.Thread) (ret graphql.Marshaler) {
@@ -11268,6 +11849,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "storyVersions":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_storyVersions(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "threads":
 			field := field
 
@@ -11468,6 +12071,50 @@ func (ec *executionContext) _Sentence(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "footnotes":
 			out.Values[i] = ec._Sentence_footnotes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var sentenceChangeImplementors = []string{"SentenceChange"}
+
+func (ec *executionContext) _SentenceChange(ctx context.Context, sel ast.SelectionSet, obj *model.SentenceChange) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sentenceChangeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SentenceChange")
+		case "kind":
+			out.Values[i] = ec._SentenceChange_kind(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "parts":
+			out.Values[i] = ec._SentenceChange_parts(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -11970,6 +12617,60 @@ func (ec *executionContext) _Story(ctx context.Context, sel ast.SelectionSet, ob
 	return out
 }
 
+var storyChangesImplementors = []string{"StoryChanges"}
+
+func (ec *executionContext) _StoryChanges(ctx context.Context, sel ast.SelectionSet, obj *model.StoryChanges) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, storyChangesImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("StoryChanges")
+		case "since":
+			out.Values[i] = ec._StoryChanges_since(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "title":
+			out.Values[i] = ec._StoryChanges_title(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sentences":
+			out.Values[i] = ec._StoryChanges_sentences(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "removed":
+			out.Values[i] = ec._StoryChanges_removed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var storyListImplementors = []string{"StoryList"}
 
 func (ec *executionContext) _StoryList(ctx context.Context, sel ast.SelectionSet, obj *model.StoryList) graphql.Marshaler {
@@ -12064,6 +12765,23 @@ func (ec *executionContext) _StorySummary(ctx context.Context, sel ast.Selection
 			}
 		case "writtenWith":
 			out.Values[i] = ec._StorySummary_writtenWith(ctx, field, obj)
+		case "version":
+			out.Values[i] = ec._StorySummary_version(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "versions":
+			out.Values[i] = ec._StorySummary_versions(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "current":
+			out.Values[i] = ec._StorySummary_current(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "changes":
+			out.Values[i] = ec._StorySummary_changes(ctx, field, obj)
 		case "id":
 			out.Values[i] = ec._StorySummary_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -12256,6 +12974,50 @@ func (ec *executionContext) _SummarySettings(ctx context.Context, sel ast.Select
 			}
 		case "reserveAfter":
 			out.Values[i] = ec._SummarySettings_reserveAfter(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var textPartImplementors = []string{"TextPart"}
+
+func (ec *executionContext) _TextPart(ctx context.Context, sel ast.SelectionSet, obj *model.TextPart) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, textPartImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TextPart")
+		case "text":
+			out.Values[i] = ec._TextPart_text(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "added":
+			out.Values[i] = ec._TextPart_added(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -13292,6 +14054,42 @@ func (ec *executionContext) marshalNSentence2ᚖgithubᚗcomᚋchencohensolution
 	return ec._Sentence(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNSentenceChange2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceChangeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SentenceChange) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSentenceChange2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceChange(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSentenceChange2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceChange(ctx context.Context, sel ast.SelectionSet, v *model.SentenceChange) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SentenceChange(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSentenceChangeKind2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceChangeKind(ctx context.Context, v any) (model.SentenceChangeKind, error) {
+	var res model.SentenceChangeKind
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSentenceChangeKind2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceChangeKind(ctx context.Context, sel ast.SelectionSet, v model.SentenceChangeKind) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNServerInfo2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v model.ServerInfo) graphql.Marshaler {
 	return ec._ServerInfo(ctx, sel, &v)
 }
@@ -13426,6 +14224,32 @@ func (ec *executionContext) marshalNStoryList2ᚖgithubᚗcomᚋchencohensolutio
 	return ec._StoryList(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNStorySummary2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStorySummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.StorySummary) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStorySummary(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNStorySummary2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStorySummary(ctx context.Context, sel ast.SelectionSet, v *model.StorySummary) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._StorySummary(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNStoryText2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryText(ctx context.Context, v any) (model.StoryText, error) {
 	var res model.StoryText
 	err := res.UnmarshalGQL(v)
@@ -13520,6 +14344,32 @@ func (ec *executionContext) marshalNSummarySettings2ᚖgithubᚗcomᚋchencohens
 		return graphql.Null
 	}
 	return ec._SummarySettings(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNTextPart2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐTextPartᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.TextPart) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNTextPart2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐTextPart(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNTextPart2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐTextPart(ctx context.Context, sel ast.SelectionSet, v *model.TextPart) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._TextPart(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
@@ -13898,6 +14748,13 @@ func (ec *executionContext) marshalOServerDiscovery2ᚖgithubᚗcomᚋchencohens
 		return graphql.Null
 	}
 	return ec._ServerDiscovery(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOStoryChanges2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryChanges(ctx context.Context, sel ast.SelectionSet, v *model.StoryChanges) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._StoryChanges(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOStoryLength2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐStoryLength(ctx context.Context, v any) (*model.StoryLength, error) {

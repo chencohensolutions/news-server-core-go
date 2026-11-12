@@ -139,7 +139,11 @@ stories are on.
 Milestone 6, summaries (`summary/`, `gemini/`, `graph/schema/summaries.graphql`, `threads.graphql`): after each
 grouping, Gemini writes a short article for each story that changed in the last `summary_hours` (12), in Hebrew,
 facts only, every sentence with footnotes naming the source articles. Up to twelve stories go in one request. A
-story's next version waits `rewriteMinutes`; each version keeps what the ones before it added. A report Gemini finds
+story's next version waits `rewriteMinutes`; each version keeps what the ones before it added, and every version is
+kept (`story_versions`, `storyVersions(id)`) with what it changed from the one before, word by word (`changes`). While
+a story's next version waits, `stories` gives it the version before (`current: false`). A new story whose sentences
+mostly say what a recent one does (the grouping split it off, or grouped the newer reports apart) is written as that
+story's next version, under its id, so the app shows one story. A report Gemini finds
 unrelated is moved to the closest other story. Once a day Gemini links stories into threads, affairs that run over
 months. Grouping by Gemini instead of the embedding model is a setting. The app changes the summary settings
 (`setSummarySettings`, admins only).
