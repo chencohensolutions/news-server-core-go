@@ -103,16 +103,6 @@ func (s Step) fresh(r scrape.ArticleSummary) (fresh, known bool) {
 	return published.After(written) || wasSeen && seen.After(written) && published.After(written.Add(-seenLate)), true
 }
 
-// when is when r was published: the site's time for it, or, when it gives none, when the server first saw it; ok is
-// false when neither is known.
-func (s Step) when(r scrape.ArticleSummary) (at time.Time, ok bool) {
-	if published, err := time.Parse(time.RFC3339, r.PublishedAt); err == nil {
-		return published, true
-	}
-	at, ok = s.Seen[r.URL]
-	return at, ok
-}
-
 // When a new article was published, as the request says it on the article's first line. The instructions
 // (incrementalSystem) quote both.
 const (
@@ -323,7 +313,8 @@ Each story shows its title, the story so far as numbered sentences (after a sent
 the sites it cites: "[מקורות: ...]" is a note for you, and no part of the sentence), the titles of the articles it
 was written from, and then its new articles: each with an id in brackets, its site, time, whether it was published
 before or after the story so far was written ("פורסמה לפני שהסיפור נכתב" or "פורסמה אחרי שהסיפור נכתב"; nothing
-when that isn't known), its title, subtitle and its body (the whole article, or its start).
+when that isn't known), then its title ("כותרת:"), its subtitle ("משנה:", or "תקציר:", the site's summary of it)
+and its body ("גוף:", the whole article or its start).
 
 The story so far is written and stays as it is. You answer only what the new articles change in it. Never write a
 sentence of the story again, and never reword one.
@@ -366,10 +357,17 @@ An article published before the story was written reports nothing that happened 
 a "detail"; the rest of it is "background".
 
 Account for every new article: the id of each one appears in "unrelated", or among the "sources" of an "insert", a
-"replace" or a "cite". Before you decide that an article only repeats the story, check it for what the story lacks:
-a new stage or decision, a person named for the first time, a number (a count, an age, an amount, a date), an
-official response. Each such fact is an insert. An article that has none of them repeats the story: cite the
-sentences it states. Never invent a difference to have something to answer.
+"replace" or a "cite". Before you decide that an article only repeats the story, read its title ("כותרת:") and its
+subtitle ("משנה:" or "תקציר:") first: they state the article's main news. When the story so far does not say what
+they state (someone dismissed or appointed, a decision approved, a rift, a result), that is an insert, even when
+the body mostly repeats the story. Then check the body for what the story lacks: a new stage or decision, a person
+named for the first time, a number (a count, an age, an amount, a date), an official response. Each such fact is an
+insert. An article that has none of them repeats the story: cite the sentences it states. Never invent a difference
+to have something to answer.
+
+Only this story's event. An article often mentions a related but separate event beside it: another indictment,
+another company's results, an earlier incident, a similar case elsewhere. Its facts are not this story's: don't
+insert them, and never give this story's event the people, numbers or places of the other one.
 
 Writing rules, all of them strict:
 - Write Hebrew only, in the plain, neutral register of a news agency.
@@ -380,6 +378,8 @@ Writing rules, all of them strict:
   commentary, no speculation, no adjectives that judge, nothing the new articles don't say.
 - One fact a sentence, each fact once. When several new articles state it, cite all of them, one article a site.
 - Cite only the ids of the story's own new articles. A fact no new article states is not written.
+- Copy names, numbers and nationalities exactly as the article gives them: the same count, the same sum, the same
+  spelling of a name. Never round, add up, convert or guess one, and never take one from another story of the input.
 - A claim, an accusation, a concern or an assessment is not a fact: write it only attributed to who says it ("לפי
   ...", "X אמר ש..."), or leave it out.
 - Short sentences. Every sentence is complete, stands on its own, and ends with a period.
@@ -602,7 +602,12 @@ func (w *Writer) storyText(ctx context.Context, ids *sources, id string, step St
 		body := w.body(ctx, r, each, seen)
 		b.WriteString(w.reportOf(ids, r, body, step.published(r)))
 		b.WriteString("\n")
-		a.shown[r.URL] = strings.TrimSpace(oneLine(r.Title) + ". " + oneLine(r.Subtitle) + ". " + body)
+		// As reportOf shows it: the subtitle, or the site's summary when it has none.
+		under := r.Subtitle
+		if under == "" {
+			under = r.Summary
+		}
+		a.shown[r.URL] = strings.TrimSpace(oneLine(r.Title) + ". " + oneLine(under) + ". " + body)
 		a.bodies[r.URL] = body
 	}
 	a.sent = added
@@ -666,18 +671,33 @@ type MergeStats struct {
 	Cited    int `json:"cited"`
 	// What was dropped, and why: no new article of the story cited; says again what the story has; says what
 	// another sentence of the answer does; on a sentence number the story doesn't have (a deletion or a citation
-	// too); cut short or garbled.
+	// too); cut short or garbled; states a number that none of the articles it cites does (Unbacked).
 	Unsourced int `json:"unsourced"`
 	Restated  int `json:"restated"`
 	Repeated  int `json:"repeated"`
 	Unknown   int `json:"unknown"`
 	Garbled   int `json:"garbled"`
+	Unbacked  int `json:"unbacked"`
+	// Timed are the ones of Restated that are a development saying a sentence of the story again with a time word
+	// more ("היום", "אמש").
+	Timed int `json:"timed"`
 	// Unapplied are sound sentences left out because none of the answer's makes a version (background, reactions,
-	// details without a number).
+	// details without a number or a new name), or because a quiet update doesn't take them (Reshown, NotInserted,
+	// Crowded).
 	Unapplied int `json:"unapplied"`
-	// Quiet are sound sentences that went into the story without a version: of a kind that makes one, from articles
-	// all published before the version before (they are among Old too).
+	// Quiet are sound sentences that went into the story without a version: inserted ones of a kind that makes
+	// one, from articles all published before the version before (they are among Old too).
 	Quiet int `json:"quiet"`
+	// What a quiet update didn't take, of Old and among Unapplied: a sentence that stands only on articles the
+	// story was written from, shown again (Reshown); a replacement or a correction (NotInserted); one more than
+	// MaxQuiet (Crowded).
+	Reshown     int `json:"reshown"`
+	NotInserted int `json:"notInserted"`
+	Crowded     int `json:"crowded"`
+	// Named are details that are of a kind that makes a version for a person they name whom the story doesn't, and
+	// no number; Dated are details that are not, though they have a number the story lacks: it is a date or a year.
+	Named int `json:"named"`
+	Dated int `json:"dated"`
 	// Unanchored are inserted sentences whose place wasn't a sentence of the story: they lead.
 	Unanchored int `json:"unanchored"`
 	// Old are sound sentences of a kind that makes a version, all of whose articles were published before the
@@ -698,8 +718,15 @@ func (s *MergeStats) add(o MergeStats) {
 	s.Repeated += o.Repeated
 	s.Unknown += o.Unknown
 	s.Garbled += o.Garbled
+	s.Unbacked += o.Unbacked
+	s.Timed += o.Timed
 	s.Unapplied += o.Unapplied
 	s.Quiet += o.Quiet
+	s.Reshown += o.Reshown
+	s.NotInserted += o.NotInserted
+	s.Crowded += o.Crowded
+	s.Named += o.Named
+	s.Dated += o.Dated
 	s.Unanchored += o.Unanchored
 	s.Old += o.Old
 }
@@ -747,8 +774,13 @@ type MergeNote struct {
 	// Why it was dropped or left out, in words.
 	Why string `json:"why,omitempty"`
 	// MakesVersion says a sound sentence is one the version rule takes: a development, a correction, or a detail
-	// with a number the story lacks, with an article published after the version before among its sources.
+	// with a number the story lacks or a person it doesn't name, with an article published after the version
+	// before among its sources.
 	MakesVersion bool `json:"makesVersion,omitempty"`
+	// Name is the person a detail names whom the story doesn't, when that is what makes it of such a kind. Dated
+	// says a detail is not of such a kind though it has a number the story lacks: a date or a year.
+	Name  string `json:"name,omitempty"`
+	Dated bool   `json:"dated,omitempty"`
 	// Old says a sound sentence is of such a kind, and every article it cites was published before the version
 	// before: it makes no version. When no other sentence makes one its Outcome is NoteQuiet: it went into the
 	// story all the same.
@@ -764,10 +796,17 @@ const (
 	whyReplaced   = "the sentence is replaced"
 	whyHalf       = "the answer deletes more than half the story"
 	whyNoFootnote = "adds no footnote: no new article of the story the sentence doesn't cite already"
-	whyNoVersion  = "no version: the answer has no development, no correction, and no detail with a number the story lacks"
+	whyNoVersion  = "no version: the answer has no development, no correction, and no detail with a number the story lacks or a person it doesn't name"
 	whyQuiet      = "in the story without a version: every article it cites was published before the story was written"
-	whyStale      = "no version, and not in the story: every article it cites was published before the story was written, and none is known to be as late as the sentence it replaces"
+	whyReshown    = "no version, and not in the story: every article it cites is one the story was written from, shown again"
+	whyNotInsert  = "no version, and not in the story: a quiet update only inserts, and never a correction"
+	whyCrowded    = "no version, and not in the story: a quiet update takes two sentences at most"
+	whyUnbacked   = "states a number (%s) that none of the articles it cites does"
+	whyTimed      = "says again what %s.%d does, with a time word more"
 )
+
+// MaxQuiet is the most sentences a quiet update puts into a story: more is a rewrite without a version.
+const MaxQuiet = 2
 
 var sentenceRef = regexp.MustCompile(`\bs(\d+)\.(\d+)\b`)
 
@@ -932,6 +971,26 @@ func (c *cited) sentence(text string, refs []string, allowed map[string]bool) (S
 	return Sentence{Text: text, Sources: urls}, ""
 }
 
+// unbacked is a number of s that neither the articles s cites state, as the request showed them, nor the story
+// (told): a count or a sum of another event, or of no article at all. "" when there is none, and when the request's
+// text of one of the articles isn't known. A date or a year is no such number: Gemini works them out ("yesterday").
+func (a *asked) unbacked(s Sentence, told *numbers) string {
+	cited := newNumbers()
+	for _, url := range s.Sources {
+		shown, ok := a.shown[url]
+		if !ok {
+			return ""
+		}
+		cited.add(shown)
+	}
+	for _, f := range figures(s.Text) {
+		if !f.date && !cited.states(f) && !told.states(f) {
+			return f.text
+		}
+	}
+	return ""
+}
+
 // edit is a sentence that survived the rules: inserted after sentence at (0 leads), or sentence at's new text.
 type edit struct {
 	sentence Sentence
@@ -944,18 +1003,20 @@ type edit struct {
 
 // merge applies what Gemini answered for a story (id in the request, "s1") to the version before. The rules:
 //   - A new or replaced sentence cites at least one new article of this story, or it is dropped. So is one that only
-//     says again what the story has (restates), or what an earlier sentence of the answer does.
+//     says again what the story has (restates; a development also when all it adds is a time word), or what an
+//     earlier sentence of the answer does, and one with a number that neither the articles it cites nor the story
+//     state (unbacked).
 //   - An old sentence changes only by being replaced or deleted, by its number; an operation on a number the story
 //     doesn't have is dropped. Its text and footnotes are otherwise kept exactly; a citation adds a footnote.
 //   - A version is made only when a development or a correction survives, or a detail with a number the story
-//     lacks, and one of that sentence's articles was published after the version before was written (Step.fresh;
-//     an article whose time isn't known counts as one). Otherwise there is no version: background, reactions and
-//     details without a number are left out, and the new articles are only among the story's reports and, where
-//     cited, its footnotes.
-//   - A quiet update: without a version, a sentence of a kind that makes one, kept from it only by its articles'
-//     time, goes into the story all the same, with its sources. Nothing else changes: not the title, the time or
-//     the updates, and nothing is deleted. A replacement goes in so only when one of its articles is known to be as
-//     late as every source of the sentence it replaces: an older article must not undo what a later one told.
+//     lacks (no date or year) or a person's full name it doesn't have (newName), and one of that sentence's
+//     articles was published after the version before was written (Step.fresh; an article whose time isn't known
+//     counts as one). Otherwise there is no version: background, reactions and other details are left out, and
+//     the new articles are only among the story's reports and, where cited, its footnotes.
+//   - A quiet update: without a version, an inserted sentence of a kind that makes one, kept from it only by its
+//     articles' time, goes into the story all the same, with its sources. Nothing else changes: not the title, the
+//     time or the updates, and nothing is deleted. It only inserts, never a correction; two sentences at most
+//     (MaxQuiet); and never from the articles the story was written from alone, shown again.
 //   - An answer that names none of the new articles is no answer (Skipped): the story is to be asked about again.
 //
 // What Gemini wrote of sources is read by cited: ids and sites written into a sentence's text are taken out of it,
@@ -988,6 +1049,15 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		}
 	}
 	index := indexOf(p.Kept)
+	// The story's numbers, and its words with its title's: what a sentence adds is told against them.
+	told := newNumbers()
+	told.add(a.step.Prev.Title)
+	titled := newWordIndex()
+	titled.add(a.step.Prev.Title)
+	for _, s := range p.Kept {
+		told.add(s.Text)
+	}
+	known := func(word string) bool { return index.has(word) || titled.has(word) }
 	answered := newWordIndex()
 	var edits []edit
 	replaced := map[int]bool{}
@@ -1002,6 +1072,21 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 	}
 	accept := func(op MergeNote, at int, replace bool) {
 		s, why := refs.sentence(op.Text, op.Sources, allowed)
+		kind := strings.ToLower(strings.TrimSpace(op.Kind))
+		if !contains(kinds, kind) {
+			kind = Detail
+		}
+		// A development is checked without its time words too: "the roads were closed today" tells nothing that
+		// "the roads were closed" didn't.
+		timed, unbacked := -1, ""
+		if why == "" {
+			unbacked = a.unbacked(s, told)
+			if text, stripped := timeless(s.Text); kind == Development && stripped && !index.restates(s.Text) {
+				if of, ok := index.restated(text); ok {
+					timed = max(of, 0)
+				}
+			}
+		}
 		switch {
 		case why == "garbled":
 			m.Stats.Garbled++
@@ -1009,6 +1094,9 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		case why == "unsourced":
 			m.Stats.Unsourced++
 			drop(op, whyUnsourced)
+		case unbacked != "":
+			m.Stats.Unbacked++
+			drop(op, fmt.Sprintf(whyUnbacked, unbacked))
 		case index.restates(s.Text):
 			m.Stats.Restated++
 			why := "has no words"
@@ -1016,14 +1104,14 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 				why = fmt.Sprintf("says again what %s.%d does", id, of+1)
 			}
 			drop(op, why)
+		case timed >= 0:
+			m.Stats.Restated++
+			m.Stats.Timed++
+			drop(op, fmt.Sprintf(whyTimed, id, timed+1))
 		case answered.restates(s.Text):
 			m.Stats.Repeated++
 			drop(op, whyRepeated)
 		default:
-			kind := strings.ToLower(strings.TrimSpace(op.Kind))
-			if !contains(kinds, kind) {
-				kind = Detail
-			}
 			answered.add(s.Text)
 			op.Kind = kind
 			edits = append(edits, edit{sentence: s, kind: kind, at: at, replace: replace, note: note(op)})
@@ -1059,7 +1147,27 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		accept(MergeNote{Op: "insert", At: in.After, Kind: in.Kind, Text: in.Text, Sources: in.Sources}, at, false)
 	}
 	for _, e := range edits {
-		if e.kind != Development && e.kind != Correction && !(e.kind == Detail && index.hasNewNumber(e.sentence.Text)) {
+		makes := e.kind == Development || e.kind == Correction
+		if e.kind == Detail {
+			// A detail is news by a number the story lacks, a date or a year aside, or by a person it names whom
+			// the story doesn't.
+			number, dated := told.news(e.sentence.Text)
+			if makes = number; !makes {
+				var shown []string
+				for _, url := range e.sentence.Sources {
+					shown = append(shown, a.shown[url])
+				}
+				if name := newName(e.sentence.Text, known, shown...); name != "" {
+					makes = true
+					m.Stats.Named++
+					m.Notes[e.note].Name = name
+				} else if dated {
+					m.Stats.Dated++
+					m.Notes[e.note].Dated = true
+				}
+			}
+		}
+		if !makes {
 			continue
 		}
 		// News is what an article published since the story was written tells: a sentence that stands only on
@@ -1076,48 +1184,48 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			m.Notes[e.note].Old = true
 		}
 	}
-	// Without a version, the sentences the articles' time alone kept from making one go into the story quietly; a
-	// replacement only when it is not older than what it replaces.
-	reports := map[string]scrape.ArticleSummary{}
-	for _, r := range a.step.Story.Reports {
-		reports[r.URL] = r
-	}
-	current := func(replacement, sentence []string) bool {
-		var latest time.Time
-		for _, url := range sentence {
-			at, known := a.step.when(reports[url])
-			if !known {
+	// Without a version, the sentences the articles' time alone kept from making one go into the story quietly:
+	// inserted ones only and no correction (an older article must not undo what the story tells, and without a
+	// version nothing would show that it did), MaxQuiet of them, and none that stands only on articles the story
+	// was written from (shown again, they add nothing).
+	own := seenOf(a.step.Prev)
+	reshown := func(sources []string) bool {
+		for _, url := range sources {
+			if !own[url] {
 				return false
 			}
-			if at.After(latest) {
-				latest = at
-			}
 		}
-		for _, url := range replacement {
-			if at, known := a.step.when(reports[url]); known && !at.Before(latest) {
-				return true
-			}
-		}
-		return false
+		return true
 	}
+	quiet := 0
 	replacing := map[int]bool{} // the sentences whose replacement goes in
 	for i, e := range edits {
 		note := &m.Notes[e.note]
+		leave := func(why string, count *int) {
+			note.Outcome, note.Why = NoteLeftOut, why
+			m.Stats.Unapplied++
+			if count != nil {
+				*count++
+			}
+		}
 		switch {
 		case m.Version:
 			note.Outcome = NoteApplied
+			if e.replace {
+				replacing[e.at] = true
+			}
 		case !note.Old:
-			note.Outcome, note.Why = NoteLeftOut, whyNoVersion
-			m.Stats.Unapplied++
-		case e.replace && !current(e.sentence.Sources, p.Kept[e.at-1].Sources):
-			note.Outcome, note.Why = NoteLeftOut, whyStale
-			m.Stats.Unapplied++
+			leave(whyNoVersion, nil)
+		case e.replace || e.kind == Correction:
+			leave(whyNotInsert, &m.Stats.NotInserted)
+		case reshown(e.sentence.Sources):
+			leave(whyReshown, &m.Stats.Reshown)
+		case quiet == MaxQuiet:
+			leave(whyCrowded, &m.Stats.Crowded)
 		default:
 			note.Outcome, note.Why = NoteQuiet, whyQuiet
 			edits[i].quiet = true
-		}
-		if e.replace && (m.Version || edits[i].quiet) {
-			replacing[e.at] = true
+			quiet++
 		}
 	}
 	// Footnotes: a new article that states an old sentence's fact.

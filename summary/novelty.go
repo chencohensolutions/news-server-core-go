@@ -184,16 +184,6 @@ func (x *wordIndex) restated(text string) (sentence int, ok bool) {
 	return sentence, sentence >= 0
 }
 
-// hasNewNumber says text has a number the story lacks.
-func (x *wordIndex) hasNewNumber(text string) bool {
-	for _, word := range words(text) {
-		if isNumber(word) && !x.has(word) {
-			return true
-		}
-	}
-	return false
-}
-
 // novelty is how much of an article's text (as the prompt showed it) a text lacks: how many of its sentences of
 // minWords words or more it has, how many of those have less than novelAt of their words in any one sentence of the
 // text, and how many of its numbers the text lacks.

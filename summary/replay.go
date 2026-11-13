@@ -159,10 +159,12 @@ type ReplayReport struct {
 	// The controls whose answer names none of the story's new articles: of the repeats (nothing came of those, so
 	// they pass), and of the strangers (not found unrelated: they fail).
 	RepeatSkipped, StrangerSkipped int
-	// RepeatQuiet are the repeats that passed and whose story a quiet update changed: sentences added from an
-	// article the story was written from. No version, so no failure; it is the padding a quiet update can do.
-	RepeatQuiet int
-	Positions   []PositionStats
+	// RepeatReshown are the repeats that passed whose answer wrote a sentence of a kind that makes a version from
+	// the article the story was written from: no version (the article is older than the story), and not in the
+	// story either (a quiet update takes nothing from a story's own article, MergeStats.Reshown). It is the
+	// padding that rule keeps out.
+	RepeatReshown int
+	Positions     []PositionStats
 
 	// Sizes: the requests' characters (instructions and text) and tokens; the answers'; and, for the real steps
 	// asked, their part of the requests and the live rewrite's request and answer, in characters.
@@ -665,11 +667,11 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 				switch {
 				case !passed:
 					kind = CaseRepeat
-				case m.Stats.Quiet > 0:
+				case m.Stats.Reshown > 0:
 					report.RepeatPassed++
 					at.Passed++
-					report.RepeatQuiet++
-					kind = CaseRepeatQuiet
+					report.RepeatReshown++
+					kind = CaseRepeatReshown
 				default:
 					report.RepeatPassed++
 					at.Passed++
@@ -800,9 +802,10 @@ const (
 	CaseSkipped      = "skipped"          // the answer names none of the story's new articles: no answer to compare
 	CaseRepeat       = "control-repeat"   // an article the story has, shown as new, made a version or was found unrelated
 	CaseStranger     = "control-stranger" // an article of another story was not found unrelated
-	// CaseRepeatQuiet is a control answered right (no version) all the same: sentences from an article the story has
-	// went into it quietly. It is written to be read for padding.
-	CaseRepeatQuiet = "control-repeat-quiet"
+	// CaseRepeatReshown is a control answered right (no version, and the story as it was) all the same: the answer
+	// wrote a sentence of a kind that makes a version from the article the story has, and the rules kept it out. It
+	// is written to be read for what Gemini makes of an article it was already given.
+	CaseRepeatReshown = "control-repeat-reshown"
 )
 
 // ReplayCase is one story of the replay with all that was sent and answered: a line of the cases file. A sentence
@@ -862,7 +865,10 @@ type CaseArticle struct {
 	When     string `json:"when,omitempty"`
 	Title    string `json:"title"`
 	Subtitle string `json:"subtitle,omitempty"`
-	Body     string `json:"body,omitempty"`
+	// Summary is the site's summary of a new article, which the request showed in the subtitle's place when the
+	// article has none.
+	Summary string `json:"summary,omitempty"`
+	Body    string `json:"body,omitempty"`
 }
 
 // CaseMerge is what the server made of the answer.
@@ -924,6 +930,9 @@ func (w *Writer) replayCase(item replayItem, a *asked, id string, ids *sources, 
 		fresh[r.URL] = true
 		shown := article(r)
 		shown.ID, shown.Body = ids.urls[r.URL], a.bodies[r.URL]
+		if r.Subtitle == "" {
+			shown.Summary = r.Summary
+		}
 		switch fresh, known := a.step.fresh(r); {
 		case !known:
 		case fresh:
@@ -1073,10 +1082,13 @@ func (r *ReplayReport) Print(out io.Writer) {
 		r.MissedUpdated+r.QuietUpdated, r.MissedUpdated, r.QuietUpdated)
 	s := r.Stats
 	fmt.Fprintf(out, "\nsentences Gemini answered to insert or replace: %d\n", s.Asked)
-	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut\n",
-		s.Restated, share(s.Restated, s.Asked), s.Unsourced, s.Repeated, s.Unknown, s.Garbled)
+	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s; %d of them a development with only a time word more), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut, %d with a number none of the articles they cite states\n",
+		s.Restated, share(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked)
 	fmt.Fprintf(out, "  left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
 	fmt.Fprintf(out, "  of a kind that makes a version, but from articles published before the version before: %d; of them added quietly, with no version made: %d\n", s.Old, s.Quiet)
+	fmt.Fprintf(out, "  of them a quiet update didn't take: %d from articles the story was written from, shown again; %d replacements and corrections; %d past its %d sentences\n",
+		s.Reshown, s.NotInserted, s.Crowded, MaxQuiet)
+	fmt.Fprintf(out, "  details of such a kind for a person they name and no number: %d; details whose only numbers the story lacks are dates or years (not of such a kind): %d\n", s.Named, s.Dated)
 	var byKind, leftOut, quiet []string
 	for _, kind := range kinds {
 		byKind = append(byKind, fmt.Sprintf("%d %s", r.Kinds[kind], kind))
@@ -1087,8 +1099,8 @@ func (r *ReplayReport) Print(out io.Writer) {
 	fmt.Fprintf(out, "  added quietly with no version made, by kind: %s\n", strings.Join(quiet, ", "))
 	fmt.Fprintf(out, "  left out with no version made, by kind: %s\n", strings.Join(leftOut, ", "))
 	fmt.Fprintf(out, "\ncontrols:\n")
-	fmt.Fprintf(out, "  an article the story has, shown as new, made no version: %d of %d (%s); %d of the answers named no new article (skipped: nothing came of them); sentences of it were added quietly in %d\n",
-		r.RepeatPassed, r.RepeatAsked, share(r.RepeatPassed, r.RepeatAsked), r.RepeatSkipped, r.RepeatQuiet)
+	fmt.Fprintf(out, "  an article the story has, shown as new, made no version: %d of %d (%s); %d of the answers named no new article (skipped: nothing came of them); sentences written from it alone were kept out of the story in %d\n",
+		r.RepeatPassed, r.RepeatAsked, share(r.RepeatPassed, r.RepeatAsked), r.RepeatSkipped, r.RepeatReshown)
 	fmt.Fprintf(out, "  an article of another story was found unrelated:      %d of %d (%s); %d of the answers named no new article (skipped: not found)\n",
 		r.StrangerPassed, r.StrangerAsked, share(r.StrangerPassed, r.StrangerAsked), r.StrangerSkipped)
 	fmt.Fprintf(out, "  by place in the request (answered; controls right; real steps that agree with the live rewrite):\n")

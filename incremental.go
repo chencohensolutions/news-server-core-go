@@ -95,11 +95,12 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 	fmt.Fprintf(out, "    skipped by Gemini (the answer named none of the story's new articles): %d wait to be asked again or changed first, %d were skipped again and left to be written whole\n",
 		r.Skipped, r.GaveUp)
 	s := r.Stats
-	fmt.Fprintf(out, "    sentences answered: %d; dropped: %d said already (%s), %d without a new article of the story, %d twice, %d on unknown sentences, %d garbled\n",
-		s.Asked, s.Restated, percent(s.Restated, s.Asked), s.Unsourced, s.Repeated, s.Unknown, s.Garbled)
+	fmt.Fprintf(out, "    sentences answered: %d; dropped: %d said already (%s; %d of them a development with only a time word more), %d without a new article of the story, %d twice, %d on unknown sentences, %d garbled, %d with a number their articles don't state\n",
+		s.Asked, s.Restated, percent(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked)
 	fmt.Fprintf(out, "    left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n",
 		s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
-	fmt.Fprintf(out, "    kept from making a version by their articles' time (all published before the story was written): %d; added quietly, with no version: %d\n", s.Old, s.Quiet)
+	fmt.Fprintf(out, "    kept from making a version by their articles' time (all published before the story was written): %d; added quietly, with no version: %d (not taken: %d from the story's own articles, %d replacements and corrections, %d past %d sentences)\n",
+		s.Old, s.Quiet, s.Reshown, s.NotInserted, s.Crowded, summary.MaxQuiet)
 	live := r.LiveNewVersion + r.LiveNewQuiet
 	fmt.Fprintf(out, "  against the live rewrite of the same reports (%d steps):\n", r.Compared)
 	fmt.Fprintf(out, "    live had new facts:  %d a version, %d none: recall %s\n", r.LiveNewVersion, r.LiveNewQuiet, percent(r.LiveNewVersion, live))

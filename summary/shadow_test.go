@@ -192,7 +192,7 @@ func TestTheShadowRecordsAQuietUpdate(t *testing.T) {
 	// A third site's article joins the rain story: the site published it two hours before the story was written.
 	preview := rainSiteg
 	preview.PublishedAt = scrape.FormatInstant(now.Add(-2 * time.Hour))
-	join(t, w, found, preview)
+	join(t, w, found, preview, "מאז הלילה ירדו בחיפה 80 מילימטרים של גשם.", filler("הגשם"))
 	if want := "[a1] siteg · 2026-11-10T18:00:00Z · פורסמה לפני שהסיפור נכתב\n"; len(rec.requests) != 1 || !strings.Contains(rec.requests[0].Prompt, want) {
 		t.Fatalf("the request lacks %q:\n%s", want, rec.requests[0].Prompt)
 	}

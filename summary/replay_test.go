@@ -314,20 +314,22 @@ func TestTheReplaysControls(t *testing.T) {
 		t.Fatalf("the requests:\n%s\n%s", first, second)
 	}
 	// No version comes of a story's own article, whatever was written from it: it was published before the story
-	// was written, so its development makes none. It went into the story quietly, which is counted: the padding a
-	// quiet update can do. The stranger that was named nowhere is not found.
-	if report.RepeatAsked != 2 || report.RepeatPassed != 2 || report.RepeatSkipped != 0 || report.RepeatQuiet != 1 || report.StrangerAsked != 2 || report.StrangerPassed != 1 ||
+	// was written, so its development makes none. Nor does it go into the story quietly: a story's own article,
+	// shown again, adds nothing. It is counted: the padding that rule keeps out. The stranger that was named
+	// nowhere is not found.
+	if report.RepeatAsked != 2 || report.RepeatPassed != 2 || report.RepeatSkipped != 0 || report.RepeatReshown != 1 || report.StrangerAsked != 2 || report.StrangerPassed != 1 ||
 		report.StrangerSkipped != 1 {
 		t.Fatalf("%+v", report)
 	}
-	// The control changed quietly is among the cases, to be read: it passed, and its sentence is marked.
+	// That control is among the cases, to be read: it passed, and its sentence is marked with the rule.
 	var padded *ReplayCase
 	for _, c := range casesOf(t, cases.Bytes()) {
-		if c.Kind == CaseRepeatQuiet {
+		if c.Kind == CaseRepeatReshown {
 			padded = &c
 		}
 	}
-	if padded == nil || padded.N != 6 || padded.Merge.Version || padded.Merge.Stats.Quiet != 1 || padded.Merge.Notes[0].Outcome != NoteQuiet || padded.Merge.Notes[0].Kind != Development ||
+	if padded == nil || padded.N != 6 || padded.Merge.Version || padded.Merge.Stats.Quiet != 0 || padded.Merge.Stats.Reshown != 1 || padded.Merge.Notes[0].Outcome != NoteLeftOut ||
+		padded.Merge.Notes[0].Why != whyReshown || !padded.Merge.Notes[0].Old || padded.Merge.Notes[0].Kind != Development ||
 		padded.New[0].When != "before" || report.Cases != 5 {
 		t.Fatalf("%+v, %d cases", padded, report.Cases)
 	}
@@ -351,7 +353,7 @@ func TestTheReplaysControls(t *testing.T) {
 	}
 	var log bytes.Buffer
 	report.Print(&log)
-	for _, want := range []string{"an article the story has, shown as new, made no version: 2 of 2 (100%); 0 of the answers named no new article (skipped: nothing came of them); sentences of it were added quietly in 1",
+	for _, want := range []string{"an article the story has, shown as new, made no version: 2 of 2 (100%); 0 of the answers named no new article (skipped: nothing came of them); sentences written from it alone were kept out of the story in 1",
 		"an article of another story was found unrelated:      1 of 2 (50%); 1 of the answers named no new article", "    3: 2 of 2; 1 of 2; 0 of 0",
 		`skipped by Gemini (the answer names none of the story's new articles; not "nothing new": asked again): 2 (67%); the live rewrite had new facts in 1 of them`,
 		"of the 1 not skipped, a new version: 1 (100%); no version: 0 (0%)",
@@ -561,6 +563,9 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 		"of a kind that makes a version, but from articles published before the version before: 1; of them added quietly, with no version made: 1",
 		"quiet updates (such sentences went into the story with no version and nothing in what's new) in 1 steps: 1 where live had new facts, 0 where it had none",
 		"added quietly with no version made, by kind: 0 development, 0 correction, 1 detail, 0 background, 0 reaction",
+		"0 garbled or cut, 0 with a number none of the articles they cite states",
+		"of them a quiet update didn't take: 0 from articles the story was written from, shown again; 0 replacements and corrections; 0 past its 2 sentences",
+		"details of such a kind for a person they name and no number: 0; details whose only numbers the story lacks are dates or years (not of such a kind): 0",
 		"left out with no version made, by kind: 0 development, 0 correction, 0 detail, 1 background, 0 reaction",
 	} {
 		if !strings.Contains(log.String(), want) {
