@@ -307,6 +307,7 @@ type ComplexityRoot struct {
 
 	StoryUpdate struct {
 		At        func(childComplexity int) int
+		Kinds     func(childComplexity int) int
 		Sentences func(childComplexity int) int
 	}
 
@@ -1610,6 +1611,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.StoryUpdate.At(childComplexity), true
+	case "StoryUpdate.kinds":
+		if e.ComplexityRoot.StoryUpdate.Kinds == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StoryUpdate.Kinds(childComplexity), true
 	case "StoryUpdate.sentences":
 		if e.ComplexityRoot.StoryUpdate.Sentences == nil {
 			break
@@ -2449,6 +2456,11 @@ type TextPart {
 type StoryUpdate {
   at: Time!
   sentences: [Sentence!]!
+  """
+  What each of sentences is, in the same order: development, correction, detail, background or reaction. Empty for
+  a version written whole (the first, or a rewrite), whose sentences aren't sorted.
+  """
+  kinds: [String!]!
 }
 
 type Sentence {
@@ -3034,6 +3046,8 @@ func (ec *executionContext) childFields_StoryUpdate(ctx context.Context, field g
 		return ec.fieldContext_StoryUpdate_at(ctx, field)
 	case "sentences":
 		return ec.fieldContext_StoryUpdate_sentences(ctx, field)
+	case "kinds":
+		return ec.fieldContext_StoryUpdate_kinds(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type StoryUpdate", field.Name)
 }
@@ -8703,6 +8717,29 @@ func (ec *executionContext) fieldContext_StoryUpdate_sentences(_ context.Context
 	return fc, nil
 }
 
+func (ec *executionContext) _StoryUpdate_kinds(ctx context.Context, field graphql.CollectedField, obj *model.StoryUpdate) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StoryUpdate_kinds(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Kinds, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StoryUpdate_kinds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StoryUpdate", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _SummaryRun_at(ctx context.Context, field graphql.CollectedField, obj *model.SummaryRun) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -12864,6 +12901,11 @@ func (ec *executionContext) _StoryUpdate(ctx context.Context, sel ast.SelectionS
 			}
 		case "sentences":
 			out.Values[i] = ec._StoryUpdate_sentences(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "kinds":
+			out.Values[i] = ec._StoryUpdate_kinds(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

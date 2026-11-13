@@ -165,7 +165,11 @@ func updatesOf(s summary.StorySummary, headlines map[string]store.Headline) []*S
 	}
 	out := make([]*StoryUpdate, len(updates))
 	for i, u := range updates {
-		out[i] = &StoryUpdate{At: u.At, Sentences: SentencesOf(u.Sentences, headlines)}
+		kinds := []string{}
+		if len(u.Kinds) == len(u.Sentences) {
+			kinds = u.Kinds
+		}
+		out[i] = &StoryUpdate{At: u.At, Sentences: SentencesOf(u.Sentences, headlines), Kinds: kinds}
 	}
 	return out
 }

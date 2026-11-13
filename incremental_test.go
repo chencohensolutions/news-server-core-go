@@ -294,7 +294,7 @@ const appSummary = `title sentences { text footnotes { url sourceId title video 
 	contradictions { text footnotes { url sourceId title video publishedAt } } unrelated reports headlineOnly writtenAt
 	writtenWith { fullArticles length } id version versions current
 	changes { since title sentences { kind parts { text added } } removed { text footnotes { url sourceId title video publishedAt } } }
-	updates { at sentences { text footnotes { url sourceId title video publishedAt } } }`
+	updates { at sentences { text footnotes { url sourceId title video publishedAt } } kinds }`
 
 type appSentence struct {
 	Text      string `json:"text"`
@@ -331,6 +331,7 @@ type appStory struct {
 	Updates []struct {
 		At        time.Time     `json:"at"`
 		Sentences []appSentence `json:"sentences"`
+		Kinds     []string      `json:"kinds"`
 	} `json:"updates"`
 }
 
@@ -461,6 +462,7 @@ func TestTheAppReadsAStoryTheIncrementalUpdateKeeps(t *testing.T) {
 		t.Fatalf("%+v", second)
 	}
 	if len(second.Updates) != 2 || !second.Updates[1].At.Equal(updated) || len(second.Updates[1].Sentences) != 1 || second.Updates[1].Sentences[0].Text != second.Sentences[0].Text ||
+		fmt.Sprint(second.Updates[1].Kinds) != "[development]" || len(second.Updates[0].Kinds) != 0 ||
 		versions[1].text() != first.text() || recorded.wholes != 1 || len(recorded.asked) != 1 {
 		t.Fatalf("updates %+v, versions %+v", second.Updates, versions)
 	}

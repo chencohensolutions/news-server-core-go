@@ -287,6 +287,9 @@ type StorySummary struct {
 type StoryUpdate struct {
 	At        time.Time   `json:"at"`
 	Sentences []*Sentence `json:"sentences"`
+	// What each of sentences is, in the same order: development, correction, detail, background or reaction. Empty for
+	// a version written whole (the first, or a rewrite), whose sentences aren't sorted.
+	Kinds []string `json:"kinds"`
 }
 
 type SummaryRun struct {

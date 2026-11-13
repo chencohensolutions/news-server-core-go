@@ -150,6 +150,11 @@ type TextPart {
 type StoryUpdate {
   at: Time!
   sentences: [Sentence!]!
+  """
+  What each of sentences is, in the same order: development, correction, detail, background or reaction. Empty for
+  a version written whole (the first, or a rewrite), whose sentences aren't sorted.
+  """
+  kinds: [String!]!
 }
 
 type Sentence {
