@@ -229,14 +229,15 @@ func TestABusyOrCutShadowAnswer(t *testing.T) {
 	if _, err := w.Run(ctx, found); err != nil {
 		t.Fatal(err)
 	}
-	// Gemini is busy: the shadow tries once, the request isn't counted, and the run is none the worse.
+	// Gemini is busy: the shadow tries once, the request is counted (the quota counts it), and the run is none the
+	// worse.
 	if result := join(t, w, found, rainSiteg); result != (Result{Written: 1}) || len(rec.requests) != 1 || shadowOf(t, w, found[0]) != nil {
 		t.Fatalf("%+v, %d shadow requests", result, len(rec.requests))
 	}
-	if n, _ := w.Store.GeminiRequests(ctx, Day(now)); n != 2 {
+	if n, _ := w.Store.GeminiRequests(ctx, Day(now)); n != 3 {
 		t.Fatalf("%d requests counted", n)
 	}
-	if sent, _ := w.shadowSent(ctx, Day(now)); sent != 0 {
+	if sent, _ := w.shadowSent(ctx, Day(now)); sent != 1 {
 		t.Fatalf("%d shadow requests counted", sent)
 	}
 	// The budget story gains a report too. The next run asks about both; the cut answer's whole story is kept, the
@@ -262,7 +263,7 @@ func TestABusyOrCutShadowAnswer(t *testing.T) {
 	if asked == nil || !asked.Request.Salvaged || asked.Request.Stories != 2 || shadowOf(t, w, waiting) != nil {
 		t.Fatalf("rain %+v, budget %+v", rain, budget)
 	}
-	if sent, _ := w.shadowSent(ctx, Day(now)); sent != 1 {
+	if sent, _ := w.shadowSent(ctx, Day(now)); sent != 2 {
 		t.Fatalf("%d shadow requests counted", sent)
 	}
 	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 3 || shadowOf(t, w, waiting) == nil || strings.Contains(rec.requests[2].Prompt, "s2") {

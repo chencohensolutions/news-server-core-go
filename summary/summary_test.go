@@ -389,6 +389,10 @@ func TestABusyGeminiIsTriedAgain(t *testing.T) {
 	if _, err := w2.Run(context.Background(), found2); !errors.Is(err, gemini.ErrUnavailable) || fake2.count() != 3 {
 		t.Fatalf("%v, %d requests", err, fake2.count())
 	}
+	// Every try is counted against the day's budget: Google's quota counts the busy ones too.
+	if used, err := w2.Store.GeminiRequests(context.Background(), Day(w2.now())); err != nil || used != 3 {
+		t.Fatalf("%d requests counted, %v; want 3", used, err)
+	}
 }
 
 func TestTheSameArticleUnderTwoAddressesIsShownOnce(t *testing.T) {

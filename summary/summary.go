@@ -475,13 +475,8 @@ func (w *Writer) generate(ctx context.Context, day string, req gemini.Request, r
 		}
 		start := time.Now()
 		answer, usage, err := w.Gemini.Generate(ctx, req)
-		if errors.Is(err, gemini.ErrUnavailable) {
-			// Busy is Google's failure, not a request of the quota. Counted first all the same: a stop mid-request
-			// errs toward the budget.
-			if err := w.Store.UncountGeminiRequest(ctx, day); err != nil {
-				return nil, gemini.Usage{}, err
-			}
-		}
+		// A busy answer (503) stays counted: the free tier's daily quota counts it too (seen Nov 13, 2026: 255
+		// requests counted here when Google had counted its 500 and answered 429 for the rest of the day).
 		if errors.Is(err, gemini.ErrUnavailable) && try < min(retries, len(busyWaits)) {
 			w.logf("summaries: %v; trying again in %s", err, busyWaits[try])
 			if err := w.sleep(ctx, busyWaits[try]); err != nil {

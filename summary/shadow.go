@@ -280,13 +280,14 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 	}
 	req, sent := w.build(ctx, steps, plans, 0, settings)
 	raw, usage, err := w.generate(ctx, day, req.gemini(), 0)
-	if errors.Is(err, gemini.ErrUnavailable) {
-		// Busy: not a request of the quota, and not tried again in this run. The live stories' tries come first.
-		w.logf("incremental shadow: %v; %d stories wait", err, len(steps))
-		return nil
-	}
+	// Counted busy or not: the free tier's quota counts a busy answer (503) too.
 	if err := w.countShadow(ctx, day); err != nil {
 		return err
+	}
+	if errors.Is(err, gemini.ErrUnavailable) {
+		// Busy: not tried again in this run. The live stories' tries come first.
+		w.logf("incremental shadow: %v; %d stories wait", err, len(steps))
+		return nil
 	}
 	if err != nil && !errors.Is(err, gemini.ErrCut) {
 		return err
