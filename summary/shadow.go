@@ -65,6 +65,9 @@ type Shadow struct {
 	Story *StorySummary `json:"story,omitempty"`
 	// Version says the step made a new version: the story's latest update is what's new.
 	Version bool `json:"version"`
+	// Quiet is how many sentences the step put into Story without a version (a quiet update, MergeStats.Quiet): the
+	// text changed, and nothing else of the story. Never with Version.
+	Quiet int `json:"quiet,omitempty"`
 	// Skipped is how many answers in a row named none of the story's new articles (Merged.Skipped). Such an answer
 	// is no step: with Again the story is asked about again in the next run, and until then the row doesn't count
 	// as the story's (the next step starts where this one did). After shadowTries of them it is left to be written
@@ -298,7 +301,7 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 		}
 	}
 	answers, whole := readAnswers(raw)
-	versions, quiet, rebuilt, skipped := 0, 0, 0, 0
+	versions, none, quietly, rebuilt, skipped := 0, 0, 0, 0, 0
 	var dropped MergeStats
 	for _, answer := range answers {
 		id := storyID(answer.Story)
@@ -335,11 +338,14 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 			rebuilt++
 		} else {
 			row.Skipped = 0
-			row.Story = &m.Story
-			if m.Version {
+			row.Story, row.Quiet = &m.Story, m.Stats.Quiet
+			switch {
+			case m.Version:
 				versions++
-			} else {
-				quiet++
+			case m.Stats.Quiet > 0:
+				quietly++
+			default:
+				none++
 			}
 		}
 		dropped.add(m.Stats)
@@ -351,8 +357,8 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 	if !whole {
 		cutShort = " (the answer was cut: the whole stories of it)"
 	}
-	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d, nothing new: %d, to be written whole: %d, skipped by Gemini and asked again next run: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled; %d kept from making a version by their articles' time",
-		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, quiet, rebuilt, skipped, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled, dropped.Old)
+	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d, updated quietly (no version): %d, nothing new: %d, to be written whole: %d, skipped by Gemini and asked again next run: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled; %d kept from making a version by their articles' time, %d of them added quietly",
+		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, quietly, none, rebuilt, skipped, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled, dropped.Old, dropped.Quiet)
 	return nil
 }
 
@@ -396,8 +402,10 @@ type ShadowReport struct {
 	Local   int
 	Rebuild map[string]int
 	Asked   int
-	// Of the asked: a new version, nothing new, or sent to be written whole after the answer (the tripwire).
+	// Of the asked: a new version, none, or sent to be written whole after the answer (the tripwire). QuietUpdates
+	// are the ones of Quiet whose text changed all the same: a quiet update (Shadow.Quiet).
 	Versions, Quiet, Tripwire int
+	QuietUpdates              int
 	// Skipped are the asked whose answer named none of their new articles and that wait to be asked again (or were
 	// never asked again: the story changed first); GaveUp the ones left to be written whole after shadowTries such
 	// answers. Neither is compared with the live rewrite.
@@ -447,6 +455,9 @@ func ReportShadow(ctx context.Context, db *store.Store, since time.Time) (Shadow
 				report.Versions++
 			default:
 				report.Quiet++
+				if s.Quiet > 0 {
+					report.QuietUpdates++
+				}
 			}
 			if s.Base == BaseShadow {
 				report.FromShadow++

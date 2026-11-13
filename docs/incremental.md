@@ -38,6 +38,18 @@ Measured on the live archive, Nov 10 to 12, 2026 (`rewriteMinutes` 0):
   sharper rule for `unrelated`.
 - A story's place in the request made no difference.
 
+### What the third replay found
+
+A slice whose new articles were all published before the version before, after the articles' time went into the
+version rule (Nov 13, 2026): no false version, the controls 4 of 4, no skipped answer. Two new losses:
+
+- **Facts of older articles were lost**: real details (a sum paid, a name, an offer made) that the time rule kept
+  from making a version never entered the story either. Hence the quiet update (below).
+- **Sound sentences were dropped as garbled**: Gemini wrote sources into a sentence's text, after its period
+  (`... (a1)`, `(site)`), as the request showed the old sentences' sites, and once wrote a site where an id belongs;
+  and a sentence that quoted an Arabic word was taken for a garbled one. Hence the old sentences' sites before the
+  sentence, the reading of what Gemini writes for sources, and the narrower check for garble (below).
+
 ## The design
 
 A changed story with a version before it goes one of three ways (`plan`):
@@ -58,8 +70,9 @@ A changed story with a version before it goes one of three ways (`plan`):
 Many stories in one request: 8 to start with (`IncrementalPerRequest`), fewer when the text passes the request's
 characters or the expected answer passes 12,000 (200 a story and 500 a new article). Each story shows:
 
-- its title, and the version before as numbered sentences scoped to the story (`s3.4`), each with the names of the
-  sites it still cites;
+- its title, and the version before as numbered sentences scoped to the story (`s3.4`). The names of the sites a
+  sentence still cites stand before it, labelled: `s3.4 [מקורות: site, site] the sentence.` They were once after
+  it in parentheses, and Gemini ended its own sentences the same way;
 - the titles of the articles it already has, not their bodies;
 - the new articles whole, as the rewrite cleans them (`a1`, `a2`, …), without the paragraphs an article the story
   already has gave word for word. An article's first line says, after the site and its time, whether it was
@@ -82,10 +95,13 @@ The answer, for each story, in this order:
 | `title` | a new title, or `""` for none |
 | `contradictions` | sides citing new articles or a sentence of the story |
 
-`kind` is `development`, `correction`, `detail`, `background` or `reaction`. What an article published before the
-story was written reports (a preview, the run-up) is background, and a breakdown of figures the story already sums
-up is a detail, not a development. Gemini never sends a sentence that stays, so the old text and its footnotes are
-kept exactly.
+`kind` is `development`, `correction`, `detail`, `background` or `reaction`. Nothing an article published before the
+story was written reports is a development: a fact of it about the event itself that the story lacks is a detail
+(what a quiet update takes, below), its preview and run-up are background. A breakdown of figures the story already
+sums up is a detail, not a development. Gemini never sends a sentence that stays, so the old text and its footnotes
+are kept exactly.
+
+A sentence's text is Hebrew only, and holds no id and no site's name: sources go in `sources`, as ids.
 
 Gemini is told to **account for every new article**: each one's id is in `unrelated`, or among the sources of an
 `insert`, a `replace` or a `cite`. Before it decides that an article only repeats the story, it checks the article
@@ -102,6 +118,17 @@ among the JSON Schema keywords the API documents for `responseJsonSchema`.
 
 ### The rules the server applies (`merge`)
 
+- **What Gemini wrote for sources is read leniently** (`cited`). Brackets in a sentence's text that hold nothing
+  but articles' ids, sentence numbers and the story's own sites, by id or by name, are taken out of it: `(a1)`,
+  `[a1, a3]`, `(site)`, `[מקורות: site]`, inside the sentence or after its period. Other brackets are the
+  sentence's own and stay (`(בן 34)`, a site the story doesn't have). A site written where an id belongs (among a
+  sentence's sources, a citation's, an unrelated article's, a contradiction's side) is that site's new article in
+  the story, when the request showed exactly one; a site with several names none of them.
+- **A garbled sentence is dropped**: one with a word that has a Hebrew letter and an Arabic one (the model slips an
+  Arabic letter into a Hebrew word), one with as many Arabic letters as Hebrew ones, an empty one, and one that
+  doesn't end as a sentence (cut short). An Arabic word that stands apart (a quoted word, a name as it is written)
+  is no garble. The whole rewrite's check is wider, and was left as it is: there any Arabic letter drops the
+  sentence. It is what readers get today, and one replay is not enough to loosen it.
 - A new or replaced sentence must cite a new article of its own story, or it is dropped. An article found unrelated
   is no source.
 - A sentence that only says the story again is dropped (`restates`): one earlier sentence has three quarters of its
@@ -112,9 +139,21 @@ among the JSON Schema keywords the API documents for `responseJsonSchema`.
   refused.
 - **A version is made only when a development or a correction survives, or a detail with a number the story lacks**
   (a toll, a sum, a date), **and one of that sentence's articles was published after the version before was
-  written.** Background, reactions and other details alone make none, and are then left out: the text
-  stays to the letter. When a version is made, every surviving sentence goes in, the ones from older articles too,
-  and what was inserted and replaced is the version's update (`Update.Sentences`, with `Update.Kinds`).
+  written.** Background, reactions and other details alone make none, and are then left out. When a version is
+  made, every surviving sentence goes in, the ones from older articles too, and what was inserted and replaced is
+  the version's update (`Update.Sentences`, with `Update.Kinds`).
+- **A quiet update.** When no version is made, a sentence of a kind that makes one (a development, a correction, a
+  detail with a number the story lacks) that only its articles' time kept from it, every one of them published
+  before the version before, goes into the story all the same: inserted or replaced, with its sources. It makes no
+  version and nothing in "what's new": the title, `writtenAt` and the updates stay, and nothing is deleted (a
+  deletion is only ever part of a version).
+  - It takes exactly what would have made a version had the article been new, and no more. A detail still needs its
+    number, and background and reactions never go in quietly: an article that joins late would otherwise pad the
+    story with what a new article may not add either. The cost: a name without a number that Gemini calls a detail
+    stays out, as it does from a new article when no version is made.
+  - A replacement goes in quietly only when one of its articles is known to be as late as every source of the
+    sentence it replaces (the site's time, or the server's first sight). An older article must not undo what a later
+    one told, and without a version nothing would show that it did. Otherwise it is left out.
 - **When an article was published** (`Step.fresh`) is the site's time for it (`publishedAt`) against the version
   before's `writtenAt`. A site that gives no time: when the server first saw the article. With neither, it is not
   known, and the article counts as published after: the rule keeps old articles from making a version, and must
@@ -166,7 +205,9 @@ In shadow a run does everything it did, then (`shadow`):
 
 Every step is kept in `story_shadow` under the story's `StoryKey`, whatever came of it, so a story answered
 "nothing new" is not asked again. A row holds the plan, what Gemini answered, the story after the step, whether a
-version was made, the counts of what the rules dropped, and the request's size.
+version was made, how many sentences went in quietly (`quiet`, never with `version`: a quiet update, told from a
+version and from nothing new), the counts of what the rules dropped, and the request's size. The report of `news-server incremental`
+counts the steps without a version, and how many of them were updated quietly.
 
 A story Gemini skipped (its answer names none of the new articles) is the exception. Its row is kept with the
 answer, `skipped` 1 and `again`: it is no step, so the shadow's line of the story stays where it was, and the next
@@ -222,22 +263,26 @@ ids is joined to its story by its reports, as the server did then. It reports:
   without the skipped steps, and with the skipped steps whose live rewrite had new facts counted as misses (and how
   many of those the tripwire would write whole);
 - the steps where the live rewrite had new facts and no version was made, by what Gemini answered: sound sentences
-  that the version rule left out (the rule lost the facts), only sentences the other rules dropped, or no sentence
+  that made no version (left out, or added quietly), only sentences the other rules dropped, or no sentence
   (the model did). And how many of them the tripwire would send to be written whole. So recall is given three more
-  times: counting the steps with sound sentences left out ("Gemini found facts", a version or not), counting the
-  tripwire's whole writings (a whole writing of a step whose live rewrite had new facts makes a version), and
-  counting both. The same two counts are given for the steps where the live rewrite had nothing: there a whole
-  writing is a request spent for no version;
+  times: counting the steps with sound sentences that made no version ("Gemini found facts", a version or not),
+  counting the tripwire's whole writings (a whole writing of a step whose live rewrite had new facts makes a
+  version), and counting both. The same two counts are given for the steps where the live rewrite had nothing:
+  there a whole writing is a request spent for no version;
 - the steps without a version where a sentence of a kind that makes one was kept from it by its articles' time
   (all published before the version before), apart by whether the live rewrite had new facts: the rule's cost, and
   what it saved;
-- the sentences Gemini answered, and how many each rule dropped; the restatement rate; the ones in versions and
-  the ones left out with no version made, by kind;
+- the **quiet updates**: the steps without a version where such sentences went into the story, apart the same way.
+  They are not versions, and are in no recall but the one that counts what Gemini found;
+- the sentences Gemini answered, and how many each rule dropped; the restatement rate; the ones in versions, the
+  ones added quietly with no version made, and the ones left out with no version made, each by kind;
 - the sizes: characters and tokens in and out a story, beside the live rewrite's request and answer for the same
   step (in characters, and in tokens at the rate the incremental requests measured);
 - three controls that need no labels, two in each request at places that move:
-  - an article the story already has, shown as new: nothing may come of it (it is older than the story, so the
-    version rule holds whatever is written from it; found unrelated, it still fails);
+  - an article the story already has, shown as new: no version may come of it (it is older than the story, so the
+    version rule holds whatever is written from it; found unrelated, it still fails). A quiet update may: how many
+    of these stories took a sentence from the article they were written from is counted, as the padding a quiet
+    update does;
   - an article of another story (the least alike of a few), shown as new: it must be found unrelated;
   - of each, how many answers named no new article at all: a skipped repeat passes (nothing came of it), a skipped
     stranger fails;
@@ -249,7 +294,8 @@ update found news is worth reading, not counting as an error.
 ### The cases
 
 `-cases file` writes what the numbers are made of, to read a disagreement and judge who is right: a line of JSON
-for every real step answered and for every control answered wrong (`summary.ReplayCase`). The file holds the sites'
+for every real step answered, for every control answered wrong, and for every control of the first kind that a
+quiet update changed (`summary.ReplayCase`). The file holds the sites'
 headlines and articles as they are, so it is refused inside the archive folder and inside a repository (a folder
 with `.git`, or under one): keep it beside them. It is written anew, and added to with `-offset`.
 
@@ -257,7 +303,7 @@ with `.git`, or under one): keep it beside them. It is written anew, and added t
 |---|---|
 | `n` | the story's number among the ones to ask about, from 1: what `-offset` counts, and the same on every run with the same days, `-batch`, `-sample` and `-seed` |
 | `story`, `at` | the story's id, and the step's time: when the live rewrite wrote the next version |
-| `kind` | `missed` (the live rewrite had new facts, no version here), `extra` (a version here, none there), `agree-version`, `agree-none`; `skipped` (the answer names none of the story's new articles: `live` tells what was skipped); `control-repeat` and `control-stranger` for a control answered wrong |
+| `kind` | `missed` (the live rewrite had new facts, no version here), `extra` (a version here, none there), `agree-version`, `agree-none`; `skipped` (the answer names none of the story's new articles: `live` tells what was skipped); `control-repeat` and `control-stranger` for a control answered wrong; `control-repeat-quiet` for one answered right (no version) whose story took a sentence quietly from the article it already had |
 | `request`, `position`, `id` | where it was asked: the run's request, its place in it, and its id there (`s3`) |
 | `title`, `prevAt`, `prev` | the version before: its title, when it was written, and its sentences as the request numbered them (`n`, `text`, `sites`) |
 | `old` | the articles the story had: `site`, `url`, `title` (the request shows no more of them) |
@@ -265,11 +311,12 @@ with `.git`, or under one): keep it beside them. It is written anew, and added t
 | `target` | a control's article, by its id |
 | `answer` | what Gemini answered for the story: `unrelated`, `insert`, `replace`, `delete`, `cite`, `title`, `contradictions` |
 | `merge` | what the server made of it: `version` (one was made), `tripwire` and `tripwireWhy` (it would be written whole), `unrelated`, `unmentioned` (the new articles the answer names nowhere) and `skipped` (that is all of them), `stats` (the counts of the report), and `notes` |
-| `merge.notes` | one for each answered operation: `op`, `at`, `kind`, `text`, `sources`, and its `outcome`: `applied`, `left out` (sound, and the answer makes no version) or `dropped`, with `why` (says again what `s3.1` does, cites no new article of the story, garbled or cut short, ...). `makesVersion` marks a sentence the version rule takes, `old` one of such a kind whose articles were all published before the version before |
+| `merge.notes` | one for each answered operation: `op`, `at`, `kind`, `text`, `sources`, and its `outcome`: `applied`, `quiet` (in the story without a version: a quiet update), `left out` (sound, and the answer makes no version) or `dropped`, with `why` (says again what `s3.1` does, cites no new article of the story, garbled or cut short, ...). `text` and `sources` are as Gemini answered them, with what was written into them. `makesVersion` marks a sentence the version rule takes, `old` one of such a kind whose articles were all published before the version before: `quiet` when no version was made, unless it is a replacement older than its sentence |
 | `live` | the live rewrite's version of the step (none for a control): `at`, `title`, `new` (the sentences it gave as new, less the ones the version before said already: those are in `restated`), and `sentences`, all of it. A sentence has its `sites` and, in `articles`, the step's new articles among its sources: a "new" sentence without one stands on articles the story had |
 
 To read the misses, for one: `jq -c 'select(.kind == "missed")' file`; the skipped: `select(.kind == "skipped")`;
-the sentences the articles' time held back: `select(any(.merge.notes[]; .old))`.
+the sentences the articles' time held back: `select(any(.merge.notes[]; .old))`; the quiet updates:
+`select(any(.merge.notes[]; .outcome == "quiet"))`.
 
 ## What turning it on still needs
 
@@ -281,9 +328,12 @@ the sentences the articles' time held back: `select(any(.merge.notes[]; .old))`.
 - **Skipped stories.** The shadow's rule becomes the run's: a story whose answer names none of its new articles
   keeps its version, is asked about again in the next run, and after a second such answer is written whole.
 - **Bookkeeping.** A step that makes no version must still be saved in `summaries` under the new `StoryKey` (the
-  version before, with the new reports and footnotes, its `writtenAt` unchanged), or `Run` asks about it every run;
+  version before, with the new reports and footnotes and the sentences of a quiet update, its `writtenAt`
+  unchanged), or `Run` asks about it every run;
   `previous`, `Latest` and `PruneSummaries` then find it as they find a rewrite. It adds no row to
   `story_versions`, and must not reset the story's place in the thread linking. `similarStory` reads whole
   stories and is not touched.
-- **The app.** `Update.Kinds` is in the stored story and not in the GraphQL schema yet.
+- **The app.** `Update.Kinds` is in the stored story and not in the GraphQL schema yet. After a quiet update the
+  story's text has sentences that are in none of its updates and in no row of `story_versions`: what shows a
+  version's changes must take them for old text.
 - **The flags.** The shadow does not save the unrelated articles for the grouping; the mode must.

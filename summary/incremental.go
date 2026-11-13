@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/chencohensolutions/news-server-core-go/gemini"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
@@ -100,6 +101,16 @@ func (s Step) fresh(r scrape.ArticleSummary) (fresh, known bool) {
 		return wasSeen && seen.After(written), wasSeen
 	}
 	return published.After(written) || wasSeen && seen.After(written) && published.After(written.Add(-seenLate)), true
+}
+
+// when is when r was published: the site's time for it, or, when it gives none, when the server first saw it; ok is
+// false when neither is known.
+func (s Step) when(r scrape.ArticleSummary) (at time.Time, ok bool) {
+	if published, err := time.Parse(time.RFC3339, r.PublishedAt); err == nil {
+		return published, true
+	}
+	at, ok = s.Seen[r.URL]
+	return at, ok
 }
 
 // When a new article was published, as the request says it on the article's first line. The instructions
@@ -308,11 +319,11 @@ func render(step Step, p Plan, sentences, added []Sentence, addedKinds []string,
 // The instructions are apart from the whole writing's (storiesInstructions): that one tells Gemini not to base the
 // story on the version before, and this one that the version before stays.
 const incrementalSystem = `You keep the stories of a personal newspaper from Israeli news sites up to date. The input is several stories.
-Each story shows its title, the story so far as numbered sentences (each ends with the sites it cites, in
-parentheses), the titles of the articles it was written from, and then its new articles: each with an id in
-brackets, its site, time, whether it was published before or after the story so far was written
-("פורסמה לפני שהסיפור נכתב" or "פורסמה אחרי שהסיפור נכתב"; nothing when that isn't known), its title, subtitle
-and its body (the whole article, or its start).
+Each story shows its title, the story so far as numbered sentences (after a sentence's number, in brackets, are
+the sites it cites: "[מקורות: ...]" is a note for you, and no part of the sentence), the titles of the articles it
+was written from, and then its new articles: each with an id in brackets, its site, time, whether it was published
+before or after the story so far was written ("פורסמה לפני שהסיפור נכתב" or "פורסמה אחרי שהסיפור נכתב"; nothing
+when that isn't known), its title, subtitle and its body (the whole article, or its start).
 
 The story so far is written and stays as it is. You answer only what the new articles change in it. Never write a
 sentence of the story again, and never reword one.
@@ -348,9 +359,11 @@ A sentence's "kind" is one of:
 - "correction": a fact of the story changed or was wrong.
 - "detail": a fact about what the story already tells that it lacks: a name, a number, a place, a time, a quote.
   A breakdown of figures the story already sums up is a detail, not a development.
-- "background": what was before the event, or context. So is whatever an article published before the story was
-  written reports (a preview of the event, the run-up to it): it is not something that happened since.
+- "background": what was before the event, or context: a preview of the event, the run-up to it.
 - "reaction": what someone said about it.
+An article published before the story was written reports nothing that happened since: nothing from it is a
+"development". A fact of it about the event itself that the story lacks (a name, a number, a sum, an offer made) is
+a "detail"; the rest of it is "background".
 
 Account for every new article: the id of each one appears in "unrelated", or among the "sources" of an "insert", a
 "replace" or a "cite". Before you decide that an article only repeats the story, check it for what the story lacks:
@@ -359,7 +372,10 @@ official response. Each such fact is an insert. An article that has none of them
 sentences it states. Never invent a difference to have something to answer.
 
 Writing rules, all of them strict:
-- Write in Hebrew, in the plain, neutral register of a news agency.
+- Write Hebrew only, in the plain, neutral register of a news agency.
+- Never write ids or site names in a sentence's "text": sources go only in "sources", as the new articles' ids
+  ("a1"), never as a site's name. No "(a1)", no "[מקורות: ...]" and no site in parentheses after a sentence. Only a
+  contradiction's "text" names sites.
 - Facts only: what happened, who, where, when, numbers, quotes attributed to who said them. No opinions, no
   commentary, no speculation, no adjectives that judge, nothing the new articles don't say.
 - One fact a sentence, each fact once. When several new articles state it, cite all of them, one article a site.
@@ -519,6 +535,8 @@ type asked struct {
 	// one shown by its headline alone), by URL: for the replay's cases.
 	sent   []scrape.ArticleSummary
 	bodies map[string]string
+	// names are the names the request showed for the story's sites, by the sites' ids.
+	names map[string]string
 }
 
 // bodyChars is how much of an article's body a request shows.
@@ -529,14 +547,20 @@ func bodyChars(settings Settings) int {
 	return articleChars
 }
 
+// sourcesLabel marks the sites an old sentence cites in the request: "s1.2 [מקורות: site, site] the sentence". They
+// stand before the sentence, labelled, and not after it in parentheses as they once did: Gemini wrote new sentences
+// that ended the same way ("... (site)").
+const sourcesLabel = "מקורות"
+
 // storyText is one story of an incremental request: its title, the version before as numbered sentences with the
 // sites each cites, the titles of the articles it has, and the new articles whole (without the paragraphs an
 // article it has already gave, word for word).
 func (w *Writer) storyText(ctx context.Context, ids *sources, id string, step Step, p Plan, settings Settings) (string, *asked) {
-	a := &asked{step: step, plan: p, shown: map[string]string{}, bodies: map[string]string{}}
+	a := &asked{step: step, plan: p, shown: map[string]string{}, bodies: map[string]string{}, names: map[string]string{}}
 	site := map[string]string{}
 	for _, r := range step.Story.Reports {
 		site[r.URL] = w.siteName(r.SourceID)
+		a.names[r.SourceID] = site[r.URL]
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== סיפור %s ===\n", id)
@@ -549,7 +573,7 @@ func (w *Writer) storyText(ctx context.Context, ids *sources, id string, step St
 				sites = append(sites, name)
 			}
 		}
-		fmt.Fprintf(&b, "%s.%d %s (%s)\n", id, i+1, oneLine(s.Text), strings.Join(sites, ", "))
+		fmt.Fprintf(&b, "%s.%d [%s: %s] %s\n", id, i+1, sourcesLabel, strings.Join(sites, ", "), oneLine(s.Text))
 	}
 	seen := map[string]bool{}
 	if old := shown(stories.Story{Reports: p.Old}); len(old) > 0 {
@@ -651,10 +675,14 @@ type MergeStats struct {
 	// Unapplied are sound sentences left out because none of the answer's makes a version (background, reactions,
 	// details without a number).
 	Unapplied int `json:"unapplied"`
+	// Quiet are sound sentences that went into the story without a version: of a kind that makes one, from articles
+	// all published before the version before (they are among Old too).
+	Quiet int `json:"quiet"`
 	// Unanchored are inserted sentences whose place wasn't a sentence of the story: they lead.
 	Unanchored int `json:"unanchored"`
 	// Old are sound sentences of a kind that makes a version, all of whose articles were published before the
-	// version before: they make none (they go in when another sentence does).
+	// version before: they make none. They go in with the version when another sentence makes one, and quietly
+	// (Quiet) when none does.
 	Old int `json:"old"`
 }
 
@@ -671,6 +699,7 @@ func (s *MergeStats) add(o MergeStats) {
 	s.Unknown += o.Unknown
 	s.Garbled += o.Garbled
 	s.Unapplied += o.Unapplied
+	s.Quiet += o.Quiet
 	s.Unanchored += o.Unanchored
 	s.Old += o.Old
 }
@@ -678,7 +707,8 @@ func (s *MergeStats) add(o MergeStats) {
 // Merged is a story's answer applied to the version before.
 type Merged struct {
 	// Story is the story after the step. Without a version it is the version before, with the new articles among
-	// its reports and, where they state a sentence's fact, its footnotes.
+	// its reports and, where they state a sentence's fact, its footnotes; and with the sentences of a quiet update
+	// (Stats.Quiet), which change the text and nothing else: not the title, the time or the updates.
 	Story StorySummary
 	// Version says the answer makes a new version: what was inserted and replaced is its latest update.
 	Version bool
@@ -698,6 +728,7 @@ type Merged struct {
 // What became of an operation of an answer (MergeNote.Outcome).
 const (
 	NoteApplied = "applied"  // in the version; of a citation, a footnote the sentence got
+	NoteQuiet   = "quiet"    // in the story without a version: a quiet update
 	NoteLeftOut = "left out" // sound, and left out because the answer makes no version
 	NoteDropped = "dropped"  // dropped by a rule: Why says which
 )
@@ -719,7 +750,8 @@ type MergeNote struct {
 	// with a number the story lacks, with an article published after the version before among its sources.
 	MakesVersion bool `json:"makesVersion,omitempty"`
 	// Old says a sound sentence is of such a kind, and every article it cites was published before the version
-	// before: it makes no version.
+	// before: it makes no version. When no other sentence makes one its Outcome is NoteQuiet: it went into the
+	// story all the same.
 	Old bool `json:"old,omitempty"`
 }
 
@@ -733,7 +765,8 @@ const (
 	whyHalf       = "the answer deletes more than half the story"
 	whyNoFootnote = "adds no footnote: no new article of the story the sentence doesn't cite already"
 	whyNoVersion  = "no version: the answer has no development, no correction, and no detail with a number the story lacks"
-	whyOld        = "no version: every article it cites was published before the story was written"
+	whyQuiet      = "in the story without a version: every article it cites was published before the story was written"
+	whyStale      = "no version, and not in the story: every article it cites was published before the story was written, and none is known to be as late as the sentence it replaces"
 )
 
 var sentenceRef = regexp.MustCompile(`\bs(\d+)\.(\d+)\b`)
@@ -751,19 +784,146 @@ func sentenceNumber(ref, id string, n int) (int, bool) {
 	return i, err == nil && i >= 1 && i <= n
 }
 
-// sentence is one answered sentence with its footnotes as URLs, among allowed; or why it is dropped: "garbled"
-// (empty, an Arabic letter, or cut short) or "unsourced".
-func (s *sources) sentence(text string, refs []string, allowed map[string]bool) (Sentence, string) {
-	text = strings.TrimSpace(inlineRefs.ReplaceAllString(text, ""))
-	if text == "" || arabic.MatchString(text) || !finished(text) {
+// cited reads what Gemini wrote of a story's sources: the new articles by their ids, and what it wrote where an id
+// belongs, or where nothing does (round 3 of the replay: "(a1)" and "(site)" at a sentence's end, and a site's name
+// among a sentence's sources).
+type cited struct {
+	ids *sources
+	// sites are the story's sites as Gemini may write them: each one's id and its name in the request, in lower
+	// case.
+	sites map[string]bool
+	// only is the one new article of the story a site has in the request, by the same; a site with several, or
+	// with none, has none here.
+	only map[string]string
+}
+
+// siteKey is a site's id or name as it is looked up: without what surrounds it, in lower case.
+func siteKey(name string) string {
+	return strings.ToLower(strings.Trim(name, " \t\"'[](){}״׳„”“"))
+}
+
+// cited is what reads the sources of a's answer, asked in a request with ids.
+func (a *asked) cited(ids *sources) *cited {
+	c := &cited{ids: ids, sites: map[string]bool{}, only: map[string]string{}}
+	keys := func(site string) []string {
+		out := []string{siteKey(site)}
+		if name := siteKey(a.names[site]); name != "" && name != out[0] {
+			out = append(out, name)
+		}
+		return out
+	}
+	for _, r := range a.step.Story.Reports {
+		for _, key := range keys(r.SourceID) {
+			c.sites[key] = true
+		}
+	}
+	shown := map[string]int{}
+	for _, r := range a.plan.New {
+		if _, asked := ids.urls[r.URL]; !asked {
+			continue // not in the request
+		}
+		for _, key := range keys(r.SourceID) {
+			shown[key]++
+			c.only[key] = r.URL
+		}
+	}
+	for key, n := range shown {
+		if n != 1 {
+			delete(c.only, key)
+		}
+	}
+	return c
+}
+
+// refSplit parts the sources Gemini wrote in one string.
+var refSplit = regexp.MustCompile(`[,،;]`)
+
+// urls are the articles refs name: by their ids ("a3", "[a1, a2]"), and, where Gemini wrote a site's id or name in
+// an id's place, the story's one new article of that site. A site with several new articles names none of them.
+func (c *cited) urls(refs ...string) []string {
+	var out []string
+	add := func(url string) {
+		if url != "" && !contains(out, url) {
+			out = append(out, url)
+		}
+	}
+	for _, ref := range refs {
+		for _, id := range articleRef.FindAllString(ref, -1) {
+			add(c.ids.ids[id])
+		}
+		for _, name := range refSplit.Split(ref, -1) {
+			add(c.only[siteKey(name)])
+		}
+	}
+	return out
+}
+
+var (
+	// aside is what Gemini wrote in brackets in a sentence, with the space before it: "(a1)", "[a1, a3]", "(site)".
+	aside = regexp.MustCompile(`\s*[\[(（]([^\[\]()（）]*)[\])）]`)
+	// asideLabel is the request's label of an old sentence's sites, copied into such brackets.
+	asideLabel = regexp.MustCompile(`^\s*(?:` + sourcesLabel + `|מקור)\s*:`)
+	// refID is an article's id, or a sentence's number, alone.
+	refID = regexp.MustCompile(`^(?i:a\d+|s\d+(\.\d+)?)$`)
+)
+
+// clean is an answered sentence without the sources Gemini wrote into its text: brackets that hold nothing but
+// articles' ids, sentence numbers and the story's own sites, by id or name ("... נסגרו (a1).", "... נסגרו. (site)",
+// "[מקורות: site, a2]"). Any other brackets are the sentence's own and stay ("(בן 34)").
+func (c *cited) clean(text string) string {
+	return strings.TrimSpace(aside.ReplaceAllStringFunc(text, func(found string) string {
+		inside := asideLabel.ReplaceAllString(aside.FindStringSubmatch(found)[1], "")
+		if strings.TrimSpace(inside) == "" {
+			return found
+		}
+		for _, part := range refSplit.Split(inside, -1) {
+			if part = strings.TrimSpace(part); !refID.MatchString(part) && !c.sites[siteKey(part)] {
+				return found
+			}
+		}
+		return ""
+	}))
+}
+
+// garbled says text has a word Gemini garbled, or is not Hebrew: a word with a Hebrew letter and an Arabic one
+// (the model slips an Arabic letter into a Hebrew word), or a text with as many Arabic letters as Hebrew ones. An
+// Arabic word that stands apart in a Hebrew sentence (a quoted word, a name as it is written) is no garble: round 3
+// of the replay lost a fact to one. Narrower than the whole writing's check (arabic), which drops a sentence with
+// any Arabic letter.
+func garbled(text string) bool {
+	hebrew, other := 0, 0     // letters in all
+	inHebrew, inOther := 0, 0 // letters of the word being read
+	for _, r := range text {
+		switch {
+		case unicode.Is(unicode.Arabic, r) && unicode.IsLetter(r):
+			other++
+			inOther++
+		case unicode.Is(unicode.Hebrew, r) && unicode.IsLetter(r):
+			hebrew++
+			inHebrew++
+		case unicode.IsLetter(r) || unicode.IsMark(r):
+			// A letter of another script, or a point: the word goes on.
+		default:
+			inHebrew, inOther = 0, 0
+		}
+		if inHebrew > 0 && inOther > 0 {
+			return true
+		}
+	}
+	return other > 0 && other >= hebrew
+}
+
+// sentence is one answered sentence, without the sources written into its text, with its footnotes as URLs, among
+// allowed; or why it is dropped: "garbled" (empty, garbled, or cut short) or "unsourced".
+func (c *cited) sentence(text string, refs []string, allowed map[string]bool) (Sentence, string) {
+	text = c.clean(text)
+	if text == "" || garbled(text) || !finished(text) {
 		return Sentence{}, "garbled"
 	}
 	var urls []string
-	for _, ref := range refs {
-		for _, id := range articleRef.FindAllString(ref, -1) {
-			if url, ok := s.ids[id]; ok && allowed[url] && !contains(urls, url) && len(urls) < maxFootnotes {
-				urls = append(urls, url)
-			}
+	for _, url := range c.urls(refs...) {
+		if allowed[url] && len(urls) < maxFootnotes {
+			urls = append(urls, url)
 		}
 	}
 	if len(urls) == 0 {
@@ -778,7 +938,8 @@ type edit struct {
 	kind     string
 	at       int
 	replace  bool
-	note     int // its note, among Merged.Notes
+	note     int  // its note, among Merged.Notes
+	quiet    bool // it goes into the story though the answer makes no version
 }
 
 // merge applies what Gemini answered for a story (id in the request, "s1") to the version before. The rules:
@@ -788,14 +949,22 @@ type edit struct {
 //     doesn't have is dropped. Its text and footnotes are otherwise kept exactly; a citation adds a footnote.
 //   - A version is made only when a development or a correction survives, or a detail with a number the story
 //     lacks, and one of that sentence's articles was published after the version before was written (Step.fresh;
-//     an article whose time isn't known counts as one). Otherwise the text stays as it was (background and
-//     reactions alone don't make a version, and are left out), and the new articles are only among the story's
-//     reports and, where cited, its footnotes.
+//     an article whose time isn't known counts as one). Otherwise there is no version: background, reactions and
+//     details without a number are left out, and the new articles are only among the story's reports and, where
+//     cited, its footnotes.
+//   - A quiet update: without a version, a sentence of a kind that makes one, kept from it only by its articles'
+//     time, goes into the story all the same, with its sources. Nothing else changes: not the title, the time or
+//     the updates, and nothing is deleted. A replacement goes in so only when one of its articles is known to be as
+//     late as every source of the sentence it replaces: an older article must not undo what a later one told.
 //   - An answer that names none of the new articles is no answer (Skipped): the story is to be asked about again.
+//
+// What Gemini wrote of sources is read by cited: ids and sites written into a sentence's text are taken out of it,
+// and a site written where an id belongs is its one new article.
 func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merged {
 	p := a.plan
 	var m Merged
 	n := len(p.Kept)
+	refs := a.cited(ids)
 	allowed := map[string]bool{}
 	// old are the new articles known to be published before the version before was written.
 	old := map[string]bool{}
@@ -805,14 +974,14 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			old[r.URL] = true
 		}
 	}
-	m.Unmentioned = ids.unmentioned(answer, p)
+	m.Unmentioned = refs.unmentioned(answer, p)
 	m.Skipped = len(m.Unmentioned) > 0 && len(m.Unmentioned) == len(ids.asked(p))
 	for _, u := range answer.Unrelated {
 		if strings.TrimSpace(u.Event) == "" {
 			continue // no other event named: not shown to be about another one
 		}
-		for _, ref := range articleRef.FindAllString(u.ID, -1) {
-			if url := ids.ids[ref]; allowed[url] {
+		for _, url := range refs.urls(u.ID) {
+			if allowed[url] {
 				allowed[url] = false
 				m.Unrelated = append(m.Unrelated, url)
 			}
@@ -832,7 +1001,7 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		note(n)
 	}
 	accept := func(op MergeNote, at int, replace bool) {
-		s, why := ids.sentence(op.Text, op.Sources, allowed)
+		s, why := refs.sentence(op.Text, op.Sources, allowed)
 		switch {
 		case why == "garbled":
 			m.Stats.Garbled++
@@ -907,14 +1076,48 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			m.Notes[e.note].Old = true
 		}
 	}
-	for _, e := range edits {
+	// Without a version, the sentences the articles' time alone kept from making one go into the story quietly; a
+	// replacement only when it is not older than what it replaces.
+	reports := map[string]scrape.ArticleSummary{}
+	for _, r := range a.step.Story.Reports {
+		reports[r.URL] = r
+	}
+	current := func(replacement, sentence []string) bool {
+		var latest time.Time
+		for _, url := range sentence {
+			at, known := a.step.when(reports[url])
+			if !known {
+				return false
+			}
+			if at.After(latest) {
+				latest = at
+			}
+		}
+		for _, url := range replacement {
+			if at, known := a.step.when(reports[url]); known && !at.Before(latest) {
+				return true
+			}
+		}
+		return false
+	}
+	replacing := map[int]bool{} // the sentences whose replacement goes in
+	for i, e := range edits {
+		note := &m.Notes[e.note]
 		switch {
 		case m.Version:
-			m.Notes[e.note].Outcome = NoteApplied
-		case m.Notes[e.note].Old:
-			m.Notes[e.note].Outcome, m.Notes[e.note].Why = NoteLeftOut, whyOld
+			note.Outcome = NoteApplied
+		case !note.Old:
+			note.Outcome, note.Why = NoteLeftOut, whyNoVersion
+			m.Stats.Unapplied++
+		case e.replace && !current(e.sentence.Sources, p.Kept[e.at-1].Sources):
+			note.Outcome, note.Why = NoteLeftOut, whyStale
+			m.Stats.Unapplied++
 		default:
-			m.Notes[e.note].Outcome, m.Notes[e.note].Why = NoteLeftOut, whyNoVersion
+			note.Outcome, note.Why = NoteQuiet, whyQuiet
+			edits[i].quiet = true
+		}
+		if e.replace && (m.Version || edits[i].quiet) {
+			replacing[e.at] = true
 		}
 	}
 	// Footnotes: a new article that states an old sentence's fact.
@@ -931,12 +1134,10 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			continue
 		}
 		cited := false
-		for _, source := range c.Sources {
-			for _, ref := range articleRef.FindAllString(source, -1) {
-				if url := ids.ids[ref]; allowed[url] && !contains(kept[at-1].Sources, url) && len(kept[at-1].Sources) < maxFootnotes {
-					kept[at-1].Sources = append(kept[at-1].Sources, url)
-					cited = true
-				}
+		for _, url := range refs.urls(c.Sources...) {
+			if allowed[url] && !contains(kept[at-1].Sources, url) && len(kept[at-1].Sources) < maxFootnotes {
+				kept[at-1].Sources = append(kept[at-1].Sources, url)
+				cited = true
 			}
 		}
 		if cited {
@@ -949,22 +1150,17 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 	}
 	var unrelated []string
 	unrelated = append(unrelated, m.Unrelated...)
-	contradictions := ids.newContradictions(answer.Contradictions, id, kept, allowed, a.step.Story)
-	if !m.Version {
-		m.Stats.Unapplied = len(edits)
-		for _, ref := range answer.Delete {
-			note(MergeNote{Op: "delete", At: ref, Outcome: NoteLeftOut, Why: whyNoVersion})
-		}
-		m.Story = render(a.step, p, kept, nil, nil, contradictions, "", unrelated, now)
-		m.Story.HeadlineOnly = append(m.Story.HeadlineOnly, headlineOnly(ids, p, allowed)...)
-		return m
-	}
+	contradictions := refs.newContradictions(answer.Contradictions, id, kept, allowed, a.step.Story)
+	// Sentences are deleted only with a version.
 	deleted := map[int]bool{}
 	deletions := map[int]int{} // a deleted sentence's note
 	for _, ref := range answer.Delete {
 		op := MergeNote{Op: "delete", At: ref}
 		at, ok := sentenceNumber(ref, id, n)
 		switch {
+		case !m.Version:
+			op.Outcome, op.Why = NoteLeftOut, whyNoVersion
+			note(op)
 		case !ok:
 			m.Stats.Unknown++
 			drop(op, whyUnknown)
@@ -985,22 +1181,28 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		}
 	}
 	m.Stats.Deleted = len(deleted)
+	// The story: the version before with what goes in, every surviving sentence with a version and the quiet ones
+	// without. Only a version has what's new, and a new title.
 	var sentences, added []Sentence
 	var addedKinds []string
 	add := func(e edit) {
 		sentences = append(sentences, e.sentence)
-		added = append(added, e.sentence)
-		addedKinds = append(addedKinds, e.kind)
-		if e.replace {
+		switch {
+		case !m.Version:
+			m.Stats.Quiet++
+			return
+		case e.replace:
 			m.Stats.Replaced++
-		} else {
+		default:
 			m.Stats.Inserted++
 		}
+		added = append(added, e.sentence)
+		addedKinds = append(addedKinds, e.kind)
 	}
 	for at := 0; at <= n; at++ {
 		switch {
 		case at == 0 || deleted[at]:
-		case replaced[at]:
+		case replacing[at]:
 			for _, e := range edits {
 				if e.replace && e.at == at {
 					add(e)
@@ -1010,12 +1212,16 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			sentences = append(sentences, kept[at-1])
 		}
 		for _, e := range edits {
-			if !e.replace && e.at == at {
+			if !e.replace && e.at == at && (m.Version || e.quiet) {
 				add(e)
 			}
 		}
 	}
-	m.Story = render(a.step, p, sentences, added, addedKinds, contradictions, strings.TrimSpace(answer.Title), unrelated, now)
+	title := ""
+	if m.Version {
+		title = strings.TrimSpace(answer.Title)
+	}
+	m.Story = render(a.step, p, sentences, added, addedKinds, contradictions, title, unrelated, now)
 	m.Story.HeadlineOnly = append(m.Story.HeadlineOnly, headlineOnly(ids, p, allowed)...)
 	return m
 }
@@ -1034,13 +1240,11 @@ func (s *sources) asked(p Plan) []string {
 // unmentioned are the new articles of p the request showed that answer names nowhere: not as unrelated (with or
 // without the other event), and not among the sources of an inserted or replaced sentence, a citation or a side of
 // a contradiction, whatever the rules then make of it.
-func (s *sources) unmentioned(answer Answer, p Plan) []string {
+func (c *cited) unmentioned(answer Answer, p Plan) []string {
 	named := map[string]bool{}
 	name := func(refs ...string) {
-		for _, ref := range refs {
-			for _, id := range articleRef.FindAllString(ref, -1) {
-				named[s.ids[id]] = true
-			}
+		for _, url := range c.urls(refs...) {
+			named[url] = true
 		}
 	}
 	for _, u := range answer.Unrelated {
@@ -1061,7 +1265,7 @@ func (s *sources) unmentioned(answer Answer, p Plan) []string {
 		}
 	}
 	var out []string
-	for _, url := range s.asked(p) {
+	for _, url := range c.ids.asked(p) {
 		if !named[url] {
 			out = append(out, url)
 		}
@@ -1083,7 +1287,7 @@ func headlineOnly(ids *sources, p Plan, allowed map[string]bool) []string {
 // newContradictions are the answered contradictions that hold: two sides or more, each with its own value and its
 // own sites, one of them a new article. A side cites new articles by id, or the story's sentence that says it, whose
 // sources are then its own.
-func (s *sources) newContradictions(in []answerContradiction, id string, kept []Sentence, allowed map[string]bool, story stories.Story) []Sentence {
+func (refs *cited) newContradictions(in []answerContradiction, id string, kept []Sentence, allowed map[string]bool, story stories.Story) []Sentence {
 	siteOf := map[string]string{}
 	for _, r := range story.Reports {
 		siteOf[r.URL] = r.SourceID
@@ -1094,7 +1298,7 @@ func (s *sources) newContradictions(in []answerContradiction, id string, kept []
 		sites := map[string]int{}
 		values := map[string]bool{}
 		var urls []string
-		ok := len(c.Sides) >= 2 && text != "" && finished(text) && !arabic.MatchString(text)
+		ok := len(c.Sides) >= 2 && text != "" && finished(text) && !garbled(text)
 		fresh := false
 		for i, side := range c.Sides {
 			var sideURLs []string
@@ -1103,8 +1307,8 @@ func (s *sources) newContradictions(in []answerContradiction, id string, kept []
 					sideURLs = append(sideURLs, kept[at-1].Sources...)
 					continue
 				}
-				for _, ref := range articleRef.FindAllString(source, -1) {
-					if url := s.ids[ref]; allowed[url] {
+				for _, url := range refs.urls(source) {
+					if allowed[url] {
 						sideURLs = append(sideURLs, url)
 						fresh = true
 					}
@@ -1129,7 +1333,7 @@ func (s *sources) newContradictions(in []answerContradiction, id string, kept []
 		if ok && fresh {
 			out = append(out, Sentence{Text: text, Sources: urls})
 		} else {
-			s.oneSided++
+			refs.ids.oneSided++
 		}
 	}
 	return out

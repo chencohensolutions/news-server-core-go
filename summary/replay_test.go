@@ -225,7 +225,7 @@ func TestTheReplayAsksAboutTheArchivesSteps(t *testing.T) {
 		t.Fatalf("%+v", report)
 	}
 	prompt := rec.requests[0].Prompt
-	for _, want := range []string{"s1.2 2 כבישים נסגרו בגלל הגשם. (sitee)", "כתבות שכבר בסיפור:\n- siteh: גשם בצפון\n- sitee: סערה בצפון\nכתבות חדשות:\n[a1] siteg · פורסמה אחרי שהסיפור נכתב\nכותרת: הקישון עלה על גדותיו\nגוף: נחל הקישון עלה על גדותיו.",
+	for _, want := range []string{"s1.2 [מקורות: sitee] 2 כבישים נסגרו בגלל הגשם.\n", "כתבות שכבר בסיפור:\n- siteh: גשם בצפון\n- sitee: סערה בצפון\nכתבות חדשות:\n[a1] siteg · פורסמה אחרי שהסיפור נכתב\nכותרת: הקישון עלה על גדותיו\nגוף: נחל הקישון עלה על גדותיו.",
 		"=== סיפור s2 ===\nכותרת הסיפור: כותרת budget1", "=== סיפור s3 ===\nכותרת הסיפור: כותרת fire1", "[a3] siteg · פורסמה אחרי שהסיפור נכתב\nכותרת: השריפה כובתה"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("the request lacks %q:\n%s", want, prompt)
@@ -293,8 +293,9 @@ var controlAnswers = []string{`{"stories": [
 func TestTheReplaysControls(t *testing.T) {
 	dir, db := replayArchiveOf(t)
 	rec := &recorded{answers: controlAnswers}
+	var cases bytes.Buffer
 	w := &Writer{Gemini: rec, Store: db, Now: func() time.Time { return now }, Log: t.Logf}
-	report, err := w.Replay(context.Background(), ReplayOptions{Archive: dir, Batch: 4})
+	report, err := w.Replay(context.Background(), ReplayOptions{Archive: dir, Batch: 4, Cases: &cases})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,17 +306,30 @@ func TestTheReplaysControls(t *testing.T) {
 	}
 	first, second := rec.requests[0].Prompt, rec.requests[1].Prompt
 	// An article the story has, shown as new with its body, while the story's sentences still cite its site.
-	if !strings.Contains(first, "s1.2 השביתה החלה בשעה 6 בבוקר. (siteh)\nכתבות שכבר בסיפור:\n- sitee: הנמלים שובתים\nכתבות חדשות:\n[a1] siteh · פורסמה לפני שהסיפור נכתב\nכותרת: שביתה בנמלים\nגוף: עובדי הנמלים פתחו בשביתה.") {
+	if !strings.Contains(first, "s1.2 [מקורות: siteh] השביתה החלה בשעה 6 בבוקר.\nכתבות שכבר בסיפור:\n- sitee: הנמלים שובתים\nכתבות חדשות:\n[a1] siteh · פורסמה לפני שהסיפור נכתב\nכותרת: שביתה בנמלים\nגוף: עובדי הנמלים פתחו בשביתה.") {
 		t.Fatalf("the first request:\n%s", first)
 	}
 	// And an article of another story, after a story's own.
 	if !strings.Contains(first, "- sited: ההצבעה נדחתה\nכתבות חדשות:\n[a3] siteh · פורסמה לפני שהסיפור נכתב\nכותרת: גשם בצפון") || !strings.Contains(second, "=== סיפור s1 ===\nכותרת הסיפור: כותרת fire1") {
 		t.Fatalf("the requests:\n%s\n%s", first, second)
 	}
-	// Nothing comes of a story's own article, whatever was written from it: it was published before the story was
-	// written, so its development makes no version. The stranger that was named nowhere is not found.
-	if report.RepeatAsked != 2 || report.RepeatPassed != 2 || report.RepeatSkipped != 0 || report.StrangerAsked != 2 || report.StrangerPassed != 1 || report.StrangerSkipped != 1 {
+	// No version comes of a story's own article, whatever was written from it: it was published before the story
+	// was written, so its development makes none. It went into the story quietly, which is counted: the padding a
+	// quiet update can do. The stranger that was named nowhere is not found.
+	if report.RepeatAsked != 2 || report.RepeatPassed != 2 || report.RepeatSkipped != 0 || report.RepeatQuiet != 1 || report.StrangerAsked != 2 || report.StrangerPassed != 1 ||
+		report.StrangerSkipped != 1 {
 		t.Fatalf("%+v", report)
+	}
+	// The control changed quietly is among the cases, to be read: it passed, and its sentence is marked.
+	var padded *ReplayCase
+	for _, c := range casesOf(t, cases.Bytes()) {
+		if c.Kind == CaseRepeatQuiet {
+			padded = &c
+		}
+	}
+	if padded == nil || padded.N != 6 || padded.Merge.Version || padded.Merge.Stats.Quiet != 1 || padded.Merge.Notes[0].Outcome != NoteQuiet || padded.Merge.Notes[0].Kind != Development ||
+		padded.New[0].When != "before" || report.Cases != 5 {
+		t.Fatalf("%+v, %d cases", padded, report.Cases)
 	}
 	// The controls stay out of the steps' measures. Of the three steps, two were skipped by Gemini: they are
 	// neither a version nor "nothing new", and are counted apart, the one whose live rewrite had new facts (the
@@ -337,7 +351,7 @@ func TestTheReplaysControls(t *testing.T) {
 	}
 	var log bytes.Buffer
 	report.Print(&log)
-	for _, want := range []string{"an article the story has, shown as new, made nothing: 2 of 2 (100%); 0 of the answers named no new article",
+	for _, want := range []string{"an article the story has, shown as new, made no version: 2 of 2 (100%); 0 of the answers named no new article (skipped: nothing came of them); sentences of it were added quietly in 1",
 		"an article of another story was found unrelated:      1 of 2 (50%); 1 of the answers named no new article", "    3: 2 of 2; 1 of 2; 0 of 0",
 		`skipped by Gemini (the answer names none of the story's new articles; not "nothing new": asked again): 2 (67%); the live rewrite had new facts in 1 of them`,
 		"of the 1 not skipped, a new version: 1 (100%); no version: 0 (0%)",
@@ -409,11 +423,11 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 		`skipped by Gemini (the answer names none of the story's new articles; not "nothing new": asked again): 1 (25%); the live rewrite had new facts in 1 of them`,
 		"live had new facts:  1 a version, 1 none, 1 skipped by Gemini: recall 50% without the skipped, 33% with them as misses",
 		"the tripwire would write 1 of the 1 skipped whole",
-		"the 1 without a version, by what Gemini answered: sound sentences that the version rule left out in 1; only sentences the other rules dropped in 0; no sentence in 0",
-		"the tripwire would write 0 of the 1 whole (0 of them with sound sentences left out); neither in 0",
-		"recall counting the sound sentences left out (Gemini found facts, a version or not): 100%",
+		"the 1 without a version, by what Gemini answered: sound sentences that made no version in 1; only sentences the other rules dropped in 0; no sentence in 0",
+		"the tripwire would write 0 of the 1 whole (0 of them with sound sentences that made no version); neither in 0",
+		"recall counting the sound sentences that made no version (Gemini found facts, a version or not): 100%",
 		"recall counting the tripwire's whole writings (a version, or written whole): 50%; counting both: 100%",
-		"the 1 without a version: sound sentences that the version rule left out in 0; the tripwire would write 0 whole (0 of them with sound sentences left out)",
+		"the 1 without a version: sound sentences that made no version in 0; the tripwire would write 0 whole (0 of them with sound sentences that made no version)",
 		"left out with no version made, by kind: 0 development, 0 correction, 0 detail, 1 background, 0 reaction",
 	} {
 		if !strings.Contains(log.String(), want) {
@@ -438,7 +452,7 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 	// The version before as the request numbered it, the articles it had by their titles, and the new article as
 	// the request showed it: its body is the request's, to the letter.
 	if len(rain.Prev) != 2 || rain.Prev[1].N != "s1.2" || rain.Prev[1].Text != "2 כבישים נסגרו בגלל הגשם." || strings.Join(rain.Prev[0].Sites, ",") != "siteh,sitee" ||
-		!strings.Contains(prompt, rain.Prev[1].N+" "+rain.Prev[1].Text+" (sitee)\n") {
+		!strings.Contains(prompt, rain.Prev[1].N+" [מקורות: sitee] "+rain.Prev[1].Text+"\n") {
 		t.Fatalf("%+v", rain.Prev)
 	}
 	if len(rain.Old) != 2 || rain.Old[0].Title != "גשם בצפון" || rain.Old[0].Body != "" || rain.Old[0].ID != "" {
@@ -526,7 +540,8 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The request says the preview is older than the story, and its detail with a number makes no version: counted
-	// as a step the articles' time kept from one, where the live rewrite had new facts.
+	// as a step the articles' time kept from one, where the live rewrite had new facts. The detail goes into the
+	// story quietly, and that is counted apart, by its kind.
 	if want := "[a4] siteg · 2026-11-10T16:00:00Z · פורסמה לפני שהסיפור נכתב\nכותרת: לקראת הפסטיבל\n"; !strings.Contains(rec.requests[0].Prompt, want) {
 		t.Fatalf("the request lacks %q:\n%s", want, rec.requests[0].Prompt)
 	}
@@ -534,12 +549,19 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 		report.ArticlesAfter != 3 || report.ArticlesBefore != 1 || report.ArticlesUndated != 0 || report.GeminiSkipped != 0 {
 		t.Fatalf("%+v", report)
 	}
+	if report.Stats.Quiet != 1 || report.Stats.Unapplied != 1 || report.MissedUpdated != 1 || report.QuietUpdated != 0 || report.QuietKinds[Detail] != 1 || len(report.QuietKinds) != 1 ||
+		report.LeftOutKinds[Detail] != 0 || report.LeftOutKinds[Background] != 1 || report.Kinds[Detail] != 0 {
+		t.Fatalf("%+v", report)
+	}
 	var log bytes.Buffer
 	report.Print(&log)
 	for _, want := range []string{
 		"the real steps' 4 new articles: 3 (75%) published after the version before, 1 (25%) before it, 0 of no known time",
 		"in 1 steps without one: 1 where live had new facts, 0 where it had none",
-		"of a kind that makes a version, but from articles published before the version before: 1",
+		"of a kind that makes a version, but from articles published before the version before: 1; of them added quietly, with no version made: 1",
+		"quiet updates (such sentences went into the story with no version and nothing in what's new) in 1 steps: 1 where live had new facts, 0 where it had none",
+		"added quietly with no version made, by kind: 0 development, 0 correction, 1 detail, 0 background, 0 reaction",
+		"left out with no version made, by kind: 0 development, 0 correction, 0 detail, 1 background, 0 reaction",
 	} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("the report lacks %q:\n%s", want, log.String())
@@ -548,8 +570,12 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 	got := casesOf(t, cases.Bytes())
 	preview := got[len(got)-1]
 	if preview.Story != "festival" || preview.Kind != CaseMissed || preview.Merge.Version || preview.New[0].When != "before" || preview.New[0].Published != "2026-11-10T16:00:00Z" ||
-		strings.Join(notesOf(Merged{Notes: preview.Merge.Notes}), "; ") != "insert s4.1: left out ("+whyOld+")" || !preview.Merge.Notes[0].Old || got[0].New[0].When != "after" {
+		strings.Join(notesOf(Merged{Notes: preview.Merge.Notes}), "; ") != "insert s4.1: quiet ("+whyQuiet+")" || !preview.Merge.Notes[0].Old || got[0].New[0].When != "after" {
 		t.Fatalf("%+v", preview)
+	}
+	// The case marks the sentence: its outcome is "quiet", and the step's count has it.
+	if preview.Merge.Notes[0].Outcome != NoteQuiet || preview.Merge.Stats.Quiet != 1 || !strings.Contains(cases.String(), `"outcome":"quiet"`) {
+		t.Fatalf("%+v", preview.Merge)
 	}
 }
 

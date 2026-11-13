@@ -298,16 +298,21 @@ func TestOnlyAnArticlePublishedSinceTheStoryMakesAVersion(t *testing.T) {
 	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, before, after)
 
 	// What an article from before the story tells is no news of it, whatever kind Gemini gave it: no version, and
-	// the text, the title and the time stay. The later article is a footnote.
+	// the title, the time and what's new stay. Its sentences go into the text all the same, quietly, with their
+	// source. The later article is a footnote.
 	m := merge(a, answerOf(t, oldNews), "s1", ids, now)
-	if m.Version || texts(m.Story.Sentences) != texts(prev.Sentences) || m.Story.Title != prev.Title || !m.Story.WrittenAt.Equal(prev.WrittenAt) || len(m.Story.Updates) != 1 ||
-		len(m.Story.Reports) != 4 || len(m.Story.Sentences[0].Sources) != 3 {
+	if m.Version || m.Story.Title != prev.Title || !m.Story.WrittenAt.Equal(prev.WrittenAt) || len(m.Story.Updates) != 1 || len(m.Story.Updates[0].Sentences) != 1 ||
+		len(m.Story.Reports) != 4 || len(m.Story.Sentences[1].Sources) != 3 {
 		t.Fatalf("%+v", m.Story)
 	}
-	if m.Stats != (MergeStats{Asked: 2, Unapplied: 2, Old: 2, Cited: 1}) {
+	if got := texts(m.Story.Sentences); got != "נחל הקישון עלה על גדותיו. | גשם כבד ירד הבוקר בצפון. | 2 כבישים נסגרו בגלל הגשם. | הכבישים נסגרו בשעה 7 בבוקר. | ראש העיר אמר שהכבישים ייפתחו מחר." ||
+		strings.Join(m.Story.Sentences[0].Sources, " ") != before.URL {
+		t.Fatalf("sentences: %s", got)
+	}
+	if m.Stats != (MergeStats{Asked: 2, Quiet: 2, Old: 2, Cited: 1}) {
 		t.Fatalf("%+v", m.Stats)
 	}
-	want := "insert top: left out (" + whyOld + "); insert s1.2: left out (" + whyOld + "); cite s1.1: applied"
+	want := "insert top: quiet (" + whyQuiet + "); insert s1.2: quiet (" + whyQuiet + "); cite s1.1: applied"
 	if got := strings.Join(notesOf(m), "; "); got != want || !m.Notes[0].Old || !m.Notes[1].Old {
 		t.Fatalf("notes\n got %s\nwant %s", got, want)
 	}
@@ -345,6 +350,200 @@ func TestOnlyAnArticlePublishedSinceTheStoryMakesAVersion(t *testing.T) {
 	a.step.Seen[undated.URL] = prev.WrittenAt.Add(time.Minute)
 	if m = merge(a, answerOf(t, oldNews), "s1", ids, now); !m.Version {
 		t.Fatalf("%+v", m.Stats)
+	}
+}
+
+// A recorded answer about the rain story with two new articles, both published before the story was written: a
+// correction of its second sentence and a deletion; a detail with a number, a detail without one, background and a
+// reaction (both with numbers), and a new title.
+const quietAnswer = `{"stories": [{"story": "s1", "unrelated": [],
+	"insert": [{"after": "s1.2", "kind": "detail", "text": "בחיפה ירדו 80 מילימטרים של גשם.", "sources": ["a1"]},
+		{"after": "top", "kind": "detail", "text": "הגשם החל לפנות בוקר.", "sources": ["a1"]},
+		{"after": "top", "kind": "background", "text": "בשנת 2020 הוצף האזור פעמיים.", "sources": ["a1"]},
+		{"after": "s1.3", "kind": "reaction", "text": "המשטרה קראה לנהגים להימנע מנסיעה ב-6 צמתים.", "sources": ["a2"]}],
+	"replace": [{"sentence": "s1.2", "kind": "correction", "text": "4 כבישים נסגרו בגלל הגשם.", "sources": ["a2"]}],
+	"delete": ["s1.3"], "cite": [], "title": "80 מילימטרים בחיפה", "contradictions": []}]}`
+
+func TestAQuietUpdateChangesTheTextAndMakesNoVersion(t *testing.T) {
+	prev := rainStory() // written an hour ago
+	at := func(d time.Duration) string { return scrape.FormatInstant(prev.WrittenAt.Add(d)) }
+	first, second, source := rainSiteg, rainSited, rainSiteE
+	first.PublishedAt, second.PublishedAt, source.PublishedAt = at(-2*time.Hour), at(-2*time.Hour), at(-3*time.Hour)
+	a, ids := askedOf(t, prev, rainSiteh, source, first, second)
+	m := merge(a, answerOf(t, quietAnswer), "s1", ids, now)
+	// No version: the title, the time and what's new are the version before's, and nothing is deleted.
+	if m.Version || m.Story.Title != prev.Title || !m.Story.WrittenAt.Equal(prev.WrittenAt) || len(m.Story.Updates) != 1 || texts(m.Story.Updates[0].Sentences) != texts(prev.Updates[0].Sentences) {
+		t.Fatalf("%+v", m.Story)
+	}
+	// The correction and the detail with a number are in the text, each with its own source: the kinds that make a
+	// version, kept from one only by their articles' time. A detail without a number, background and a reaction
+	// are left out, as they are from any article when no version is made: a quiet update doesn't pad the story.
+	want := "גשם כבד ירד הבוקר בצפון. | 4 כבישים נסגרו בגלל הגשם. | בחיפה ירדו 80 מילימטרים של גשם. | ראש העיר אמר שהכבישים ייפתחו מחר."
+	if got := texts(m.Story.Sentences); got != want {
+		t.Fatalf("sentences\n got %s\nwant %s", got, want)
+	}
+	if got := m.Story.Sentences; strings.Join(got[1].Sources, " ") != second.URL || strings.Join(got[2].Sources, " ") != first.URL || len(m.Story.Reports) != 4 {
+		t.Fatalf("%+v", got)
+	}
+	if m.Stats != (MergeStats{Asked: 5, Quiet: 2, Old: 2, Unapplied: 3}) {
+		t.Fatalf("%+v", m.Stats)
+	}
+	wantNotes := []string{
+		"replace s1.2: quiet (" + whyQuiet + ")",
+		"insert s1.2: quiet (" + whyQuiet + ")",
+		"insert top: left out (" + whyNoVersion + ")",
+		"insert top: left out (" + whyNoVersion + ")",
+		"insert s1.3: left out (" + whyNoVersion + ")",
+		"delete s1.3: left out (" + whyNoVersion + ")",
+	}
+	if got := notesOf(m); strings.Join(got, "\n") != strings.Join(wantNotes, "\n") || m.Notes[0].Outcome != NoteQuiet || !m.Notes[0].Old || m.Notes[2].Old || m.Notes[0].MakesVersion {
+		t.Fatalf("notes\n got %s\nwant %s", strings.Join(got, "\n"), strings.Join(wantNotes, "\n"))
+	}
+
+	// A replacement goes in quietly only from an article as late as the sentence's own sources: an older article
+	// doesn't undo what a later one told. Nor when the sentence's sources have no known time.
+	for name, published := range map[string]string{"an older article": at(-4 * time.Hour), "a source of no known time": ""} {
+		stale, source := second, rainSiteE
+		if published == "" {
+			source.PublishedAt = ""
+		} else {
+			stale.PublishedAt = published
+		}
+		a, ids := askedOf(t, prev, rainSiteh, source, first, stale)
+		m := merge(a, answerOf(t, quietAnswer), "s1", ids, now)
+		want := "גשם כבד ירד הבוקר בצפון. | 2 כבישים נסגרו בגלל הגשם. | בחיפה ירדו 80 מילימטרים של גשם. | ראש העיר אמר שהכבישים ייפתחו מחר."
+		if got := texts(m.Story.Sentences); m.Version || got != want || m.Stats != (MergeStats{Asked: 5, Quiet: 1, Old: 2, Unapplied: 4}) ||
+			notesOf(m)[0] != "replace s1.2: left out ("+whyStale+")" {
+			t.Errorf("%s: %s\n%+v\n%v", name, got, m.Stats, notesOf(m))
+		}
+	}
+
+	// Nothing quiet of an article published since the story: its detail with a number makes a version, and then
+	// everything sound goes in, the deletion and the title too.
+	second.PublishedAt = at(20 * time.Minute)
+	a, ids = askedOf(t, prev, rainSiteh, source, first, second)
+	if m = merge(a, answerOf(t, quietAnswer), "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 5, Inserted: 4, Replaced: 1, Deleted: 1, Old: 1}) || m.Story.Title != "80 מילימטרים בחיפה" {
+		t.Fatalf("%+v %v", m.Stats, notesOf(m))
+	}
+}
+
+// A recorded answer about the rain story with two new articles (a1 of the site named "Site G", a2 of sited), with
+// sources written as round 3 of the replay had them: an id and a site in brackets after a sentence, the request's
+// own label copied, and a site where an id belongs.
+const citedAnswer = `{"stories": [{"story": "s1", "unrelated": [],
+	"insert": [{"after": "top", "kind": "development", "text": "נחל הקישון עלה על גדותיו (a1).", "sources": ["a1"]},
+		{"after": "s1.1", "kind": "development", "text": "המשטרה פתחה את כביש החוף לתנועה. (Site G)", "sources": ["Site G"]},
+		{"after": "s1.2", "kind": "detail", "text": "בחיפה ירדו 80 מילימטרים של גשם [מקורות: siteg, a2].", "sources": ["(sited)"]},
+		{"after": "s1.3", "kind": "detail", "text": "ראש העיר לוי (בן 61) הודיע על פתיחת 5 מקלטים (לפי העירייה).", "sources": ["a2"]}],
+	"replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": ["siteg"]}], "title": "", "contradictions": []}]}`
+
+func TestSourcesWrittenIntoASentenceAreTakenOutOfIt(t *testing.T) {
+	prev := rainStory()
+	names := map[string]string{"siteh": "siteh", "sitee": "SiteE", "siteg": "Site G"}
+	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, rainSiteg, rainSited)
+	a.names = names
+	m := merge(a, answerOf(t, citedAnswer), "s1", ids, now)
+	// Every sentence stands, without the ids and sites written into it; the sentence's own brackets stay. Before,
+	// the second was dropped as cut short: it doesn't end with its period.
+	want := "נחל הקישון עלה על גדותיו. | גשם כבד ירד הבוקר בצפון. | המשטרה פתחה את כביש החוף לתנועה. | 2 כבישים נסגרו בגלל הגשם. | בחיפה ירדו 80 מילימטרים של גשם. | " +
+		"ראש העיר אמר שהכבישים ייפתחו מחר. | ראש העיר לוי (בן 61) הודיע על פתיחת 5 מקלטים (לפי העירייה)."
+	if got := texts(m.Story.Sentences); !m.Version || got != want || m.Stats != (MergeStats{Asked: 4, Inserted: 4, Cited: 1}) {
+		t.Fatalf("%+v\n got %s\nwant %s\n%v", m.Stats, got, want, notesOf(m))
+	}
+	// A site written where an id belongs is its one new article of the story: by its name, and by its id.
+	got := m.Story.Sentences
+	if strings.Join(got[2].Sources, " ") != rainSiteg.URL || strings.Join(got[4].Sources, " ") != rainSited.URL || !contains(got[1].Sources, rainSiteg.URL) || m.Skipped || len(m.Unmentioned) != 0 {
+		t.Fatalf("%+v, unmentioned %v", got, m.Unmentioned)
+	}
+
+	c := a.cited(ids)
+	for text, want := range map[string]string{
+		"נחל הקישון עלה על גדותיו (a1).":                 "נחל הקישון עלה על גדותיו.",
+		"נחל הקישון עלה על גדותיו [a1, a2].":             "נחל הקישון עלה על גדותיו.",
+		"נחל הקישון עלה על גדותיו. （a1）":                 "נחל הקישון עלה על גדותיו.",
+		"נחל הקישון עלה על גדותיו. (SiteE, siteg)":       "נחל הקישון עלה על גדותיו.",
+		"נחל הקישון (Site G) עלה על גדותיו.":             "נחל הקישון עלה על גדותיו.",
+		"נחל הקישון עלה על גדותיו [מקורות: site g; A2].": "נחל הקישון עלה על גדותיו.",
+		"לפי s1.2 (s1.2), הכבישים נסגרו.":                "לפי s1.2, הכבישים נסגרו.",
+		// Not sources: a site the story doesn't have, words, and brackets with more than sources in them.
+		"נחל הקישון עלה על גדותיו (sitez).":     "נחל הקישון עלה על גדותיו (sitez).",
+		"נחל הקישון (בצפון) עלה על גדותיו.":     "נחל הקישון (בצפון) עלה על גדותיו.",
+		"נחל הקישון עלה על גדותיו (לפי siteg).": "נחל הקישון עלה על גדותיו (לפי siteg).",
+		"נחל הקישון עלה על גדותיו (a1, בן 61).": "נחל הקישון עלה על גדותיו (a1, בן 61).",
+		"נחל הקישון עלה על גדותיו ().":          "נחל הקישון עלה על גדותיו ().",
+		"נחל הקישון עלה על גדותיו [מקורות: ].":  "נחל הקישון עלה על גדותיו [מקורות: ].",
+	} {
+		if got := c.clean(text); got != want {
+			t.Errorf("clean(%q) = %q, want %q", text, got, want)
+		}
+	}
+
+	// A site with two new articles in the story names neither: the sentence has no source. One named only by its
+	// site is named all the same: the answer didn't skip the story.
+	second := scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/rain/2", Title: "הצפות בגליל"}
+	step := Step{Story: stories.Story{Reports: []scrape.ArticleSummary{rainSiteh, rainSiteE, rainSiteg, second, rainSited}}, Prev: prev, Full: 4}
+	a, ids = &asked{step: step, plan: plan(step, DefaultSettings, false), names: names}, newSources()
+	for _, r := range a.plan.New {
+		ids.id(r.URL)
+	}
+	m = merge(a, Answer{
+		Insert: []AnswerInsert{{After: "top", Kind: "development", Text: "נחל הקישון עלה על גדותיו.", Sources: []string{"Site G"}}},
+		Cite:   []AnswerCite{{Sentence: "s1.1", Sources: []string{"sited"}}},
+	}, "s1", ids, now)
+	if m.Version || m.Stats != (MergeStats{Asked: 1, Unsourced: 1, Cited: 1}) || m.Skipped || strings.Join(m.Unmentioned, " ") != rainSiteg.URL+" "+second.URL {
+		t.Fatalf("%+v, unmentioned %v", m.Stats, m.Unmentioned)
+	}
+	// The request shows an old sentence's sites before it, labelled, where they are not copied as its end; and the
+	// instructions say what the label is.
+	w := &Writer{Articles: func(context.Context, string) *scrape.Article { return nil }, SiteName: func(id string) string { return names[id] }}
+	text, asked := w.storyText(context.Background(), newSources(), "s1", a.step, a.plan, DefaultSettings)
+	if !strings.Contains(text, "s1.1 [מקורות: siteh, SiteE] גשם כבד ירד הבוקר בצפון.\ns1.2 [מקורות: SiteE] 2 כבישים נסגרו בגלל הגשם.\n") || asked.names["siteg"] != "Site G" ||
+		!strings.Contains(incrementalSystem, `"[`+sourcesLabel+`: ...]"`) || !strings.Contains(incrementalSystem, `Never write ids or site names in a sentence's "text"`) ||
+		!strings.Contains(incrementalSystem, "Write Hebrew only") {
+		t.Fatalf("the request:\n%s", text)
+	}
+}
+
+// A recorded answer about the rain story with one new article: a sentence that quotes an Arabic word, one with an
+// Arabic word of its own, and two with an Arabic letter inside a Hebrew word.
+const arabicAnswer = `{"stories": [{"story": "s1", "unrelated": [],
+	"insert": [{"after": "top", "kind": "development", "text": "על השלט שהוצב בכניסה לכביש נכתב „مغلق”.", "sources": ["a1"]},
+		{"after": "s1.1", "kind": "development", "text": "המועצה פרסמה הודעה בשם تنبيه לתושבי 3 יישובים.", "sources": ["a1"]},
+		{"after": "s1.2", "kind": "development", "text": "נחל הקישון עלה על גדוتיו.", "sources": ["a1"]},
+		{"after": "s1.3", "kind": "development", "text": "המשטרה פתחה את כביש החוף לתנועهה.", "sources": ["a1"]}],
+	"replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
+
+func TestAnArabicWordIsNoGarbleAndAnArabicLetterInAHebrewWordIs(t *testing.T) {
+	for text, want := range map[string]bool{
+		"גשם כבד ירד הבוקר בצפון.":                   false,
+		"על השלט נכתב „مغلق”.":                       false, // a quoted word
+		"המועצה פרסמה הודעה בשם تنبيه לתושבים.":      false, // a word of its own
+		"על השלט נכתב „الطريق مغلق” באותיות גדולות.": false, // two of them
+		"ה־„مغلق” נכתב על השלט 3 פעמים.":             false, // after a hyphen and a quote mark
+		"נחל הקישון עלה על גדוتיו.":                  true,  // a letter inside a Hebrew word
+		"נחל הקישון עלה עלمغلق גדותיו.":              true,  // a word run into a Hebrew one
+		"על השלט נכתב בمغلق.":                        true,  // a Hebrew prefix on it
+		"الطريق مغلق بسبب الأمطار.":                  true,  // not Hebrew
+		"הכביש مغلق بسبب الأمطار الغزيرة.":           true,  // mostly not
+	} {
+		if got := garbled(text); got != want {
+			t.Errorf("garbled(%q) = %v, want %v", text, got, want)
+		}
+	}
+	a, ids := askedOf(t, rainStory(), rainSiteh, rainSiteE, rainSiteg)
+	m := merge(a, answerOf(t, arabicAnswer), "s1", ids, now)
+	want := "על השלט שהוצב בכניסה לכביש נכתב „مغلق”. | גשם כבד ירד הבוקר בצפון. | המועצה פרסמה הודעה בשם تنبيه לתושבי 3 יישובים. | 2 כבישים נסגרו בגלל הגשם. | ראש העיר אמר שהכבישים ייפתחו מחר."
+	if got := texts(m.Story.Sentences); !m.Version || got != want || m.Stats != (MergeStats{Asked: 4, Inserted: 2, Garbled: 2}) {
+		t.Fatalf("%+v\n got %s\nwant %s", m.Stats, got, want)
+	}
+	if got := notesOf(m); got[2] != "insert s1.2: dropped ("+whyGarbled+")" || got[3] != "insert s1.3: dropped ("+whyGarbled+")" {
+		t.Fatalf("%v", got)
+	}
+	// The whole writing's check is as it was: any Arabic letter drops the sentence.
+	live := newSources()
+	live.id(rainSiteg.URL)
+	if got := live.sentences([]answerSentence{{Text: "על השלט נכתב „مغلق”.", Sources: []string{"a1"}}, {Text: "נחל הקישון עלה על גדותיו.", Sources: []string{"a1"}}}, nil); len(got) != 1 || live.cut != 1 {
+		t.Fatalf("%+v, %d cut", got, live.cut)
 	}
 }
 

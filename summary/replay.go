@@ -44,7 +44,8 @@ type ReplayOptions struct {
 	// Offset is how many stories of the selection, controls among them, are skipped: a replay that stopped is
 	// gone on with from the story it stopped at (ReplayReport.Next), under the same other options.
 	Offset int
-	// Cases gets a line of JSON for every real step answered and every control answered wrong (ReplayCase).
+	// Cases gets a line of JSON for every real step answered, every control answered wrong, and every repeat control
+	// whose story a quiet update changed (ReplayCase).
 	Cases io.Writer
 }
 
@@ -121,8 +122,8 @@ type ReplayReport struct {
 	LiveListed                       int // real steps whose live "new" list wasn't empty, restated or not
 	Tripwire                         int // steps sent to be written whole after Gemini found nothing
 	// The steps without a version, apart by whether the live rewrite had new facts (Missed, of LiveNewQuiet) or
-	// none (Quiet, of LiveQuietQuiet): Found are the ones where Gemini answered sound sentences and the version
-	// rule left them out, Tripwire the ones sent to be written whole, Both the ones that are both. MissedDropped
+	// none (Quiet, of LiveQuietQuiet): Found are the ones where Gemini answered sound sentences that made no version
+	// (left out, or added quietly), Tripwire the ones sent to be written whole, Both the ones that are both. MissedDropped
 	// are the missed steps where Gemini answered sentences and the other rules dropped every one (in the rest of
 	// the missed it answered none).
 	MissedFound, MissedTripwire, MissedBoth int
@@ -136,6 +137,9 @@ type ReplayReport struct {
 	// from it because its articles were all published before the version before (MergeStats.Old): of the steps
 	// where the live rewrite had new facts, and of the ones where it had none.
 	MissedOld, QuietOld int
+	// MissedUpdated and QuietUpdated are the steps without a version whose story a quiet update changed all the
+	// same (MergeStats.Quiet): sentences went into the text, with no version and nothing in what's new.
+	MissedUpdated, QuietUpdated int
 	// The new articles the requests showed for the real steps, by when they were published against the version
 	// before (Step.fresh): after it, before it, or not known. Unmentioned are the ones, of the steps answered, that
 	// their story's answer names nowhere.
@@ -144,8 +148,10 @@ type ReplayReport struct {
 
 	Stats MergeStats     // of the real steps
 	Kinds map[string]int // the sentences that went into versions, by kind
-	// LeftOutKinds are the sound sentences left out with no version made, by kind.
+	// LeftOutKinds are the sound sentences left out with no version made, by kind; QuietKinds the ones that went
+	// into a story with no version made (a quiet update), by kind.
 	LeftOutKinds map[string]int
+	QuietKinds   map[string]int
 	Cases        int // lines written to ReplayOptions.Cases
 
 	RepeatAsked, RepeatPassed     int
@@ -153,7 +159,10 @@ type ReplayReport struct {
 	// The controls whose answer names none of the story's new articles: of the repeats (nothing came of those, so
 	// they pass), and of the strangers (not found unrelated: they fail).
 	RepeatSkipped, StrangerSkipped int
-	Positions                      []PositionStats
+	// RepeatQuiet are the repeats that passed and whose story a quiet update changed: sentences added from an
+	// article the story was written from. No version, so no failure; it is the padding a quiet update can do.
+	RepeatQuiet int
+	Positions   []PositionStats
 
 	// Sizes: the requests' characters (instructions and text) and tokens; the answers'; and, for the real steps
 	// asked, their part of the requests and the live rewrite's request and answer, in characters.
@@ -484,7 +493,7 @@ func (w *Writer) replayItems(ctx context.Context, steps []ReplayStep, arch *repl
 // share the day); the articles come from the archive (it sets w.Articles). It stops, with what it has, at
 // MaxRequests, at the day's budget, or when Gemini refuses.
 func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport, error) {
-	report := &ReplayReport{Dry: opts.Dry, Rebuild: map[string]int{}, Kinds: map[string]int{}, LeftOutKinds: map[string]int{}}
+	report := &ReplayReport{Dry: opts.Dry, Rebuild: map[string]int{}, Kinds: map[string]int{}, LeftOutKinds: map[string]int{}, QuietKinds: map[string]int{}}
 	settings, err := LoadSettings(ctx, w.Store)
 	if err != nil {
 		return report, err
@@ -653,11 +662,17 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 				if m.Skipped {
 					report.RepeatSkipped++
 				}
-				if passed {
+				switch {
+				case !passed:
+					kind = CaseRepeat
+				case m.Stats.Quiet > 0:
 					report.RepeatPassed++
 					at.Passed++
-				} else {
-					kind = CaseRepeat
+					report.RepeatQuiet++
+					kind = CaseRepeatQuiet
+				default:
+					report.RepeatPassed++
+					at.Passed++
 				}
 			case controlStranger:
 				passed := contains(m.Unrelated, item.target)
@@ -691,9 +706,9 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					break
 				}
 				at.Steps++
-				// Without a version: Gemini may have answered sound sentences all the same (found), and the
-				// story may be sent to be written whole (the tripwire).
-				found := !m.Version && m.Stats.Unapplied > 0
+				// Without a version: Gemini may have answered sound sentences all the same (found: left out, or
+				// added quietly), and the story may be sent to be written whole (the tripwire).
+				found := !m.Version && m.Stats.Unapplied+m.Stats.Quiet > 0
 				count := func(foundIn, tripwireIn, bothIn *int) {
 					if found {
 						*foundIn++
@@ -719,6 +734,9 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					if m.Stats.Old > 0 {
 						report.MissedOld++
 					}
+					if m.Stats.Quiet > 0 {
+						report.MissedUpdated++
+					}
 				case m.Version:
 					report.LiveQuietVersion++
 					kind = CaseExtra
@@ -728,6 +746,9 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					count(&report.QuietFound, &report.QuietTripwire, &report.QuietBoth)
 					if m.Stats.Old > 0 {
 						report.QuietOld++
+					}
+					if m.Stats.Quiet > 0 {
+						report.QuietUpdated++
 					}
 				}
 				if m.Version == (item.liveGenuine > 0) {
@@ -744,8 +765,12 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					}
 				}
 				for _, note := range m.Notes {
-					if note.Outcome == NoteLeftOut && note.Text != "" {
+					switch {
+					case note.Text == "":
+					case note.Outcome == NoteLeftOut:
 						report.LeftOutKinds[note.Kind]++
+					case note.Outcome == NoteQuiet:
+						report.QuietKinds[note.Kind]++
 					}
 				}
 			}
@@ -775,9 +800,13 @@ const (
 	CaseSkipped      = "skipped"          // the answer names none of the story's new articles: no answer to compare
 	CaseRepeat       = "control-repeat"   // an article the story has, shown as new, made a version or was found unrelated
 	CaseStranger     = "control-stranger" // an article of another story was not found unrelated
+	// CaseRepeatQuiet is a control answered right (no version) all the same: sentences from an article the story has
+	// went into it quietly. It is written to be read for padding.
+	CaseRepeatQuiet = "control-repeat-quiet"
 )
 
-// ReplayCase is one story of the replay with all that was sent and answered: a line of the cases file. It is for
+// ReplayCase is one story of the replay with all that was sent and answered: a line of the cases file. A sentence
+// that went into the story without a version (a quiet update) has the outcome "quiet" among Merge.Notes. It is for
 // reading a disagreement and judging who is right, so it holds the sites' headlines and articles as they are:
 // the file is kept out of the archive and out of any repository.
 type ReplayCase struct {
@@ -1026,36 +1055,40 @@ func (r *ReplayReport) Print(out io.Writer) {
 	}
 	if r.LiveNewQuiet > 0 {
 		either := r.MissedFound + r.MissedTripwire - r.MissedBoth
-		fmt.Fprintf(out, "    the %d without a version, by what Gemini answered: sound sentences that the version rule left out in %d; only sentences the other rules dropped in %d; no sentence in %d\n",
+		fmt.Fprintf(out, "    the %d without a version, by what Gemini answered: sound sentences that made no version in %d; only sentences the other rules dropped in %d; no sentence in %d\n",
 			r.LiveNewQuiet, r.MissedFound, r.MissedDropped, r.LiveNewQuiet-r.MissedFound-r.MissedDropped)
-		fmt.Fprintf(out, "    the tripwire would write %d of the %d whole (%d of them with sound sentences left out); neither in %d\n", r.MissedTripwire, r.LiveNewQuiet, r.MissedBoth, r.LiveNewQuiet-either)
-		fmt.Fprintf(out, "    recall counting the sound sentences left out (Gemini found facts, a version or not): %s\n", share(r.LiveNewVersion+r.MissedFound, live))
+		fmt.Fprintf(out, "    the tripwire would write %d of the %d whole (%d of them with sound sentences that made no version); neither in %d\n", r.MissedTripwire, r.LiveNewQuiet, r.MissedBoth, r.LiveNewQuiet-either)
+		fmt.Fprintf(out, "    recall counting the sound sentences that made no version (Gemini found facts, a version or not): %s\n", share(r.LiveNewVersion+r.MissedFound, live))
 		fmt.Fprintf(out, "    recall counting the tripwire's whole writings (a version, or written whole): %s; counting both: %s (all three without the skipped)\n",
 			share(r.LiveNewVersion+r.MissedTripwire, live), share(r.LiveNewVersion+either, live))
 	}
 	fmt.Fprintf(out, "  live had none:       %d a version, %d none\n", r.LiveQuietVersion, r.LiveQuietQuiet)
 	if r.LiveQuietQuiet > 0 {
-		fmt.Fprintf(out, "    the %d without a version: sound sentences that the version rule left out in %d; the tripwire would write %d whole (%d of them with sound sentences left out)\n",
+		fmt.Fprintf(out, "    the %d without a version: sound sentences that made no version in %d; the tripwire would write %d whole (%d of them with sound sentences that made no version)\n",
 			r.LiveQuietQuiet, r.QuietFound, r.QuietTripwire, r.QuietBoth)
 	}
 	fmt.Fprintf(out, "  the articles' time kept a sentence from making a version (every article it cites was published before the version before) in %d steps without one: %d where live had new facts, %d where it had none\n",
 		r.MissedOld+r.QuietOld, r.MissedOld, r.QuietOld)
+	fmt.Fprintf(out, "  quiet updates (such sentences went into the story with no version and nothing in what's new) in %d steps: %d where live had new facts, %d where it had none\n",
+		r.MissedUpdated+r.QuietUpdated, r.MissedUpdated, r.QuietUpdated)
 	s := r.Stats
 	fmt.Fprintf(out, "\nsentences Gemini answered to insert or replace: %d\n", s.Asked)
 	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut\n",
 		s.Restated, share(s.Restated, s.Asked), s.Unsourced, s.Repeated, s.Unknown, s.Garbled)
 	fmt.Fprintf(out, "  left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
-	fmt.Fprintf(out, "  of a kind that makes a version, but from articles published before the version before: %d\n", s.Old)
-	var byKind, leftOut []string
+	fmt.Fprintf(out, "  of a kind that makes a version, but from articles published before the version before: %d; of them added quietly, with no version made: %d\n", s.Old, s.Quiet)
+	var byKind, leftOut, quiet []string
 	for _, kind := range kinds {
 		byKind = append(byKind, fmt.Sprintf("%d %s", r.Kinds[kind], kind))
 		leftOut = append(leftOut, fmt.Sprintf("%d %s", r.LeftOutKinds[kind], kind))
+		quiet = append(quiet, fmt.Sprintf("%d %s", r.QuietKinds[kind], kind))
 	}
 	fmt.Fprintf(out, "  in versions, by kind: %s\n", strings.Join(byKind, ", "))
+	fmt.Fprintf(out, "  added quietly with no version made, by kind: %s\n", strings.Join(quiet, ", "))
 	fmt.Fprintf(out, "  left out with no version made, by kind: %s\n", strings.Join(leftOut, ", "))
 	fmt.Fprintf(out, "\ncontrols:\n")
-	fmt.Fprintf(out, "  an article the story has, shown as new, made nothing: %d of %d (%s); %d of the answers named no new article (skipped: nothing came of them)\n",
-		r.RepeatPassed, r.RepeatAsked, share(r.RepeatPassed, r.RepeatAsked), r.RepeatSkipped)
+	fmt.Fprintf(out, "  an article the story has, shown as new, made no version: %d of %d (%s); %d of the answers named no new article (skipped: nothing came of them); sentences of it were added quietly in %d\n",
+		r.RepeatPassed, r.RepeatAsked, share(r.RepeatPassed, r.RepeatAsked), r.RepeatSkipped, r.RepeatQuiet)
 	fmt.Fprintf(out, "  an article of another story was found unrelated:      %d of %d (%s); %d of the answers named no new article (skipped: not found)\n",
 		r.StrangerPassed, r.StrangerAsked, share(r.StrangerPassed, r.StrangerAsked), r.StrangerSkipped)
 	fmt.Fprintf(out, "  by place in the request (answered; controls right; real steps that agree with the live rewrite):\n")

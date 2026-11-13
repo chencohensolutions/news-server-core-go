@@ -90,8 +90,8 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 	}
 	fmt.Fprintf(out, "  %d (%s) were asked, in about %.0f requests (%.0f tokens in, %.0f out, %.0f thinking):\n", r.Asked, percent(r.Asked, r.Steps),
 		r.Requests, r.TokensIn, r.TokensOut, r.TokensThoughts)
-	fmt.Fprintf(out, "    %d a new version (%s), %d nothing new, %d the tripwire; %d started from the shadow's own story; %d read from a cut answer\n",
-		r.Versions, percent(r.Versions, r.Asked), r.Quiet, r.Tripwire, r.FromShadow, r.Salvaged)
+	fmt.Fprintf(out, "    %d a new version (%s), %d none (%d of them updated quietly: sentences added, no version), %d the tripwire; %d started from the shadow's own story; %d read from a cut answer\n",
+		r.Versions, percent(r.Versions, r.Asked), r.Quiet, r.QuietUpdates, r.Tripwire, r.FromShadow, r.Salvaged)
 	fmt.Fprintf(out, "    skipped by Gemini (the answer named none of the story's new articles): %d wait to be asked again or changed first, %d were skipped again and left to be written whole\n",
 		r.Skipped, r.GaveUp)
 	s := r.Stats
@@ -99,7 +99,7 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 		s.Asked, s.Restated, percent(s.Restated, s.Asked), s.Unsourced, s.Repeated, s.Unknown, s.Garbled)
 	fmt.Fprintf(out, "    left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n",
 		s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
-	fmt.Fprintf(out, "    kept from making a version by their articles' time (all published before the story was written): %d\n", s.Old)
+	fmt.Fprintf(out, "    kept from making a version by their articles' time (all published before the story was written): %d; added quietly, with no version: %d\n", s.Old, s.Quiet)
 	live := r.LiveNewVersion + r.LiveNewQuiet
 	fmt.Fprintf(out, "  against the live rewrite of the same reports (%d steps):\n", r.Compared)
 	fmt.Fprintf(out, "    live had new facts:  %d a version, %d none: recall %s\n", r.LiveNewVersion, r.LiveNewQuiet, percent(r.LiveNewVersion, live))
@@ -150,7 +150,7 @@ func evalIncremental(config auth.AppConfig, args []string, out io.Writer) error 
 	sample := flags.Int("sample", 0, "ask about `N` of the steps, spread over all of them in time (0: all, the oldest first)")
 	seed := flags.Int64("seed", 1, "which steps -sample picks: the same `seed` picks the same ones")
 	offset := flags.Int("offset", 0, "skip the first `N` stories to ask about, controls among them: a replay that stopped prints the offset that goes on from there")
-	cases := flags.String("cases", "", "write every real step answered and every control answered wrong to `file`, a line of JSON each (outside the archive and any repository; with -offset it is added to)")
+	cases := flags.String("cases", "", "write every real step answered, every control answered wrong and every control changed by a quiet update to `file`, a line of JSON each (outside the archive and any repository; with -offset it is added to)")
 	dry := flags.Bool("dry", false, "build the requests and print their sizes; nothing is sent")
 	noControls := flags.Bool("no-controls", false, "leave the controls out")
 	if err := flags.Parse(args); err != nil {
