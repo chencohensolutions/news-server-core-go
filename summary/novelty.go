@@ -22,6 +22,9 @@ const (
 	novelNumbers   = 2
 	// minWords is the fewest words of a sentence that is checked for news: a shorter one is a caption or a credit.
 	minWords = 5
+	// minSaid is the fewest words, its numbers aside, of a sentence that can give another number for an old
+	// sentence's fact (contradicted).
+	minSaid = 2
 )
 
 // wordIndex is the words of a text by sentence, to find the sentence that has the most of another's words.
@@ -146,8 +149,9 @@ func indexOf(sentences []Sentence) *wordIndex {
 }
 
 // restates says text only says again what a sentence of the story does: that sentence has most of its words
-// (restatedAt), and the rest are words the story has elsewhere. A number that sentence lacks, or a word the story
-// lacks (a name, mostly), makes it news: "three were hurt" after "two were hurt" is not a restatement.
+// (restatedAt), and the rest are words the story has elsewhere. A number that sentence lacks, in digits or in a
+// word, or a word the story lacks (a name, mostly), makes it news: "three were hurt" after "two were hurt" is not a
+// restatement.
 func (x *wordIndex) restates(text string) bool {
 	_, ok := x.restated(text)
 	return ok
@@ -172,7 +176,7 @@ func (x *wordIndex) restated(text string) (sentence int, ok bool) {
 		}
 		news := false
 		for i, ok := range has {
-			if !ok && (isNumber(now[i]) || !x.has(now[i])) {
+			if !ok && (isNumber(now[i]) || numberWord(now[i]) || !x.has(now[i])) {
 				news = true
 				break
 			}
@@ -182,6 +186,68 @@ func (x *wordIndex) restated(text string) (sentence int, ok bool) {
 		}
 	}
 	return sentence, sentence >= 0
+}
+
+// moreWords are the words that make a sentence with another number than an old one's another fact, and not
+// another value for that one's: more of the same ("4 more roads were closed").
+var moreWords = map[string]bool{"עוד": true, "נוסף": true, "נוספת": true, "נוספים": true, "נוספות": true}
+
+// said are text's words without its numbers, in digits and in words: what it tells a number of. more says one of
+// them is of moreWords, alone or after joined letters.
+func said(text string) (out []string, more bool) {
+	for _, word := range words(text) {
+		if isNumber(word) || numberWord(word) {
+			continue
+		}
+		out = append(out, word)
+		for _, stem := range stems(word) {
+			more = more || moreWords[stem]
+		}
+	}
+	return out, more
+}
+
+// contradicted is the sentence of story (the one x is the index of), from 1, that text says again with another
+// number: "3 were arrested" beside "2 were arrested". 0 when there is none. It is the same sentence but for the
+// number: that sentence has every word of text, the numbers aside (minSaid of them at least), and text has most of
+// that sentence's (restatedAt); each gives a number the other doesn't state (differ), and neither a date or a
+// year the other lacks (sameTime). Narrow on purpose, as text then takes that sentence's place: one word more in
+// text (another place, "killed" for "hurt") makes it another fact, and so does a word of moreWords ("4 more").
+// Of several, the first.
+func (x *wordIndex) contradicted(text string, story []Sentence) int {
+	now, more := said(text)
+	if len(now) < minSaid || more {
+		return 0
+	}
+	mine := newWordIndex()
+	mine.add(text)
+	covered := x.covered(now)
+sentences:
+	for at, s := range story {
+		has := covered[at]
+		if has == nil {
+			continue
+		}
+		for _, ok := range has {
+			if !ok {
+				continue sentences
+			}
+		}
+		if !differ(text, s.Text) || !sameTime(text, s.Text) {
+			continue
+		}
+		old, _ := said(s.Text)
+		shared := 0
+		for _, word := range old {
+			if mine.has(word) {
+				shared++
+			}
+		}
+		if float64(shared) >= restatedAt*float64(len(old)) {
+			return at + 1
+		}
+	}
+	return 0
 }
 
 // novelty is how much of an article's text (as the prompt showed it) a text lacks: how many of its sentences of

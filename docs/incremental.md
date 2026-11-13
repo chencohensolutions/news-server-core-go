@@ -70,6 +70,26 @@ controls 21 of 22. What was left:
   replaced a sentence; several sentences went in at once. Hence a quiet update only inserts, two sentences at most,
   and never from the story's own articles alone.
 
+### What the fifth replay found
+
+All 120 real steps of the sample and 40 controls, judged by hand (Nov 13, 2026): of the steps with real news the
+update made a version of 87% (94% of the ones with significant news), where the live rewrite's own "new" list had
+69%; 6 of 53 versions were false (11%); the repeat controls 20 of 20; of 20 strangers 16 were found unrelated and 4
+were skipped, to be asked again. What was left:
+
+- **Side figures made versions** (5 of the 6 false ones): a detail with a number beside the story's event: a related
+  country's figure, another day's, an option's amount, a project's size, one more signer of a bill. Hence a detail
+  makes no version at all, and the kinds are told apart by the event's main facts.
+- **Official acts were answered as reactions**, which make no version: a letter, an appeal, a decision, an order, a
+  leader's formal statement. Hence an official act is a development.
+- **Corrections were written as inserts**: another number for a fact the story states, beside the old sentence.
+  Hence a correction is always a replacement, and the server makes such an insert one.
+- **Inserts with factual errors**, a count of a country's people that no article gives among them. Hence the check
+  of such a count written in a word. A wider check was tried and left out: dropping a sentence with two words in a
+  row that neither the articles it cites nor the story have, as a made-up name would be. Hebrew inflects and a
+  sentence rewords its article (`נעצרו בחשד` where the article has `עצרה` and `שנחשדו`): of 8 sound made-up
+  paraphrases it dropped 6. It would cost the recall the round measured.
+
 ## The design
 
 A changed story with a version before it goes one of three ways (`plan`):
@@ -117,11 +137,23 @@ The answer, for each story, in this order:
 | `title` | a new title, or `""` for none |
 | `contradictions` | sides citing new articles or a sentence of the story |
 
-`kind` is `development`, `correction`, `detail`, `background` or `reaction`. Nothing an article published before the
-story was written reports is a development: a fact of it about the event itself that the story lacks is a detail
-(what a quiet update takes, below), its preview and run-up are background. A breakdown of figures the story already
-sums up is a detail, not a development. Gemini never sends a sentence that stays, so the old text and its footnotes
-are kept exactly.
+`kind` is `development`, `correction`, `detail`, `background` or `reaction`, and the instructions tell them apart by
+the story's main event, as only the first two make a version:
+
+- a **development** is news of the main event: what happened or became known since, or a central fact of it the
+  story lacks (the toll or the count it is about, its main sum or rate, the name of the person at its center). **An
+  official act is a development**, also when it is made of words: a letter sent, an appeal or a petition filed, a
+  decision, an order, a formal statement by a leader, a minister or an official body;
+- a **correction** is another number, name, place or time than a sentence of the story gives (three arrested where
+  the story says two). It is always a `replace` of that sentence, never an `insert` beside it;
+- a **detail** is a fact beside the main event, or a finer point of what the story tells: a side figure (another
+  country's, another day's, another company's; an option's amount; a project's size), a breakdown of figures the
+  story sums up, one more name on a list, a place, a time, an age, a quote;
+- **background** is what was before the event; a **reaction** is what someone said about it, and no official act.
+
+Nothing an article published before the story was written reports is a development: a fact of it about the event
+itself that the story lacks is a detail (what a quiet update takes, below), its preview and run-up are background.
+Gemini never sends a sentence that stays, so the old text and its footnotes are kept exactly.
 
 A sentence's text is Hebrew only, and holds no id and no site's name: sources go in `sources`, as ids.
 
@@ -165,37 +197,49 @@ among the JSON Schema keywords the API documents for `responseJsonSchema`.
   story already. It is read loosely, so that a true sentence is not lost: `1,200` and `1200`, a number written in
   words (`שלושה`, `עשרים וחמישה`, `מאתיים`, an ordinal), another scale (`300 אלף` and `300,000`, `מיליון וחצי` and
   `1.5 מיליון`), a part of a time or a date. A date and a year are not checked: Gemini works them out from
-  "yesterday". Names are not checked this way: Hebrew marks none, and a sentence rewords its article.
+  "yesterday". **A count written in a word is checked only when it counts a country's people**, three or more
+  (`שלושה איראנים`, `חמישה תיירים סינים`: the nationalities are a list, `nationals`): any other count in a word is as
+  often one Gemini rightly works out (three ministers, of three names; three days, of a date) or part of a place's
+  name. Names are not checked: Hebrew marks none, and a sentence rewords its article (round 5, above).
 - A sentence that only says the story again is dropped (`restates`): one earlier sentence has three quarters of its
-  words, by the versions' word likeness, and its other words are in the story too. A number that sentence lacks, or
-  a word the story lacks (a name, mostly), makes it news. So is a sentence that repeats another of the same answer.
+  words, by the versions' word likeness, and its other words are in the story too. A number that sentence lacks,
+  in digits or in a word, or a word the story lacks (a name, mostly), makes it news. So is a sentence that repeats
+  another of the same answer.
   **A development is read without its time words too** (`היום`, `אמש`, `הבוקר`, `הערב`, `הלילה`, `כעת`, `עתה`): one
   that is an old sentence with such a word added tells nothing new.
 - An old sentence changes only by `replace` or `delete`, by number. An operation on a number the story doesn't
   have, or another story's, is dropped. An insert whose place is unknown leads. Deleting more than half the story is
   refused.
-- **A version is made only when a development or a correction survives, or a detail with a number the story lacks
-  or a person it doesn't name, and one of that sentence's articles was published after the version before was
-  written.** Background, reactions and other details alone make none, and are then left out. When a version is
-  made, every surviving sentence goes in, the ones from older articles too, and what was inserted and replaced is
-  the version's update (`Update.Sentences`, with `Update.Kinds`).
+- **An inserted sentence that gives another number for an old sentence's fact replaces it** (`contradicted`), as
+  a correction, whatever Gemini called it: the story must not say 2 and 3. It is the same sentence but for the
+  number: the old sentence has every word of it, numbers aside, by the word likeness; it has three quarters of the
+  old one's; each has a number the other doesn't state, in digits or in a word; and neither a date or a year the
+  other lacks. It is narrow on purpose, as the old sentence is lost: one word more (another place, "killed" for
+  "hurt") or "more" (`עוד`, `נוספים`) makes it another fact, and background and reactions stay what they are. Such
+  a correction makes a version when its article was published after the version before, and goes in with a version
+  another sentence makes; otherwise it stays out, and never beside the old sentence: no replacement is quiet. A
+  `replace` answered as a detail that gives another number than its sentence is a correction too.
+- **A version is made only when a development or a correction survives, and one of that sentence's articles was
+  published after the version before was written. A detail never makes one**, whatever it has (round 5: side
+  figures did). Background, reactions and details alone make none. When a version is made, every surviving sentence
+  goes in, the details and the ones from older articles too, and what was inserted and replaced is the version's
+  update (`Update.Sentences`, with `Update.Kinds`).
+- **A quiet update.** When no version is made, two kinds of inserted sentence go into the story all the same, with
+  their sources: a development that only its articles' time kept from making one, every one of them published
+  before the version before; and **a detail that adds a number the story lacks or a person it doesn't name**,
+  from an article of any time. It makes no version and nothing in "what's new": the title, `writtenAt` and the
+  updates stay, and nothing is deleted (a deletion is only ever part of a version).
   - The number is a toll, a sum, a count, an hour. **A date or a year is not one**: `14.3.2021`, `12/11`, a day
     before a month's name (`ב-12 בנובמבר`), and a number from 1900 to 2099 alone (unless "about": `כ-2000`).
   - **The person** is a full name: two words in a row, neither of them in the story or its title, with a sign that
     they are a name (`newName`): a title or a rank directly before them (`ח״כ`, `ד״ר`, `עו״ד`, `השופטת`, `סא״ל`, …),
     or an age in brackets directly after them (`(34)`), in the sentence itself or where the article it cites has
     the same two words. It is narrow on purpose: two new words in a row are what most new facts have. A surname
-    alone, and a name without such a sign anywhere, make no version.
-- **A quiet update.** When no version is made, an inserted sentence of a kind that makes one (a development, a
-  detail with a number the story lacks or a person it doesn't name) that only its articles' time kept from it, every
-  one of them published before the version before, goes into the story all the same, with its sources. It makes no
-  version and nothing in "what's new": the title, `writtenAt` and the updates stay, and nothing is deleted (a
-  deletion is only ever part of a version).
-  - It takes exactly what would have made a version had the article been new, and no more: background, reactions
-    and other details never go in quietly, or an article that joins late would pad the story with what a new article
-    may not add either.
-  - **It only inserts**: never a replacement, and never a correction. An older article must not undo what the story
-    tells, and without a version nothing would show that it did.
+    alone, and a name without such a sign anywhere, add nothing.
+  - No more than that: background, reactions and other details never go in quietly, or every new article would
+    pad the story.
+  - **It only inserts**: never a replacement, and never a correction. The story must not change what it tells
+    without a version to show that it did.
   - **Two sentences at most** (`MaxQuiet`), the first two of the answer: more is a rewrite without a version.
   - **Never from the story's own articles alone.** A sentence that cites only articles the version before was
     written from, shown as new again (the replay's control does that), stays out: the story was written from them,
@@ -316,24 +360,32 @@ ids is joined to its story by its reports, as the server did then. It reports:
   counting the tripwire's whole writings (a whole writing of a step whose live rewrite had new facts makes a
   version), and counting both. The same two counts are given for the steps where the live rewrite had nothing:
   there a whole writing is a request spent for no version;
-- the steps without a version where a sentence of a kind that makes one was kept from it by its articles' time
+- the steps without a version where a development or a correction was kept from making one by its articles' time
   (all published before the version before), apart by whether the live rewrite had new facts: the rule's cost, and
   what it saved;
+- the steps without a version where **a detail made none**: one with a number the story lacks or a person it
+  doesn't name, from an article published after the version before, which made a version until round 5. Apart the
+  same way: where the live rewrite had new facts they are the steps to read, for a central fact Gemini called a
+  detail;
 - the **quiet updates**: the steps without a version where such sentences went into the story, apart the same way.
   They are not versions, and are in no recall but the one that counts what Gemini found;
 - the sentences Gemini answered, and how many each rule dropped (among them the ones with a number none of their
-  articles states); the restatement rate, and how many of the restatements were a development with only a time word
-  more; what a quiet update didn't take (from the story's own articles, replacements and corrections, past its two
-  sentences); the details that are of a kind that makes a version for a name alone, and the ones that are not
-  because their only new numbers are dates or years; the sentences in versions, the ones added quietly with no
-  version made, and the ones left out with no version made, each by kind;
+  articles states, and how many of those were a count of a country's people in a word); the restatement rate, and
+  how many of the restatements were a development with only a time word more; the inserted sentences made the
+  correction of the sentence they gave another number for; the developments and corrections from older articles,
+  the details that add a number or a name and how many of them stand on an article published after the version
+  before; what a quiet update didn't take (from the story's own articles, replacements and corrections, past its
+  two sentences); the details that add a name alone, and the ones left out because their only new numbers are dates
+  or years; the sentences in versions, the ones added quietly with no version made, and the ones left out with no
+  version made, each by kind;
 - the sizes: characters and tokens in and out a story, beside the live rewrite's request and answer for the same
   step (in characters, and in tokens at the rate the incremental requests measured);
 - three controls that need no labels, two in each request at places that move:
   - an article the story already has, shown as new: no version may come of it (it is older than the story, so the
     version rule holds whatever is written from it; found unrelated, it still fails), and nothing of it goes into
-    the story quietly. How many of these answers wrote a sentence of a kind that makes a version from the article
-    the story was written from is counted, as the padding that rule keeps out;
+    the story quietly. How many of these answers wrote a sentence a quiet update takes (a development, a detail
+    with a number or a name) from the article the story was written from is counted, as the padding that rule
+    keeps out;
   - an article of another story (the least alike of a few), shown as new: it must be found unrelated;
   - of each, how many answers named no new article at all: a skipped repeat passes (nothing came of it), a skipped
     stranger fails;
@@ -346,7 +398,7 @@ update found news is worth reading, not counting as an error.
 
 `-cases file` writes what the numbers are made of, to read a disagreement and judge who is right: a line of JSON
 for every real step answered, for every control answered wrong, and for every control of the first kind whose
-answer wrote a sentence of a kind that makes a version from the story's own article (`summary.ReplayCase`). The file holds the sites'
+answer wrote a sentence a quiet update takes from the story's own article (`summary.ReplayCase`). The file holds the sites'
 headlines and articles as they are, so it is refused inside the archive folder and inside a repository (a folder
 with `.git`, or under one): keep it beside them. It is written anew, and added to with `-offset`.
 
@@ -362,14 +414,15 @@ with `.git`, or under one): keep it beside them. It is written anew, and added t
 | `target` | a control's article, by its id |
 | `answer` | what Gemini answered for the story: `unrelated`, `insert`, `replace`, `delete`, `cite`, `title`, `contradictions` |
 | `merge` | what the server made of it: `version` (one was made), `tripwire` and `tripwireWhy` (it would be written whole), `unrelated`, `unmentioned` (the new articles the answer names nowhere) and `skipped` (that is all of them), `stats` (the counts of the report), and `notes` |
-| `merge.notes` | one for each answered operation: `op`, `at`, `kind`, `text`, `sources`, and its `outcome`: `applied`, `quiet` (in the story without a version: a quiet update), `left out` (sound, and the answer makes no version) or `dropped`, with `why` (says again what `s3.1` does, with a time word more or not; cites no new article of the story; states a number that none of the articles it cites does; garbled or cut short, ...). `text` and `sources` are as Gemini answered them, with what was written into them. `makesVersion` marks a sentence the version rule takes, `name` the person a detail names when that is why, and `dated` a detail the rule doesn't take because its only new numbers are dates or years. `old` marks a sentence of a kind that makes a version whose articles were all published before the version before: `quiet` when no version was made, unless a quiet update doesn't take it (`why`: a replacement or a correction, the story's own articles, past two sentences) |
+| `merge.notes` | one for each answered operation: `op`, `at`, `kind`, `text`, `sources`, and its `outcome`: `applied`, `quiet` (in the story without a version: a quiet update), `left out` (sound, and the answer makes no version) or `dropped`, with `why` (says again what `s3.1` does, with a time word more or not; cites no new article of the story; states a number that none of the articles it cites does; garbled or cut short, ...). `text` and `sources` are as Gemini answered them, with what was written into them. `makesVersion` marks a sentence the version rule takes: a development or a correction from an article published after the version before. `adds` marks a detail with a number the story lacks or a person it doesn't name (`name`, when that is why), and `dated` a detail that adds nothing because its only new numbers are dates or years. `old` marks a development or a correction whose articles were all published before the version before. A sentence with `adds`, and an inserted development with `old`, is `quiet` when no version was made, unless a quiet update doesn't take it (`why`: a replacement or a correction, the story's own articles, past two sentences). `corrects` is the sentence of the story (`s3.2`) an inserted sentence gave another number for: it was made that sentence's replacement, and its `kind` is `correction` |
 | `live` | the live rewrite's version of the step (none for a control): `at`, `title`, `new` (the sentences it gave as new, less the ones the version before said already: those are in `restated`), and `sentences`, all of it. A sentence has its `sites` and, in `articles`, the step's new articles among its sources: a "new" sentence without one stands on articles the story had |
 
 To read the misses, for one: `jq -c 'select(.kind == "missed")' file`; the skipped: `select(.kind == "skipped")`;
 the sentences the articles' time held back: `select(any(.merge.notes[]; .old))`; the quiet updates:
 `select(any(.merge.notes[]; .outcome == "quiet"))`; the sentences dropped for a number:
-`select(any(.merge.notes[]; (.why // "") | startswith("states a number")))`; the versions a name made:
-`select(any(.merge.notes[]; .name and .makesVersion))`.
+`select(any(.merge.notes[]; (.why // "") | startswith("states a number")))`; the misses where a detail added a
+number or a name: `select(.kind == "missed" and any(.merge.notes[]; .adds))`; the inserts made corrections:
+`select(any(.merge.notes[]; .corrects))`.
 
 ## What turning it on still needs
 

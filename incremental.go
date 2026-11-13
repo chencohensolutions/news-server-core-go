@@ -99,8 +99,11 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 		s.Asked, s.Restated, percent(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked)
 	fmt.Fprintf(out, "    left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n",
 		s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
-	fmt.Fprintf(out, "    kept from making a version by their articles' time (all published before the story was written): %d; added quietly, with no version: %d (not taken: %d from the story's own articles, %d replacements and corrections, %d past %d sentences)\n",
-		s.Old, s.Quiet, s.Reshown, s.NotInserted, s.Crowded, summary.MaxQuiet)
+	fmt.Fprintf(out, "    inserted sentences made the correction of the sentence they gave another number for: %d\n", s.Corrected)
+	fmt.Fprintf(out, "    developments and corrections kept from making a version by their articles' time (all published before the story was written): %d; details with a number or a name the story lacks (a detail makes no version): %d, %d of them from an article published since\n",
+		s.Old, s.Adds, s.Since)
+	fmt.Fprintf(out, "    of those, added quietly, with no version: %d (not taken: %d from the story's own articles, %d replacements and corrections, %d past %d sentences)\n",
+		s.Quiet, s.Reshown, s.NotInserted, s.Crowded, summary.MaxQuiet)
 	live := r.LiveNewVersion + r.LiveNewQuiet
 	fmt.Fprintf(out, "  against the live rewrite of the same reports (%d steps):\n", r.Compared)
 	fmt.Fprintf(out, "    live had new facts:  %d a version, %d none: recall %s\n", r.LiveNewVersion, r.LiveNewQuiet, percent(r.LiveNewVersion, live))

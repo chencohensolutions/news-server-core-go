@@ -133,10 +133,15 @@ type ReplayReport struct {
 	// answer, so they are in none of the counts above. SkippedNews are the ones whose live rewrite had new facts,
 	// and SkippedTripwire the ones of those the tripwire would write whole.
 	GeminiSkipped, SkippedNews, SkippedTripwire int
-	// MissedOld and QuietOld are the steps without a version where a sentence of a kind that makes one was kept
-	// from it because its articles were all published before the version before (MergeStats.Old): of the steps
+	// MissedOld and QuietOld are the steps without a version where a development or a correction was kept from
+	// making one because its articles were all published before the version before (MergeStats.Old): of the steps
 	// where the live rewrite had new facts, and of the ones where it had none.
 	MissedOld, QuietOld int
+	// MissedDetail and QuietDetail are the steps without a version where a detail with a number the story lacks or
+	// a person it doesn't name stood on an article published after the version before (MergeStats.Since): until
+	// round 5 that made a version. Where the live rewrite had new facts it is the rule's cost (a key fact Gemini
+	// called a detail: read them), and where it had none, what the rule saved.
+	MissedDetail, QuietDetail int
 	// MissedUpdated and QuietUpdated are the steps without a version whose story a quiet update changed all the
 	// same (MergeStats.Quiet): sentences went into the text, with no version and nothing in what's new.
 	MissedUpdated, QuietUpdated int
@@ -159,10 +164,10 @@ type ReplayReport struct {
 	// The controls whose answer names none of the story's new articles: of the repeats (nothing came of those, so
 	// they pass), and of the strangers (not found unrelated: they fail).
 	RepeatSkipped, StrangerSkipped int
-	// RepeatReshown are the repeats that passed whose answer wrote a sentence of a kind that makes a version from
-	// the article the story was written from: no version (the article is older than the story), and not in the
-	// story either (a quiet update takes nothing from a story's own article, MergeStats.Reshown). It is the
-	// padding that rule keeps out.
+	// RepeatReshown are the repeats that passed whose answer wrote a sentence a quiet update takes (a development,
+	// a detail with a number or a name) from the article the story was written from: no version (the article is
+	// older than the story), and not in the story either (a quiet update takes nothing from a story's own
+	// article, MergeStats.Reshown). It is the padding that rule keeps out.
 	RepeatReshown int
 	Positions     []PositionStats
 
@@ -736,6 +741,9 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					if m.Stats.Old > 0 {
 						report.MissedOld++
 					}
+					if m.Stats.Since > 0 {
+						report.MissedDetail++
+					}
 					if m.Stats.Quiet > 0 {
 						report.MissedUpdated++
 					}
@@ -748,6 +756,9 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					count(&report.QuietFound, &report.QuietTripwire, &report.QuietBoth)
 					if m.Stats.Old > 0 {
 						report.QuietOld++
+					}
+					if m.Stats.Since > 0 {
+						report.QuietDetail++
 					}
 					if m.Stats.Quiet > 0 {
 						report.QuietUpdated++
@@ -803,8 +814,8 @@ const (
 	CaseRepeat       = "control-repeat"   // an article the story has, shown as new, made a version or was found unrelated
 	CaseStranger     = "control-stranger" // an article of another story was not found unrelated
 	// CaseRepeatReshown is a control answered right (no version, and the story as it was) all the same: the answer
-	// wrote a sentence of a kind that makes a version from the article the story has, and the rules kept it out. It
-	// is written to be read for what Gemini makes of an article it was already given.
+	// wrote a sentence a quiet update takes from the article the story has, and the rules kept it out. It is
+	// written to be read for what Gemini makes of an article it was already given.
 	CaseRepeatReshown = "control-repeat-reshown"
 )
 
@@ -1076,19 +1087,24 @@ func (r *ReplayReport) Print(out io.Writer) {
 		fmt.Fprintf(out, "    the %d without a version: sound sentences that made no version in %d; the tripwire would write %d whole (%d of them with sound sentences that made no version)\n",
 			r.LiveQuietQuiet, r.QuietFound, r.QuietTripwire, r.QuietBoth)
 	}
-	fmt.Fprintf(out, "  the articles' time kept a sentence from making a version (every article it cites was published before the version before) in %d steps without one: %d where live had new facts, %d where it had none\n",
+	fmt.Fprintf(out, "  the articles' time kept a development or a correction from making a version (every article it cites was published before the version before) in %d steps without one: %d where live had new facts, %d where it had none\n",
 		r.MissedOld+r.QuietOld, r.MissedOld, r.QuietOld)
+	fmt.Fprintf(out, "  a detail from an article published after the version before, with a number the story lacks or a person it doesn't name, made no version (it made one until round 5) in %d steps without one: %d where live had new facts, %d where it had none\n",
+		r.MissedDetail+r.QuietDetail, r.MissedDetail, r.QuietDetail)
 	fmt.Fprintf(out, "  quiet updates (such sentences went into the story with no version and nothing in what's new) in %d steps: %d where live had new facts, %d where it had none\n",
 		r.MissedUpdated+r.QuietUpdated, r.MissedUpdated, r.QuietUpdated)
 	s := r.Stats
 	fmt.Fprintf(out, "\nsentences Gemini answered to insert or replace: %d\n", s.Asked)
-	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s; %d of them a development with only a time word more), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut, %d with a number none of the articles they cite states\n",
-		s.Restated, share(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked)
+	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s; %d of them a development with only a time word more), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut, %d with a number none of the articles they cite states (%d of them a count of a country's people in a word)\n",
+		s.Restated, share(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked, s.Worded)
 	fmt.Fprintf(out, "  left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
-	fmt.Fprintf(out, "  of a kind that makes a version, but from articles published before the version before: %d; of them added quietly, with no version made: %d\n", s.Old, s.Quiet)
+	fmt.Fprintf(out, "  inserted sentences that gave another number for a sentence of the story, and were made its correction: %d\n", s.Corrected)
+	fmt.Fprintf(out, "  developments and corrections from articles published before the version before (they make no version): %d\n", s.Old)
+	fmt.Fprintf(out, "  details with a number the story lacks or a person it doesn't name (a detail makes no version): %d, %d of them from an article published after the version before\n", s.Adds, s.Since)
+	fmt.Fprintf(out, "  of those developments and details, added quietly, with no version made: %d\n", s.Quiet)
 	fmt.Fprintf(out, "  of them a quiet update didn't take: %d from articles the story was written from, shown again; %d replacements and corrections; %d past its %d sentences\n",
 		s.Reshown, s.NotInserted, s.Crowded, MaxQuiet)
-	fmt.Fprintf(out, "  details of such a kind for a person they name and no number: %d; details whose only numbers the story lacks are dates or years (not of such a kind): %d\n", s.Named, s.Dated)
+	fmt.Fprintf(out, "  of those details, for a person they name and no number: %d; details left out because the only numbers the story lacks in them are dates or years: %d\n", s.Named, s.Dated)
 	var byKind, leftOut, quiet []string
 	for _, kind := range kinds {
 		byKind = append(byKind, fmt.Sprintf("%d %s", r.Kinds[kind], kind))

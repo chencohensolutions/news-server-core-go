@@ -250,11 +250,28 @@ func notesOf(m Merged) []string {
 	return out
 }
 
-func TestADetailWithANewNumberMakesAVersion(t *testing.T) {
-	a, ids := askedOf(t, rainStory(), rainSiteh, rainSiteE, rainSiteg)
-	m := merge(a, Answer{Insert: []AnswerInsert{{After: "s1.1", Kind: "detail", Text: "בחיפה ירדו 80 מילימטרים.", Sources: []string{"a1"}}}}, "s1", ids, now)
-	if !m.Version || m.Stats.Inserted != 1 {
-		t.Fatalf("%+v", m)
+func TestADetailMakesNoVersion(t *testing.T) {
+	prev := rainStory()
+	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, rainSiteg)
+	// A detail with a number the story lacks, from an article published since the story: until round 5 of the
+	// replay it made a version (a side figure did, and one more signer of a bill). It goes into the text, with its
+	// source, and nothing else changes.
+	detail := AnswerInsert{After: "s1.1", Kind: "detail", Text: "בחיפה ירדו 80 מילימטרים.", Sources: []string{"a1"}}
+	m := merge(a, Answer{Insert: []AnswerInsert{detail}, Title: "80 מילימטרים בחיפה"}, "s1", ids, now)
+	if m.Version || m.Stats != (MergeStats{Asked: 1, Quiet: 1, Adds: 1, Since: 1}) || m.Story.Title != prev.Title || !m.Story.WrittenAt.Equal(prev.WrittenAt) || len(m.Story.Updates) != 1 {
+		t.Fatalf("%+v %+v", m.Stats, m.Story)
+	}
+	if got := texts(m.Story.Sentences); got != "גשם כבד ירד הבוקר בצפון. | בחיפה ירדו 80 מילימטרים. | 2 כבישים נסגרו בגלל הגשם. | ראש העיר אמר שהכבישים ייפתחו מחר." ||
+		strings.Join(m.Story.Sentences[1].Sources, " ") != rainSiteg.URL {
+		t.Fatalf("sentences: %s", got)
+	}
+	if got := strings.Join(notesOf(m), "; "); got != "insert s1.1: quiet ("+whyQuietAdds+")" || !m.Notes[0].Adds || m.Notes[0].Old {
+		t.Fatalf("notes: %s", got)
+	}
+	// With a development it rides along: in the version, and in what's new.
+	m = merge(a, Answer{Insert: []AnswerInsert{detail, {After: "top", Kind: "development", Text: "נחל הקישון עלה על גדותיו.", Sources: []string{"a1"}}}}, "s1", ids, now)
+	if last := m.Story.Updates[len(m.Story.Updates)-1]; !m.Version || m.Stats != (MergeStats{Asked: 2, Inserted: 2, Adds: 1, Since: 1}) || strings.Join(last.Kinds, " ") != "development detail" {
+		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
 	// An insert whose place is no sentence of the story leads.
 	m = merge(a, Answer{Insert: []AnswerInsert{{After: "s4.1", Kind: "development", Text: "נחל הקישון עלה על גדותיו.", Sources: []string{"a1"}}}}, "s1", ids, now)
@@ -309,18 +326,18 @@ func TestOnlyAnArticlePublishedSinceTheStoryMakesAVersion(t *testing.T) {
 		strings.Join(m.Story.Sentences[0].Sources, " ") != before.URL {
 		t.Fatalf("sentences: %s", got)
 	}
-	if m.Stats != (MergeStats{Asked: 2, Quiet: 2, Old: 2, Cited: 1}) {
+	if m.Stats != (MergeStats{Asked: 2, Quiet: 2, Old: 1, Adds: 1, Cited: 1}) {
 		t.Fatalf("%+v", m.Stats)
 	}
-	want := "insert top: quiet (" + whyQuiet + "); insert s1.2: quiet (" + whyQuiet + "); cite s1.1: applied"
-	if got := strings.Join(notesOf(m), "; "); got != want || !m.Notes[0].Old || !m.Notes[1].Old {
+	want := "insert top: quiet (" + whyQuiet + "); insert s1.2: quiet (" + whyQuietAdds + "); cite s1.1: applied"
+	if got := strings.Join(notesOf(m), "; "); got != want || !m.Notes[0].Old || m.Notes[1].Old || !m.Notes[1].Adds {
 		t.Fatalf("notes\n got %s\nwant %s", got, want)
 	}
 
 	// With a development from the later article there is a version, and the older article's sentences go in too:
 	// they are true of the story, and only make no version alone.
 	m = merge(a, answerOf(t, oldAndNewNews), "s1", ids, now)
-	if !m.Version || m.Stats != (MergeStats{Asked: 3, Inserted: 3, Old: 2}) || !m.Story.WrittenAt.Equal(now) {
+	if !m.Version || m.Stats != (MergeStats{Asked: 3, Inserted: 3, Old: 1, Adds: 1}) || !m.Story.WrittenAt.Equal(now) {
 		t.Fatalf("%+v %+v", m.Stats, m.Story)
 	}
 	if got := texts(m.Story.Sentences); got != "נחל הקישון עלה על גדותיו. | המשטרה פתחה את כביש החוף לתנועה. | גשם כבד ירד הבוקר בצפון. | 2 כבישים נסגרו בגלל הגשם. | הכבישים נסגרו בשעה 7 בבוקר. | ראש העיר אמר שהכבישים ייפתחו מחר." {
@@ -332,7 +349,7 @@ func TestOnlyAnArticlePublishedSinceTheStoryMakesAVersion(t *testing.T) {
 	}
 	// So does a sentence that the later article states too.
 	both := answerOf(t, strings.Replace(oldNews, `"sources": ["a1"]`, `"sources": ["a1", "a2"]`, 1))
-	if m = merge(a, both, "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 2, Inserted: 2, Old: 1, Cited: 1}) || !m.Notes[0].MakesVersion || m.Notes[1].MakesVersion {
+	if m = merge(a, both, "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 2, Inserted: 2, Adds: 1, Cited: 1}) || !m.Notes[0].MakesVersion || m.Notes[1].MakesVersion {
 		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
 
@@ -344,7 +361,7 @@ func TestOnlyAnArticlePublishedSinceTheStoryMakesAVersion(t *testing.T) {
 	}
 	// Without a time from the site, the article is as old as the server's first sight of it.
 	a.step.Seen = map[string]time.Time{undated.URL: prev.WrittenAt.Add(-time.Minute)}
-	if m = merge(a, answerOf(t, oldNews), "s1", ids, now); m.Version || m.Stats.Old != 2 {
+	if m = merge(a, answerOf(t, oldNews), "s1", ids, now); m.Version || m.Stats.Old != 1 || m.Stats.Since != 0 {
 		t.Fatalf("%+v", m.Stats)
 	}
 	a.step.Seen[undated.URL] = prev.WrittenAt.Add(time.Minute)
@@ -375,9 +392,9 @@ func TestAQuietUpdateChangesTheTextAndMakesNoVersion(t *testing.T) {
 	if m.Version || m.Story.Title != prev.Title || !m.Story.WrittenAt.Equal(prev.WrittenAt) || len(m.Story.Updates) != 1 || texts(m.Story.Updates[0].Sentences) != texts(prev.Updates[0].Sentences) {
 		t.Fatalf("%+v", m.Story)
 	}
-	// The detail with a number is in the text, with its own source: a kind that makes a version, kept from one only
-	// by its article's time. The correction is of such a kind too and stays out: a quiet update only inserts, so an
-	// older article never changes what the story tells without a version to show it. A detail without a number,
+	// The detail with a number is in the text, with its own source: a detail makes no version, and one that adds a
+	// number goes in. The correction makes a version from a later article only, and stays out: a quiet update only
+	// inserts, so the story never changes what it tells without a version to show it. A detail without a number,
 	// background and a reaction are left out, as they are from any article when no version is made.
 	want := "גשם כבד ירד הבוקר בצפון. | 2 כבישים נסגרו בגלל הגשם. | בחיפה ירדו 80 מילימטרים של גשם. | ראש העיר אמר שהכבישים ייפתחו מחר."
 	if got := texts(m.Story.Sentences); got != want {
@@ -386,32 +403,33 @@ func TestAQuietUpdateChangesTheTextAndMakesNoVersion(t *testing.T) {
 	if got := m.Story.Sentences; strings.Join(got[1].Sources, " ") != source.URL || strings.Join(got[2].Sources, " ") != first.URL || len(m.Story.Reports) != 4 {
 		t.Fatalf("%+v", got)
 	}
-	if m.Stats != (MergeStats{Asked: 5, Quiet: 1, Old: 2, Unapplied: 4, NotInserted: 1}) {
+	if m.Stats != (MergeStats{Asked: 5, Quiet: 1, Old: 1, Adds: 1, Unapplied: 4, NotInserted: 1}) {
 		t.Fatalf("%+v", m.Stats)
 	}
 	wantNotes := []string{
 		"replace s1.2: left out (" + whyNotInsert + ")",
-		"insert s1.2: quiet (" + whyQuiet + ")",
+		"insert s1.2: quiet (" + whyQuietAdds + ")",
 		"insert top: left out (" + whyNoVersion + ")",
 		"insert top: left out (" + whyNoVersion + ")",
 		"insert s1.3: left out (" + whyNoVersion + ")",
 		"delete s1.3: left out (" + whyNoVersion + ")",
 	}
-	if got := notesOf(m); strings.Join(got, "\n") != strings.Join(wantNotes, "\n") || m.Notes[1].Outcome != NoteQuiet || !m.Notes[0].Old || !m.Notes[1].Old || m.Notes[2].Old || m.Notes[1].MakesVersion {
+	if got := notesOf(m); strings.Join(got, "\n") != strings.Join(wantNotes, "\n") || m.Notes[1].Outcome != NoteQuiet || !m.Notes[0].Old || !m.Notes[1].Adds || m.Notes[1].Old || m.Notes[2].Adds || m.Notes[1].MakesVersion {
 		t.Fatalf("notes\n got %s\nwant %s", strings.Join(got, "\n"), strings.Join(wantNotes, "\n"))
 	}
 
-	// Nothing quiet of an article published since the story: its detail with a number makes a version, and then
-	// everything sound goes in, the correction, the deletion and the title too.
+	// Nothing quiet when the second article was published since the story: its correction makes a version, and
+	// then everything sound goes in, the details, the deletion and the title too.
 	second.PublishedAt = at(20 * time.Minute)
 	a, ids = askedOf(t, prev, rainSiteh, source, first, second)
-	if m = merge(a, answerOf(t, quietAnswer), "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 5, Inserted: 4, Replaced: 1, Deleted: 1, Old: 1}) || m.Story.Title != "80 מילימטרים בחיפה" {
+	if m = merge(a, answerOf(t, quietAnswer), "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 5, Inserted: 4, Replaced: 1, Deleted: 1, Adds: 1}) || m.Story.Title != "80 מילימטרים בחיפה" {
 		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
 }
 
 // A recorded answer about the rain story with one new article, published before the story was written: four
-// sentences of a kind that makes a version, one of them a correction that is inserted.
+// sentences a quiet update may take (a development, details with a number), one of them a correction that is
+// inserted.
 const crowdedAnswer = `{"stories": [{"story": "s1", "unrelated": [],
 	"insert": [{"after": "s1.1", "kind": "correction", "text": "הגשם ירד בצפון 9 שעות ברציפות.", "sources": ["a1"]},
 		{"after": "s1.1", "kind": "detail", "text": "בחיפה ירדו 80 מילימטרים של גשם.", "sources": ["a1"]},
@@ -427,10 +445,10 @@ func TestAQuietUpdateIsTwoInsertedSentencesAtMost(t *testing.T) {
 	m := merge(a, answerOf(t, crowdedAnswer), "s1", ids, now)
 	// The first two go in; the third is one too many, and a correction never goes in quietly, inserted or not.
 	want := "גשם כבד ירד הבוקר בצפון. | בחיפה ירדו 80 מילימטרים של גשם. | 2 כבישים נסגרו בגלל הגשם. | נחל הקישון עלה על גדותיו. | ראש העיר אמר שהכבישים ייפתחו מחר."
-	if got := texts(m.Story.Sentences); m.Version || got != want || m.Stats != (MergeStats{Asked: 4, Quiet: 2, Old: 4, Unapplied: 2, NotInserted: 1, Crowded: 1}) {
+	if got := texts(m.Story.Sentences); m.Version || got != want || m.Stats != (MergeStats{Asked: 4, Quiet: 2, Old: 2, Adds: 2, Unapplied: 2, NotInserted: 1, Crowded: 1}) {
 		t.Fatalf("%+v\n got %s\nwant %s", m.Stats, got, want)
 	}
-	wantNotes := "insert s1.1: left out (" + whyNotInsert + "); insert s1.1: quiet (" + whyQuiet + "); insert s1.2: quiet (" + whyQuiet + "); insert s1.3: left out (" + whyCrowded + ")"
+	wantNotes := "insert s1.1: left out (" + whyNotInsert + "); insert s1.1: quiet (" + whyQuietAdds + "); insert s1.2: quiet (" + whyQuiet + "); insert s1.3: left out (" + whyCrowded + ")"
 	if got := strings.Join(notesOf(m), "; "); got != wantNotes {
 		t.Fatalf("notes\n got %s\nwant %s", got, wantNotes)
 	}
@@ -465,10 +483,10 @@ func TestAStorysOwnArticleShownAgainAddsNothingQuietly(t *testing.T) {
 	// What stands only on the story's own article stays out: the story was written from it, and it adds nothing
 	// now. What the article that joined late states goes in, and so does what both state.
 	want := "גשם כבד ירד הבוקר בצפון. | 2 כבישים נסגרו בגלל הגשם. | בעכו פונו 30 תושבים מבתיהם. | ראש העיר אמר שהכבישים ייפתחו מחר. | העירייה פתחה 5 מקלטים."
-	if got := texts(m.Story.Sentences); m.Version || got != want || m.Stats != (MergeStats{Asked: 3, Quiet: 2, Old: 3, Unapplied: 1, Reshown: 1}) {
+	if got := texts(m.Story.Sentences); m.Version || got != want || m.Stats != (MergeStats{Asked: 3, Quiet: 2, Adds: 3, Unapplied: 1, Reshown: 1}) {
 		t.Fatalf("%+v\n got %s\nwant %s", m.Stats, got, want)
 	}
-	if got := notesOf(m); got[0] != "insert s1.1: left out ("+whyReshown+")" || !m.Notes[0].Old || m.Notes[1].Outcome != NoteQuiet || m.Notes[2].Outcome != NoteQuiet {
+	if got := notesOf(m); got[0] != "insert s1.1: left out ("+whyReshown+")" || !m.Notes[0].Adds || m.Notes[1].Outcome != NoteQuiet || m.Notes[2].Outcome != NoteQuiet {
 		t.Fatalf("%v", got)
 	}
 }
@@ -493,7 +511,7 @@ func TestSourcesWrittenIntoASentenceAreTakenOutOfIt(t *testing.T) {
 	// the second was dropped as cut short: it doesn't end with its period.
 	want := "נחל הקישון עלה על גדותיו. | גשם כבד ירד הבוקר בצפון. | המשטרה פתחה את כביש החוף לתנועה. | 2 כבישים נסגרו בגלל הגשם. | בחיפה ירדו 80 מילימטרים של גשם. | " +
 		"ראש העיר אמר שהכבישים ייפתחו מחר. | ראש העיר לוי (בן 61) הודיע על פתיחת 5 מקלטים (לפי העירייה)."
-	if got := texts(m.Story.Sentences); !m.Version || got != want || m.Stats != (MergeStats{Asked: 4, Inserted: 4, Cited: 1}) {
+	if got := texts(m.Story.Sentences); !m.Version || got != want || m.Stats != (MergeStats{Asked: 4, Inserted: 4, Cited: 1, Adds: 2, Since: 2}) {
 		t.Fatalf("%+v\n got %s\nwant %s\n%v", m.Stats, got, want, notesOf(m))
 	}
 	// A site written where an id belongs is its one new article of the story: by its name, and by its id.

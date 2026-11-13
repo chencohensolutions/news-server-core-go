@@ -64,7 +64,7 @@ func TestASentenceWithANumberItsArticlesDontStateIsDropped(t *testing.T) {
 	if got := texts(m.Story.Sentences); !m.Version || got != want {
 		t.Fatalf("version %v\n got %s\nwant %s\n%s", m.Version, got, want, strings.Join(notesOf(m), "\n"))
 	}
-	if m.Stats != (MergeStats{Asked: 10, Inserted: 7, Unbacked: 3}) {
+	if m.Stats != (MergeStats{Asked: 10, Inserted: 7, Unbacked: 3, Adds: 5, Since: 5}) {
 		t.Fatalf("%+v", m.Stats)
 	}
 	// Each dropped sentence's note names the number.
@@ -134,7 +134,7 @@ func TestANumberIsStatedHoweverItIsWritten(t *testing.T) {
 	}
 }
 
-func TestADateOrAYearIsNoNumberThatMakesAVersion(t *testing.T) {
+func TestADateOrAYearIsNoNumberADetailAdds(t *testing.T) {
 	for text, want := range map[string]string{
 		"החוק נחקק ב-14.3.2021.":             "14.3.2021 date",
 		"הסערה החלה ב-12 בנובמבר 2025.":      "12 date, 2025 date",
@@ -161,9 +161,10 @@ func TestADateOrAYearIsNoNumberThatMakesAVersion(t *testing.T) {
 			t.Errorf("figures(%q) = %s, want %s", text, strings.Join(got, ", "), want)
 		}
 	}
-	// A detail whose only numbers the story lacks are a date or a year makes no version, and is marked; one with a
-	// count beside them makes one, and so does a number that only looks like a year.
-	for text, version := range map[string]bool{
+	// A detail whose only numbers the story lacks are a date or a year adds nothing, and is marked: it is left out.
+	// One with a count beside them adds it, and so does a number that only looks like a year: they go in quietly.
+	// None makes a version.
+	for text, adds := range map[string]bool{
 		"תקנות הסגירה נקבעו ב-14.3.2021.":            false,
 		"הנחל עלה על גדותיו לאחרונה ב-2023.":         false,
 		"הסערה החלה ב-12 בנובמבר.":                   false,
@@ -173,18 +174,22 @@ func TestADateOrAYearIsNoNumberThatMakesAVersion(t *testing.T) {
 	} {
 		a, ids := askedOf(t, rainStory(), rainSiteh, rainSiteE, rainSiteg)
 		m := merge(a, answerOf(t, oneInsert(Detail, text)), "s1", ids, now)
-		if m.Version != version || m.Stats.Dated == 0 == !version || m.Notes[0].Dated == version {
-			t.Errorf("%q: version %v, want %v: %+v, %v", text, m.Version, version, m.Stats, notesOf(m))
+		if m.Version || m.Notes[0].Adds != adds || (m.Stats.Adds == 1) != adds || (m.Stats.Dated == 1) == adds || m.Notes[0].Dated == adds {
+			t.Errorf("%q: version %v, adds %v, want %v: %+v, %v", text, m.Version, m.Notes[0].Adds, adds, m.Stats, notesOf(m))
 		}
-		if !version && (m.Notes[0].Outcome != NoteLeftOut || m.Notes[0].Why != whyNoVersion) {
-			t.Errorf("%q: %v", text, notesOf(m))
+		want := "insert s1.1: left out (" + whyNoVersion + ")"
+		if adds {
+			want = "insert s1.1: quiet (" + whyQuietAdds + ")"
+		}
+		if got := strings.Join(notesOf(m), "; "); got != want {
+			t.Errorf("%q: %s", text, got)
 		}
 	}
 	// A year the story has is no number it lacks, whatever stands before it.
 	prev := rainStory()
 	prev.Sentences[2].Text = "ראש העיר אמר שהכבישים ייפתחו ב-14 בחודש."
 	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, rainSiteg)
-	if m := merge(a, answerOf(t, oneInsert(Detail, "עד 14 בחודש יישארו המקלטים פתוחים.")), "s1", ids, now); m.Version || m.Stats.Dated != 0 {
+	if m := merge(a, answerOf(t, oneInsert(Detail, "עד 14 בחודש יישארו המקלטים פתוחים.")), "s1", ids, now); m.Version || m.Stats.Dated != 0 || m.Stats.Adds != 0 {
 		t.Fatalf("%+v", m.Stats)
 	}
 }
@@ -196,12 +201,14 @@ const namedAnswer = `{"stories": [{"story": "s1", "unrelated": [],
 		{"after": "s1.3", "kind": "detail", "text": "ראש העיר לוי אמר שהכבישים ייפתחו מחר.", "sources": ["a1"]}],
 	"replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
 
-func TestADetailThatNamesAPersonTheStoryDoesntMakesAVersion(t *testing.T) {
+func TestADetailThatNamesAPersonTheStoryDoesntGoesInQuietly(t *testing.T) {
 	prev := rainStory()
 	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, rainSiteg)
 	m := merge(a, answerOf(t, namedAnswer), "s1", ids, now)
-	// The first detail has no number, and makes a version for the person it names; the other goes in with it.
-	if !m.Version || m.Stats != (MergeStats{Asked: 2, Inserted: 2, Named: 1}) || m.Notes[0].Name != "ישראל ישראלי" || !m.Notes[0].MakesVersion || m.Notes[1].MakesVersion || m.Notes[1].Name != "" {
+	// The first detail has no number, and adds the person it names: it goes in, with no version (a detail makes
+	// none: round 5). The other adds nothing, and is left out.
+	if m.Version || m.Stats != (MergeStats{Asked: 2, Quiet: 1, Unapplied: 1, Adds: 1, Since: 1, Named: 1}) || m.Notes[0].Name != "ישראל ישראלי" || !m.Notes[0].Adds || m.Notes[0].MakesVersion ||
+		m.Notes[1].Adds || m.Notes[1].Name != "" {
 		t.Fatalf("%+v %+v", m.Stats, m.Notes)
 	}
 	// One more word of a name (a surname) is no person the story doesn't mention: no version, as before.
@@ -218,7 +225,7 @@ func TestADetailThatNamesAPersonTheStoryDoesntMakesAVersion(t *testing.T) {
 	// A sentence that gives the name without a sign is read against the article it cites: there the same two words
 	// follow a rank, or an age in brackets follows them.
 	plain := "מנהל המחוז דן אלמוני הורה לסגור את הכבישים."
-	for shown, version := range map[string]bool{
+	for shown, adds := range map[string]bool{
 		"הצפות בגליל. מנהל המחוז, תנ״צ דן אלמוני, הורה לסגור את הכבישים.":    true,
 		"הצפות בגליל. דן אלמוני (52), מנהל המחוז, הורה לסגור את הכבישים.":    true,
 		"הצפות בגליל. לדברי דן אלמוני הראל (52), הכבישים ייסגרו.":            false, // the age follows other words
@@ -226,15 +233,15 @@ func TestADetailThatNamesAPersonTheStoryDoesntMakesAVersion(t *testing.T) {
 		"הצפות בגליל. תנ״צ רון פלוני ומנהל המחוז דן אלמוני סגרו את הכבישים.": false,
 	} {
 		a, ids := askedShown(t, prev, map[string]string{rainSiteg.URL: shown}, rainSiteh, rainSiteE, rainSiteg)
-		if m := merge(a, answerOf(t, oneInsert(Detail, plain)), "s1", ids, now); m.Version != version || (m.Notes[0].Name == "דן אלמוני") != version {
-			t.Errorf("%q: version %v, want %v: %v", shown, m.Version, version, m.Notes[0].Name)
+		if m := merge(a, answerOf(t, oneInsert(Detail, plain)), "s1", ids, now); m.Version || m.Notes[0].Adds != adds || (m.Notes[0].Name == "דן אלמוני") != adds {
+			t.Errorf("%q: adds %v, want %v: %v", shown, m.Notes[0].Adds, adds, m.Notes[0].Name)
 		}
 	}
-	// From an article older than the story it is of a kind that makes a version and makes none: a quiet update.
+	// From an article older than the story it goes in the same way: a quiet update.
 	old := rainSiteg
 	old.PublishedAt = scrape.FormatInstant(prev.WrittenAt.Add(-2 * time.Hour))
 	a, ids = askedOf(t, prev, rainSiteh, rainSiteE, old)
-	if m = merge(a, answerOf(t, oneInsert(Detail, "לדברי עו״ד ישראל ישראלי, הכבישים ייפתחו בהדרגה.")), "s1", ids, now); m.Version || m.Stats != (MergeStats{Asked: 1, Quiet: 1, Old: 1, Named: 1}) {
+	if m = merge(a, answerOf(t, oneInsert(Detail, "לדברי עו״ד ישראל ישראלי, הכבישים ייפתחו בהדרגה.")), "s1", ids, now); m.Version || m.Stats != (MergeStats{Asked: 1, Quiet: 1, Adds: 1, Named: 1}) {
 		t.Fatalf("%+v", m.Stats)
 	}
 }
@@ -370,7 +377,7 @@ func TestTheRequestShowsANewArticlesTitleAndSubtitleAndSaysToReadThem(t *testing
 		t.Fatalf("shown %q", a.shown)
 	}
 	m := merge(a, answerOf(t, subtitleAnswer), "s1", ids, now)
-	if !m.Version || m.Stats != (MergeStats{Asked: 3, Inserted: 2, Unbacked: 1}) || m.Story.Sentences[0].Text != "מנהל מחלקת הניקוז בעירייה פוטר." {
+	if !m.Version || m.Stats != (MergeStats{Asked: 3, Inserted: 2, Unbacked: 1, Adds: 1, Since: 1}) || m.Story.Sentences[0].Text != "מנהל מחלקת הניקוז בעירייה פוטר." {
 		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
 }

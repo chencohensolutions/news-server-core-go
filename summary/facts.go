@@ -289,6 +289,139 @@ func (n *numbers) states(f figure) bool {
 	return false
 }
 
+// cardinals are the words a count is written with, by what they count: two to ten and the tens. No ordinal
+// ("שלישי" is Tuesday too), no "one", which is seldom a count ("אחד החשודים"), and no "שנים", which is years.
+var cardinals = map[string]int64{
+	"שניים": 2, "שתיים": 2, "שני": 2, "שתי": 2,
+	"שלושה": 3, "שלוש": 3, "שלושת": 3, "ארבעה": 4, "ארבע": 4, "ארבעת": 4, "חמישה": 5, "חמש": 5, "חמשת": 5, "חמישת": 5,
+	"שישה": 6, "שש": 6, "ששת": 6, "שישת": 6, "שבעה": 7, "שבע": 7, "שבעת": 7, "שמונה": 8, "שמונת": 8,
+	"תשעה": 9, "תשע": 9, "תשעת": 9, "עשרה": 10, "עשר": 10, "עשרת": 10,
+	"עשרים": 20, "שלושים": 30, "ארבעים": 40, "חמישים": 50, "שישים": 60, "ששים": 60, "שבעים": 70, "שמונים": 80, "תשעים": 90,
+}
+
+// numberWords are the words a number is written with, the ordinals and the scales too: a count beside one of them
+// is part of a longer number ("שלוש עשרה", "עשרים ושלושה", "שלושת אלפים").
+var numberWords = func() map[string]bool {
+	out := map[string]bool{"מאה": true, "מאות": true, "מאתיים": true, "אלפיים": true, "חצי": true}
+	for _, forms := range unitWords {
+		for _, word := range forms {
+			out[word] = word != "שנים" // years, far more often than two
+		}
+	}
+	for _, forms := range tenWords {
+		for _, word := range forms {
+			out[word] = true
+		}
+	}
+	for word := range scales {
+		out[word] = true
+	}
+	return out
+}()
+
+// numberWord says word is one a number is written with, alone or after joined letters ("ושלושה").
+func numberWord(word string) bool {
+	for _, stem := range stems(word) {
+		if numberWords[stem] {
+			return true
+		}
+	}
+	return false
+}
+
+// count is a count a text writes in a word: the word as written, what it counts to, and the two words after it:
+// what is counted ("שלושה איראנים", "שלושה תיירים סינים").
+type count struct {
+	word  string
+	value int64
+	of    []string
+}
+
+// figure is c as a number in digits, to ask a text whether it states it.
+func (c count) figure() figure { return figure{text: strconv.FormatInt(c.value, 10)} }
+
+// counts are the counts text writes in a word of their own ("שלושה חשודים", "עשרים בתים"), alone or after joined
+// letters. A word beside another number's word or a number in digits is part of a longer number and is none
+// ("שלוש עשרה", "עשרים ושלושה", "3 אלפים"), and neither is an hour or a day ("בשעה שבע", "ביום שני"): narrow on
+// purpose, as the checks they serve drop or replace a sentence.
+func counts(text string) []count {
+	var out []count
+	ts := keys(tokens(text))
+	beside := func(i int) bool { return i >= 0 && i < len(ts) && (isNumber(ts[i]) || numberWord(ts[i])) }
+	for i, word := range ts {
+		var value int64
+		for _, stem := range stems(word) {
+			if value = cardinals[stem]; value > 0 {
+				// "השני" is the second, not two.
+				if value == 2 && strings.Contains(strings.TrimSuffix(word, stem), "ה") {
+					value = 0
+				}
+				break
+			}
+		}
+		if value == 0 || beside(i-1) || beside(i+1) {
+			continue
+		}
+		if i > 0 && (alike(ts[i-1], "שעה") || alike(ts[i-1], "יום")) {
+			continue
+		}
+		out = append(out, count{word: word, value: value, of: ts[i+1 : min(i+3, len(ts))]})
+	}
+	return out
+}
+
+// nationalities are a country's people, each as the singular its plurals are made from ("איראני": "איראנים",
+// "איראניות"). Not the ones whose plural is another word too ("רומנים" are novels).
+var nationalities = map[string]bool{
+	"ישראלי": true, "פלסטיני": true, "איראני": true, "סורי": true, "לבנוני": true, "מצרי": true, "ירדני": true, "עיראקי": true,
+	"סעודי": true, "קטארי": true, "תימני": true, "טורקי": true, "רוסי": true, "אוקראיני": true, "אמריקאי": true, "אמריקני": true,
+	"קנדי": true, "בריטי": true, "צרפתי": true, "גרמני": true, "איטלקי": true, "ספרדי": true, "יווני": true, "פולני": true,
+	"הולנדי": true, "בלגי": true, "שוודי": true, "סיני": true, "הודי": true, "יפני": true, "קוריאני": true, "תאילנדי": true,
+	"פיליפיני": true, "אפגני": true, "פקיסטני": true, "אריתראי": true, "סודני": true, "אתיופי": true, "מרוקאי": true, "ברזילאי": true,
+}
+
+// nationals says one of words is a country's people, in the plural: "איראנים", "ואיראניות".
+func nationals(words ...string) bool {
+	for _, word := range words {
+		for _, stem := range stems(word) {
+			for _, plural := range []string{"ם", "ות"} {
+				if one, ok := strings.CutSuffix(stem, plural); ok && nationalities[one] {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// another says text has a number that than doesn't state: in digits (a date or a year aside), or a count in words.
+// dates says that of its dates and years instead.
+func another(text, than string, dates bool) bool {
+	n := newNumbers()
+	n.add(than)
+	for _, f := range figures(text) {
+		if f.date == dates && !n.states(f) {
+			return true
+		}
+	}
+	if dates {
+		return false
+	}
+	for _, c := range counts(text) {
+		if !n.states(c.figure()) {
+			return true
+		}
+	}
+	return false
+}
+
+// differ says two sentences give different numbers: each has one the other doesn't state. A date or a year is
+// none.
+func differ(a, b string) bool { return another(a, b, false) && another(b, a, false) }
+
+// sameTime says neither of two sentences has a date or a year the other doesn't state.
+func sameTime(a, b string) bool { return !another(a, b, true) && !another(b, a, true) }
+
 // news is what text's numbers add to the story n is of: number says one of them is no date or year and the story
 // lacks it; dated that the only ones the story lacks are dates and years, which make no version (round 4: "the
 // law of 14.3.2021", "since 2023").

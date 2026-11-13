@@ -200,7 +200,7 @@ func TestTheShadowRecordsAQuietUpdate(t *testing.T) {
 	// as one. The story's title, time and updates are the live version's; nothing was deleted, and the background is
 	// left out.
 	quiet := shadowOf(t, w, found[0])
-	if quiet == nil || quiet.Version || quiet.Quiet != 1 || quiet.Story == nil || quiet.Reason != "" || *quiet.Stats != (MergeStats{Asked: 2, Quiet: 1, Old: 1, Unapplied: 1}) {
+	if quiet == nil || quiet.Version || quiet.Quiet != 1 || quiet.Story == nil || quiet.Reason != "" || *quiet.Stats != (MergeStats{Asked: 2, Quiet: 1, Adds: 1, Unapplied: 1}) {
 		t.Fatalf("%+v", quiet)
 	}
 	if got := texts(quiet.Story.Sentences); got != "גשם כבד ירד הבוקר בצפון. | בחיפה ירדו 80 מילימטרים של גשם. | שני כבישים נסגרו." ||

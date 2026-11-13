@@ -357,8 +357,8 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 	if !whole {
 		cutShort = " (the answer was cut: the whole stories of it)"
 	}
-	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d, updated quietly (no version): %d, nothing new: %d, to be written whole: %d, skipped by Gemini and asked again next run: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled, %d with a number their articles don't state; %d kept from making a version by their articles' time, %d of them added quietly",
-		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, quietly, none, rebuilt, skipped, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled, dropped.Unbacked, dropped.Old, dropped.Quiet)
+	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d, updated quietly (no version): %d, nothing new: %d, to be written whole: %d, skipped by Gemini and asked again next run: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled, %d with a number their articles don't state; %d inserted ones made the correction of the sentence they gave another number for; no version from %d developments and corrections for their articles' time and from %d details with a number or a name, %d of them added quietly",
+		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, quietly, none, rebuilt, skipped, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled, dropped.Unbacked, dropped.Corrected, dropped.Old, dropped.Adds, dropped.Quiet)
 	return nil
 }
 

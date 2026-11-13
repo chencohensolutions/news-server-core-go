@@ -31,9 +31,9 @@ const (
 
 // What an inserted or replaced sentence is.
 const (
-	Development = "development" // something happened or became known since the story was written
+	Development = "development" // news of the story's main event: what happened or became known, an official act
 	Correction  = "correction"  // a fact of the story changed or was wrong
-	Detail      = "detail"      // a fact about what the story tells already
+	Detail      = "detail"      // a fact beside the main event, or a finer point of what the story tells already
 	Background  = "background"  // what was before the event
 	Reaction    = "reaction"    // what someone said about it
 )
@@ -331,10 +331,12 @@ For every story answer, in this order:
 - "insert": a sentence for each fact the new articles state and the story so far does not. Each has "after": the
   number of the sentence it follows ("s1.3"), or "top" for what happened since the story was written, which leads;
   its "kind"; its "text"; and "sources": the ids of the new articles that state it. A fact the story already has,
-  in other words too, is not inserted: it goes in "cite".
+  in other words too, is not inserted: it goes in "cite". Another value for a fact a sentence of the story states
+  (another count, name, place or time for the same thing) is not inserted beside it: it replaces that sentence.
 - "replace": a sentence of the story that a new article corrects or brings up to date (a toll that rose, a name now
   published, a decision that was reversed): its "sentence" number, its "kind", the whole new "text", and "sources":
-  the ids of the new articles that state it. Not for rewording, and not for adding another fact: insert that.
+  the ids of the new articles that state it. Its kind is "correction" or "development". Not for rewording, and not
+  for adding another fact: insert that.
 - "delete": the numbers of the sentences a new article shows to be no longer true and nothing replaces. Usually none.
 - "cite": the sentences of the story whose fact a new article states too: the "sentence" number and "sources", the
   ids of the new articles that state it. So an article that only repeats the story adds sources, not sentences.
@@ -346,12 +348,25 @@ For every story answer, in this order:
   "text" is one sentence naming each site once and what it says. Usually none: then an empty list.
 
 A sentence's "kind" is one of:
-- "development": something that happened or became known since the story was written; a new stage of the event.
-- "correction": a fact of the story changed or was wrong.
-- "detail": a fact about what the story already tells that it lacks: a name, a number, a place, a time, a quote.
-  A breakdown of figures the story already sums up is a detail, not a development.
+- "development": news of the story's main event. Something that happened or became known since the story was
+  written, a new stage of it, or a central fact of it that the story lacks: the toll or the count the event is
+  about (how many were arrested or hurt, how many attacks a report counted), its main sum or rate (how far a share
+  fell, what was paid), the name of the person at its center, now published. An official act is a "development"
+  too, also when it is made of words: a letter sent, an appeal or a petition filed, a decision, an order, a formal
+  statement or announcement by a leader, a minister or an official body (a prime minister, a party's leader, a
+  court, the police, a ministry).
+- "correction": a fact of the story changed or was wrong: a new article gives another number, name, place or time
+  than a sentence of the story does (three arrested where the story says two). A correction is always a "replace"
+  of that sentence, never an "insert" beside it: the story must not say both.
+- "detail": a fact beside the main event, or a finer point of what the story already tells: a reader who has the
+  story misses no news without it. A side figure (a related figure of another country, another day or another
+  company; an option's amount; a project's size in megawatts or dunams), a breakdown of figures the story already
+  sums up, one more name on a list (another signer of a bill), a place, a time, an age, a quote.
 - "background": what was before the event, or context: a preview of the event, the run-up to it.
-- "reaction": what someone said about it.
+- "reaction": what someone said about the event: a comment, praise, criticism, a call, a commentator's view. Not an
+  official act: that is a "development".
+The same number can be either: the event's own main figure is a "development", a figure beside it a "detail". A
+"detail" alone never makes the story news again, so don't call a central fact of the event one.
 An article published before the story was written reports nothing that happened since: nothing from it is a
 "development". A fact of it about the event itself that the story lacks (a name, a number, a sum, an offer made) is
 a "detail"; the rest of it is "background".
@@ -359,11 +374,11 @@ a "detail"; the rest of it is "background".
 Account for every new article: the id of each one appears in "unrelated", or among the "sources" of an "insert", a
 "replace" or a "cite". Before you decide that an article only repeats the story, read its title ("כותרת:") and its
 subtitle ("משנה:" or "תקציר:") first: they state the article's main news. When the story so far does not say what
-they state (someone dismissed or appointed, a decision approved, a rift, a result), that is an insert, even when
-the body mostly repeats the story. Then check the body for what the story lacks: a new stage or decision, a person
-named for the first time, a number (a count, an age, an amount, a date), an official response. Each such fact is an
-insert. An article that has none of them repeats the story: cite the sentences it states. Never invent a difference
-to have something to answer.
+they state (someone dismissed or appointed, a decision approved, a rift, a result, a statement or an announcement
+by a leader, a minister or an official body), that is an insert, even when the body mostly repeats the story. Then
+check the body for what the story lacks: a new stage or decision, a person named for the first time, a number (a
+count, an age, an amount, a date), an official response. Each such fact is an insert. An article that has none of
+them repeats the story: cite the sentences it states. Never invent a difference to have something to answer.
 
 Only this story's event. An article often mentions a related but separate event beside it: another indictment,
 another company's results, an earlier incident, a similar case elsewhere. Its facts are not this story's: don't
@@ -678,6 +693,9 @@ type MergeStats struct {
 	Unknown   int `json:"unknown"`
 	Garbled   int `json:"garbled"`
 	Unbacked  int `json:"unbacked"`
+	// Worded are the ones of Unbacked whose number is a count of a country's people written in a word ("שלושה
+	// איראנים").
+	Worded int `json:"worded"`
 	// Timed are the ones of Restated that are a development saying a sentence of the story again with a time word
 	// more ("היום", "אמש").
 	Timed int `json:"timed"`
@@ -685,24 +703,33 @@ type MergeStats struct {
 	// details without a number or a new name), or because a quiet update doesn't take them (Reshown, NotInserted,
 	// Crowded).
 	Unapplied int `json:"unapplied"`
-	// Quiet are sound sentences that went into the story without a version: inserted ones of a kind that makes
-	// one, from articles all published before the version before (they are among Old too).
+	// Quiet are sound sentences that went into the story without a version: inserted ones among Old and Adds.
 	Quiet int `json:"quiet"`
-	// What a quiet update didn't take, of Old and among Unapplied: a sentence that stands only on articles the
-	// story was written from, shown again (Reshown); a replacement or a correction (NotInserted); one more than
-	// MaxQuiet (Crowded).
+	// What a quiet update didn't take, of Old and Adds and among Unapplied: a sentence that stands only on
+	// articles the story was written from, shown again (Reshown); a replacement or a correction (NotInserted); one
+	// more than MaxQuiet (Crowded).
 	Reshown     int `json:"reshown"`
 	NotInserted int `json:"notInserted"`
 	Crowded     int `json:"crowded"`
-	// Named are details that are of a kind that makes a version for a person they name whom the story doesn't, and
-	// no number; Dated are details that are not, though they have a number the story lacks: it is a date or a year.
+	// Adds are sound details with a number the story lacks or a person it doesn't name. A detail makes no
+	// version: they go in with one when another sentence makes it, and quietly (Quiet) when none does. Since are
+	// the ones of them with an article published after the version before among their sources: until round 5 of
+	// the replay each of those made a version.
+	Adds  int `json:"adds"`
+	Since int `json:"since"`
+	// Named are the ones of Adds for a person they name whom the story doesn't, and no number; Dated are details
+	// that are not among Adds, though they have a number the story lacks: it is a date or a year.
 	Named int `json:"named"`
 	Dated int `json:"dated"`
+	// Corrected are inserted sentences that said a sentence of the story again with another number: each became
+	// that sentence's replacement, a correction, which is in the story only with a version (NotInserted has the
+	// ones that stayed out).
+	Corrected int `json:"corrected"`
 	// Unanchored are inserted sentences whose place wasn't a sentence of the story: they lead.
 	Unanchored int `json:"unanchored"`
-	// Old are sound sentences of a kind that makes a version, all of whose articles were published before the
-	// version before: they make none. They go in with the version when another sentence makes one, and quietly
-	// (Quiet) when none does.
+	// Old are sound developments and corrections all of whose articles were published before the version
+	// before: they make none. They go in with the version when another sentence makes one, and the inserted
+	// developments quietly (Quiet) when none does.
 	Old int `json:"old"`
 }
 
@@ -719,14 +746,18 @@ func (s *MergeStats) add(o MergeStats) {
 	s.Unknown += o.Unknown
 	s.Garbled += o.Garbled
 	s.Unbacked += o.Unbacked
+	s.Worded += o.Worded
 	s.Timed += o.Timed
 	s.Unapplied += o.Unapplied
 	s.Quiet += o.Quiet
 	s.Reshown += o.Reshown
 	s.NotInserted += o.NotInserted
 	s.Crowded += o.Crowded
+	s.Adds += o.Adds
+	s.Since += o.Since
 	s.Named += o.Named
 	s.Dated += o.Dated
+	s.Corrected += o.Corrected
 	s.Unanchored += o.Unanchored
 	s.Old += o.Old
 }
@@ -773,18 +804,23 @@ type MergeNote struct {
 	Outcome string   `json:"outcome"`
 	// Why it was dropped or left out, in words.
 	Why string `json:"why,omitempty"`
-	// MakesVersion says a sound sentence is one the version rule takes: a development, a correction, or a detail
-	// with a number the story lacks or a person it doesn't name, with an article published after the version
-	// before among its sources.
+	// MakesVersion says a sound sentence is one the version rule takes: a development or a correction with an
+	// article published after the version before among its sources.
 	MakesVersion bool `json:"makesVersion,omitempty"`
-	// Name is the person a detail names whom the story doesn't, when that is what makes it of such a kind. Dated
-	// says a detail is not of such a kind though it has a number the story lacks: a date or a year.
+	// Adds says a sound detail has a number the story lacks or names a person it doesn't: it makes no version,
+	// and goes into the story quietly when no other sentence makes one. Name is that person, when the detail has
+	// no such number. Dated says a detail is not one that adds though it has a number the story lacks: a date or
+	// a year.
+	Adds  bool   `json:"adds,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Dated bool   `json:"dated,omitempty"`
-	// Old says a sound sentence is of such a kind, and every article it cites was published before the version
-	// before: it makes no version. When no other sentence makes one its Outcome is NoteQuiet: it went into the
-	// story all the same.
+	// Old says a sound development or correction cites only articles published before the version before: it
+	// makes no version. When no other sentence makes one, an inserted development's Outcome is NoteQuiet: it went
+	// into the story all the same.
 	Old bool `json:"old,omitempty"`
+	// Corrects is the sentence of the story ("s1.2") an inserted sentence said again with another number: it was
+	// made that sentence's replacement, a correction (its Kind), and no longer stands beside it.
+	Corrects string `json:"corrects,omitempty"`
 }
 
 // What the rules say of an operation they drop (MergeNote.Why).
@@ -796,8 +832,9 @@ const (
 	whyReplaced   = "the sentence is replaced"
 	whyHalf       = "the answer deletes more than half the story"
 	whyNoFootnote = "adds no footnote: no new article of the story the sentence doesn't cite already"
-	whyNoVersion  = "no version: the answer has no development, no correction, and no detail with a number the story lacks or a person it doesn't name"
+	whyNoVersion  = "no version: the answer has no development and no correction from an article published since the story was written"
 	whyQuiet      = "in the story without a version: every article it cites was published before the story was written"
+	whyQuietAdds  = "in the story without a version: a detail makes none"
 	whyReshown    = "no version, and not in the story: every article it cites is one the story was written from, shown again"
 	whyNotInsert  = "no version, and not in the story: a quiet update only inserts, and never a correction"
 	whyCrowded    = "no version, and not in the story: a quiet update takes two sentences at most"
@@ -974,21 +1011,30 @@ func (c *cited) sentence(text string, refs []string, allowed map[string]bool) (S
 // unbacked is a number of s that neither the articles s cites state, as the request showed them, nor the story
 // (told): a count or a sum of another event, or of no article at all. "" when there is none, and when the request's
 // text of one of the articles isn't known. A date or a year is no such number: Gemini works them out ("yesterday").
-func (a *asked) unbacked(s Sentence, told *numbers) string {
+// worded says it is a count of a country's people written in a word ("שלושה איראנים" where no article counts
+// three: rounds 4 and 5 of the replay): three and more, as "שני" is too much else, and only of such a people
+// (nationals, in the two words after it), as any other count in a word is as often one Gemini rightly works out
+// (three ministers, of three names; three days, of a date) or part of a place's name.
+func (a *asked) unbacked(s Sentence, told *numbers) (number string, worded bool) {
 	cited := newNumbers()
 	for _, url := range s.Sources {
 		shown, ok := a.shown[url]
 		if !ok {
-			return ""
+			return "", false
 		}
 		cited.add(shown)
 	}
 	for _, f := range figures(s.Text) {
 		if !f.date && !cited.states(f) && !told.states(f) {
-			return f.text
+			return f.text, false
 		}
 	}
-	return ""
+	for _, c := range counts(s.Text) {
+		if f := c.figure(); c.value > 2 && nationals(c.of...) && !cited.states(f) && !told.states(f) {
+			return c.word, true
+		}
+	}
+	return "", false
 }
 
 // edit is a sentence that survived the rules: inserted after sentence at (0 leads), or sentence at's new text.
@@ -1008,13 +1054,17 @@ type edit struct {
 //     state (unbacked).
 //   - An old sentence changes only by being replaced or deleted, by its number; an operation on a number the story
 //     doesn't have is dropped. Its text and footnotes are otherwise kept exactly; a citation adds a footnote.
-//   - A version is made only when a development or a correction survives, or a detail with a number the story
-//     lacks (no date or year) or a person's full name it doesn't have (newName), and one of that sentence's
-//     articles was published after the version before was written (Step.fresh; an article whose time isn't known
-//     counts as one). Otherwise there is no version: background, reactions and other details are left out, and
-//     the new articles are only among the story's reports and, where cited, its footnotes.
-//   - A quiet update: without a version, an inserted sentence of a kind that makes one, kept from it only by its
-//     articles' time, goes into the story all the same, with its sources. Nothing else changes: not the title, the
+//   - An inserted sentence that says a sentence of the story again with another number (contradicted) takes that
+//     sentence's place, as a correction: the story must not say both. A replacement answered as a detail that
+//     gives another number than the sentence it replaces (differ) is a correction too.
+//   - A version is made only when a development or a correction survives, and one of that sentence's articles was
+//     published after the version before was written (Step.fresh; an article whose time isn't known counts as
+//     one). A detail never makes one (round 5 of the replay: side figures did). Otherwise there is no version:
+//     background, reactions and details without a number or a name are left out, and the new articles are only
+//     among the story's reports and, where cited, its footnotes.
+//   - A quiet update: without a version, an inserted development kept from making one only by its articles' time,
+//     and an inserted detail with a number the story lacks (no date or year) or a person's full name it doesn't
+//     have (newName), go into the story all the same, with their sources. Nothing else changes: not the title, the
 //     time or the updates, and nothing is deleted. It only inserts, never a correction; two sentences at most
 //     (MaxQuiet); and never from the articles the story was written from alone, shown again.
 //   - An answer that names none of the new articles is no answer (Skipped): the story is to be asked about again.
@@ -1078,9 +1128,9 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		}
 		// A development is checked without its time words too: "the roads were closed today" tells nothing that
 		// "the roads were closed" didn't.
-		timed, unbacked := -1, ""
+		timed, unbacked, worded := -1, "", false
 		if why == "" {
-			unbacked = a.unbacked(s, told)
+			unbacked, worded = a.unbacked(s, told)
 			if text, stripped := timeless(s.Text); kind == Development && stripped && !index.restates(s.Text) {
 				if of, ok := index.restated(text); ok {
 					timed = max(of, 0)
@@ -1096,6 +1146,9 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			drop(op, whyUnsourced)
 		case unbacked != "":
 			m.Stats.Unbacked++
+			if worded {
+				m.Stats.Worded++
+			}
 			drop(op, fmt.Sprintf(whyUnbacked, unbacked))
 		case index.restates(s.Text):
 			m.Stats.Restated++
@@ -1112,6 +1165,11 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			m.Stats.Repeated++
 			drop(op, whyRepeated)
 		default:
+			// A replacement that gives another number than its sentence corrects it, whatever Gemini called it:
+			// as a detail it would make no version, and never go in.
+			if replace && kind == Detail && differ(s.Text, p.Kept[at-1].Text) {
+				kind = Correction
+			}
 			answered.add(s.Text)
 			op.Kind = kind
 			edits = append(edits, edit{sentence: s, kind: kind, at: at, replace: replace, note: note(op)})
@@ -1146,48 +1204,70 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		}
 		accept(MergeNote{Op: "insert", At: in.After, Kind: in.Kind, Text: in.Text, Sources: in.Sources}, at, false)
 	}
-	for _, e := range edits {
-		makes := e.kind == Development || e.kind == Correction
-		if e.kind == Detail {
-			// A detail is news by a number the story lacks, a date or a year aside, or by a person it names whom
-			// the story doesn't.
-			number, dated := told.news(e.sentence.Text)
-			if makes = number; !makes {
-				var shown []string
-				for _, url := range e.sentence.Sources {
-					shown = append(shown, a.shown[url])
-				}
-				if name := newName(e.sentence.Text, known, shown...); name != "" {
-					makes = true
-					m.Stats.Named++
-					m.Notes[e.note].Name = name
-				} else if dated {
-					m.Stats.Dated++
-					m.Notes[e.note].Dated = true
-				}
-			}
-		}
-		if !makes {
+	// An inserted sentence that says a sentence of the story again with another number ("3 were arrested" beside
+	// "2 were arrested") would leave the story saying both: it takes that sentence's place, as a correction. So it
+	// makes a version when its article was published since the story was written, goes in with a version another
+	// sentence makes, and otherwise stays out: no replacement is ever quiet. Background and a reaction tell of
+	// another time or of what someone said, and stay what they are.
+	for i := range edits {
+		e := &edits[i]
+		if e.replace || e.kind == Background || e.kind == Reaction {
 			continue
 		}
+		if at := index.contradicted(e.sentence.Text, p.Kept); at > 0 && !replaced[at] {
+			e.replace, e.at, e.kind = true, at, Correction
+			replaced[at] = true
+			m.Stats.Corrected++
+			m.Notes[e.note].Kind, m.Notes[e.note].Corrects = Correction, fmt.Sprintf("%s.%d", id, at)
+		}
+	}
+	for _, e := range edits {
+		note := &m.Notes[e.note]
 		// News is what an article published since the story was written tells: a sentence that stands only on
 		// older ones (a preview that joined the story late, a source of the story shown again) makes no version.
 		since := false
 		for _, url := range e.sentence.Sources {
 			since = since || !old[url]
 		}
-		if since {
-			m.Version = true
-			m.Notes[e.note].MakesVersion = true
-		} else {
-			m.Stats.Old++
-			m.Notes[e.note].Old = true
+		switch e.kind {
+		case Development, Correction:
+			if since {
+				m.Version = true
+				note.MakesVersion = true
+			} else {
+				m.Stats.Old++
+				note.Old = true
+			}
+		case Detail:
+			// A detail makes no version, whatever it has: it is a fact beside the event (round 5: a side figure,
+			// one more signer). What it adds is told by a number the story lacks, a date or a year aside, or by a
+			// person it names whom the story doesn't: such a one goes into the story quietly.
+			number, dated := told.news(e.sentence.Text)
+			if note.Adds = number; !number {
+				var shown []string
+				for _, url := range e.sentence.Sources {
+					shown = append(shown, a.shown[url])
+				}
+				if name := newName(e.sentence.Text, known, shown...); name != "" {
+					note.Adds, note.Name = true, name
+					m.Stats.Named++
+				} else if dated {
+					m.Stats.Dated++
+					note.Dated = true
+				}
+			}
+			if note.Adds {
+				m.Stats.Adds++
+				if since {
+					m.Stats.Since++
+				}
+			}
 		}
 	}
-	// Without a version, the sentences the articles' time alone kept from making one go into the story quietly:
-	// inserted ones only and no correction (an older article must not undo what the story tells, and without a
-	// version nothing would show that it did), MaxQuiet of them, and none that stands only on articles the story
-	// was written from (shown again, they add nothing).
+	// Without a version, the developments the articles' time alone kept from making one, and the details that add
+	// a number or a name, go into the story quietly: inserted ones only and no correction (the story must not
+	// change what it tells without a version to show that it did), MaxQuiet of them, and none that stands only on
+	// articles the story was written from (shown again, they add nothing).
 	own := seenOf(a.step.Prev)
 	reshown := func(sources []string) bool {
 		for _, url := range sources {
@@ -1214,7 +1294,7 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			if e.replace {
 				replacing[e.at] = true
 			}
-		case !note.Old:
+		case !note.Old && !note.Adds:
 			leave(whyNoVersion, nil)
 		case e.replace || e.kind == Correction:
 			leave(whyNotInsert, &m.Stats.NotInserted)
@@ -1224,6 +1304,9 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			leave(whyCrowded, &m.Stats.Crowded)
 		default:
 			note.Outcome, note.Why = NoteQuiet, whyQuiet
+			if note.Adds {
+				note.Why = whyQuietAdds
+			}
 			edits[i].quiet = true
 			quiet++
 		}
