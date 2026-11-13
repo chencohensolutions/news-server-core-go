@@ -10,8 +10,9 @@ import (
 )
 
 // The rules round 5 of the replay added (docs/incremental.md): an inserted sentence with another number for an old
-// one's fact replaces it, and a count of a country's people that no cited article states. Its instructions on the
-// kinds and its rule that a detail makes no version were taken back after round 6: round6_test.go.
+// one's fact replaces it, and a count of a country's people that no cited article states (round 7 made it a count
+// that none gives of that people). Its instructions on the kinds and its rule that a detail makes no version were
+// taken back after round 6: round6_test.go.
 
 func TestASentenceSaysAnotherAgainWithAnotherNumber(t *testing.T) {
 	story := []Sentence{
@@ -78,8 +79,12 @@ func TestAWordedCountIsReadNarrowly(t *testing.T) {
 	if !differ("שלושה חשודים נעצרו.", "2 חשודים נעצרו.") || differ("שלושה חשודים נעצרו.", "3 חשודים נעצרו ב-12 בנובמבר.") || differ("שלושה חשודים נעצרו.", "חשודים נעצרו.") {
 		t.Fatal("differ")
 	}
-	if !nationals("תיירים", "סינים") || !nationals("והאיראניות") || nationals("כבישים", "רומנים") || nationals("איראני") {
-		t.Fatal("nationals")
+	plural := func(word string) bool {
+		_, plural := national(word)
+		return plural
+	}
+	if !plural("סינים") || !plural("והאיראניות") || plural("כבישים") || plural("רומנים") || plural("איראני") {
+		t.Fatal("national")
 	}
 }
 
@@ -210,13 +215,19 @@ func TestACountOfACountrysPeopleThatNoCitedArticleStatesIsDropped(t *testing.T) 
 			}
 			continue
 		}
-		if want := "insert s1.1: dropped (" + fmt.Sprintf(whyUnbacked, number) + ")"; m.Version || m.Stats != (MergeStats{Asked: 1, Unbacked: 1, Worded: 1}) || notesOf(m)[0] != want {
+		if want := "insert s1.1: dropped (" + fmt.Sprintf(whyUncounted, number) + ")"; m.Version || m.Stats != (MergeStats{Asked: 1, Unbacked: 1, Worded: 1}) || notesOf(m)[0] != want {
 			t.Errorf("%q: %+v %v", text, m.Stats, notesOf(m))
 		}
 	}
-	// A count the story has already is no count of no article.
+	// A count of the people that the story has already is no count of no article; the same number of something
+	// else is none of that people (round 7: round7_test.go).
 	prev.Sentences[1].Text = "3 כבישים נסגרו בגלל הגשם."
 	a, ids := askedShown(t, prev, shown, rainSiteh, rainSiteE, rainSiteg)
+	if m := merge(a, answerOf(t, oneInsert(Development, "שלושה סינים חולצו מנחל הקישון.")), "s1", ids, now); m.Version || m.Stats.Worded != 1 {
+		t.Fatalf("%+v", m.Stats)
+	}
+	prev.Sentences[1].Text = "3 תיירים סינים נתקעו בנחל הקישון."
+	a, ids = askedShown(t, prev, shown, rainSiteh, rainSiteE, rainSiteg)
 	if m := merge(a, answerOf(t, oneInsert(Development, "שלושה סינים חולצו מנחל הקישון.")), "s1", ids, now); !m.Version || m.Stats.Unbacked != 0 {
 		t.Fatalf("%+v", m.Stats)
 	}

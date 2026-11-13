@@ -98,7 +98,7 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 	fmt.Fprintf(out, "    sentences answered: %d; dropped: %d said already (%s; %d of them a development with only a time word more), %d without a new article of the story, %d twice, %d on unknown sentences, %d garbled, %d with a number their articles don't state\n",
 		s.Asked, s.Restated, percent(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked)
 	fmt.Fprintf(out, "    in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Inserted, s.Replaced, s.Deleted, s.Cited)
-	fmt.Fprintf(out, "    inserted sentences made the correction of the sentence they gave another number for: %d\n", s.Corrected)
+	fmt.Fprintf(out, "    inserted sentences made the correction of the sentence they gave another number for: %d; made none because they name another day: %d\n", s.Corrected, s.OtherDay)
 	fmt.Fprintf(out, "    developments and corrections kept from making a version by their articles' time (all published before the story was written): %d; details with a number, a name or an outcome the story lacks: %d, %d of them from an article published since (each makes a version; %d versions were made by details alone)\n",
 		s.Old, s.Adds, s.Since, s.ByDetail)
 	fmt.Fprintf(out, "    with no version made: %d sentences went into the story quietly; %d stayed out (%d from the story's own articles, %d replacements and corrections)\n",

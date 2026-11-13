@@ -570,7 +570,8 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 		"with no version made: 2 went into the story quietly; 0 stayed out: 0 from articles the story was written from, shown again, and 0 replacements and corrections",
 		"sentences went into the story quietly (no version, nothing in what's new) in 2 steps: 2 where live had new facts, 0 where it had none",
 		"added quietly with no version made, by kind: 0 development, 0 correction, 1 detail, 1 background, 0 reaction",
-		"0 garbled or cut, 0 with a number none of the articles they cite states (0 of them a count of a country's people in a word)",
+		"0 garbled or cut, 0 with a number none of the articles they cite states (0 of them a count of a country's people that none gives of that people)",
+		"sentences made no correction because they name a day the story's sentence doesn't (inserted beside it): 0",
 		"of those details, for a person or a body they name and no number: 0; for an outcome alone: 0; details that add none because the only numbers the story lacks in them are dates or years: 0",
 		"kept out of the story with no version made, by kind: 0 development, 0 correction, 0 detail, 0 background, 0 reaction",
 	} {

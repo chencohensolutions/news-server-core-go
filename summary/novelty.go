@@ -1,6 +1,7 @@
 package summary
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -163,7 +164,11 @@ func (x *wordIndex) restates(text string) bool {
 }
 
 // restated is restates with the sentence text says again: the first of them, from 0; -1 for a text without words.
-func (x *wordIndex) restated(text string) (sentence int, ok bool) {
+func (x *wordIndex) restated(text string) (sentence int, ok bool) { return x.restatedTo(text, x.has) }
+
+// restatedTo is restated for a reader who has more than x's text: known says a word is one they have (x's, and
+// those of a story x's sentences are added to).
+func (x *wordIndex) restatedTo(text string, known func(word string) bool) (sentence int, ok bool) {
 	now := words(text)
 	if len(now) == 0 {
 		return -1, true
@@ -181,7 +186,7 @@ func (x *wordIndex) restated(text string) (sentence int, ok bool) {
 		}
 		news := false
 		for i, ok := range has {
-			if !ok && (isNumber(now[i]) || numberWord(now[i]) || !x.has(now[i])) {
+			if !ok && (isNumber(now[i]) || numberWord(now[i]) || !known(now[i])) {
 				news = true
 				break
 			}
@@ -212,15 +217,41 @@ func said(text string) (out []string, more bool) {
 	return out, more
 }
 
+// numberJoined is a number in digits as a word's key has it after joined letters: "ב3" of "ב-3".
+var numberJoined = regexp.MustCompile(`^[` + prefixes + `]{1,2}(\d+)$`)
+
+// numbered is text's words with each count as its number in digits, to compare two sentences' counts by what they
+// count to: a count in a word of its own (counts: "שלושה", "ושלושת") and a number after joined letters ("ב-3") are
+// "3".
+func numbered(text string) string {
+	ts := keys(tokens(text))
+	for _, c := range counts(text) {
+		ts[c.at] = c.figure().text
+	}
+	for i, word := range ts {
+		if m := numberJoined.FindStringSubmatch(word); m != nil {
+			ts[i] = m[1]
+		}
+	}
+	return strings.Join(ts, " ")
+}
+
 // contradicted is the sentence of story (the one x is the index of), from 1, that text says again with another
 // number: "3 were arrested" beside "2 were arrested". 0 when there is none. It is the same sentence but for the
 // number: that sentence has every content word of text (said: the numbers and the words that tell nothing aside;
 // minSaid of them at least), and text has most of that sentence's (restatedAt); each gives a number the other
-// doesn't state (differ: in digits or in a count's word, "שלושה" beside "שני" or "2"), and neither a date or a
-// year the other lacks (sameTime). Narrow on purpose, as text then takes that sentence's place: one content word
-// more in text (another place, "killed" for "hurt") makes it another fact, and so does a word of moreWords
-// ("4 more"). Of several, the first.
+// doesn't state (differ: in digits or in a count's word, "שלושה" beside "שני" or "2"), neither a date or a
+// year the other lacks (sameTime), and text names no day that sentence doesn't (anotherDay: "ביום שלישי" beside
+// "ביום שני" is another day's number, and the words of a day of the week are no content words). Narrow on purpose,
+// as text then takes that sentence's place: one content word more in text (another place, "killed" for "hurt")
+// makes it another fact, and so does a word of moreWords ("4 more"). Of several, the first.
 func (x *wordIndex) contradicted(text string, story []Sentence) int {
+	return x.contradicting(text, story, false)
+}
+
+// contradicting is contradicted; anyDay leaves out that text names no other day, to tell that this alone is what
+// kept a sentence from being one.
+func (x *wordIndex) contradicting(text string, story []Sentence, anyDay bool) int {
 	now, more := said(text)
 	if len(now) < minSaid || more {
 		return 0
@@ -239,7 +270,7 @@ sentences:
 				continue sentences
 			}
 		}
-		if !differ(text, s.Text) || !sameTime(text, s.Text) {
+		if !differ(text, s.Text) || !sameTime(text, s.Text) || !anyDay && anotherDay(text, s.Text) {
 			continue
 		}
 		old, _ := said(s.Text)

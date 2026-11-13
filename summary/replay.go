@@ -1107,12 +1107,13 @@ func (r *ReplayReport) Print(out io.Writer) {
 		r.MissedUpdated+r.QuietUpdated, r.MissedUpdated, r.QuietUpdated)
 	s := r.Stats
 	fmt.Fprintf(out, "\nsentences Gemini answered to insert or replace: %d\n", s.Asked)
-	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s; %d of them a development with only a time word more), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut, %d with a number none of the articles they cite states (%d of them a count of a country's people in a word)\n",
+	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s; %d of them a development with only a time word more), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut, %d with a number none of the articles they cite states (%d of them a count of a country's people that none gives of that people)\n",
 		s.Restated, share(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked, s.Worded)
 	fmt.Fprintf(out, "  in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Inserted, s.Replaced, s.Deleted, s.Cited)
 	fmt.Fprintf(out, "  with no version made: %d went into the story quietly; %d stayed out: %d from articles the story was written from, shown again, and %d replacements and corrections\n",
 		s.Quiet, s.Unapplied, s.Reshown, s.NotInserted)
 	fmt.Fprintf(out, "  inserted sentences that gave another number for a sentence of the story, and were made its correction: %d\n", s.Corrected)
+	fmt.Fprintf(out, "  sentences made no correction because they name a day the story's sentence doesn't (inserted beside it): %d\n", s.OtherDay)
 	fmt.Fprintf(out, "  developments and corrections from articles published before the version before (they make no version): %d\n", s.Old)
 	fmt.Fprintf(out, "  details with a number, a person or a body, or an outcome the story lacks: %d, %d of them from an article published after the version before (each makes a version)\n", s.Adds, s.Since)
 	fmt.Fprintf(out, "  of those details, for a person or a body they name and no number: %d; for an outcome alone: %d; details that add none because the only numbers the story lacks in them are dates or years: %d\n", s.Named, s.Decided, s.Dated)

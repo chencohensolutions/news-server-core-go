@@ -134,6 +134,24 @@ What was changed, and why:
 - **Articles are sent whole**: 12,000 characters at most, where 4,000 cut one article in ten and about 12% of the
   articles' text was never sent. In a whole writing too.
 
+### What the seventh replay found
+
+The 120 real steps again, on round 6's changes (Nov 13, 2026), and the best so far: of the steps with real news
+the update made a version of 90%, and of 95% to 98% of the ones with significant news; 6 of 59 versions were false;
+Gemini skipped 2 of the 120 stories. The owner's choice stands (catch everything), so the version rule is as it
+was. What was left are three errors of fact in what went into a story, and each has a check now (the rules, below):
+
+- **A count of a country's people that the article doesn't give of that people.** A sentence counted three of one
+  people where its article told of one of that people and two of another. Round 5's check read only a people's
+  word in the plural in the two words after the count, and asked only whether the articles have the number
+  anywhere. Hence the count must stand beside the people's word.
+- **Another day's figure was made a correction.** An article gave another night's value of a figure the story
+  has, and it was made the old sentence's correction. Hence no sentence corrects one of another day.
+- **A duplicate after a replacement.** One answer replaced a sentence's count (2 with 3) and inserted the three
+  again, the count in a word. The check against the answer's own sentences compared `3` and `שלושה` as two words,
+  and knew only the answer's words. Hence that check reads a count as its number, and an inserted sentence with
+  the story's words too.
+
 ## The design
 
 A changed story with a version before it goes one of three ways (`plan`):
@@ -245,14 +263,35 @@ among the JSON Schema keywords the API documents for `responseJsonSchema`.
   story already. It is read loosely, so that a true sentence is not lost: `1,200` and `1200`, a number written in
   words (`שלושה`, `עשרים וחמישה`, `מאתיים`, an ordinal), another scale (`300 אלף` and `300,000`, `מיליון וחצי` and
   `1.5 מיליון`), a part of a time or a date. A date and a year are not checked: Gemini works them out from
-  "yesterday". **A count written in a word is checked only when it counts a country's people**, three or more
-  (`שלושה איראנים`, `חמישה תיירים סינים`: the nationalities are a list, `nationals`): any other count in a word is as
-  often one Gemini rightly works out (three ministers, of three names; three days, of a date) or part of a place's
-  name. Names are not checked: Hebrew marks none, and a sentence rewords its article (round 5, above).
+  "yesterday". **A count written in a word is checked only when it counts a country's people**, three or more: any
+  other count in a word is as often one Gemini rightly works out (three ministers, of three names; three days, of
+  a date) or part of a place's name. Names are not checked: Hebrew marks none, and a sentence rewords its article
+  (round 5, above).
+- **A count of a country's people must be one an article gives of that people** (`headcounts`, `headcounted`;
+  round 7). That the articles have the number is not enough: an article that tells of three rescued, a Chinese
+  tourist and two Japanese, states no three Chinese.
+  - **The count in the sentence**: three or more, in a word or in digits, with the people it counts in the four
+    words after it, in the same clause and before any other number: a people's word in the plural (`שלושה סינים`,
+    `3 תיירים סינים`, `שלושת הסינים`; the nationalities are a list, `nationalities`; not after `ב` or `ל`, which
+    is a place as often: `במצרים`), one in any form after a word of
+    citizenship (`שלושה בעלי אזרחות סינית`, `ממוצא סיני`), or the country's name after `אזרחי`, `תושבי`, `נתיני`,
+    `ילידי` or `יוצאי` (`שלושה אזרחי סין`). `בהם`, `מהם`, `כולל` and `של` end what a count counts: `שלושה תיירים, בהם
+    סינים` counts no Chinese.
+  - **What gives it**: an article the sentence cites, as the request showed it, or the story, with the same count
+    of the same people, read the same way, past a comma too (`השלושה, אזרחי סין,`) and with the country's name
+    anywhere there (`שלושה תיירים מסין`); or one sentence that names as many of them one by one: the people's
+    word in the singular as many times (`סיני בן 30, סיני בן 41 וסינית`), or that with its counts of them adding
+    up (`שני סינים וסיני נוסף`). The people's word in the singular across several sentences is one person named
+    again, and gives nothing.
+  - Otherwise the sentence is dropped. Only for such a people, and three or more, for the reasons above.
 - A sentence that only says the story again is dropped (`restates`): one earlier sentence has three quarters of its
   words, by the versions' word likeness, and its other words are in the story too. A number that sentence lacks,
   in digits or in a word, or a word the story lacks (a name, mostly), makes it news. So is a sentence that repeats
-  another of the same answer.
+  another of the same answer, **a count read as its number** (`numbered`: `שלושה`, `ושלושת` and `ב-3` are `3`).
+  **An inserted one is read with the story's words too**, and with the words that tell nothing: where the answer
+  replaces `2 חשודים נעצרו` with `3 חשודים נעצרו`, an inserted `שלושה חשודים נעצרו`, with a word of the story more
+  or `בסך הכול`, is dropped (round 7: the story had the three twice). Another count, "more" or a word neither the
+  answer nor the story has keeps it.
   **A sentence is read without its time words too** (`היום`, `אמש`, `הבוקר`, `הערב`, `הלילה`, `כעת`, `עתה`): one
   that is an old sentence with such a word added tells nothing new, whatever its kind.
 - An old sentence changes only by `replace` or `delete`, by number. An operation on a number the story doesn't
@@ -280,6 +319,17 @@ among the JSON Schema keywords the API documents for `responseJsonSchema`.
     version another sentence makes; otherwise it stays out, and never beside the old sentence: no replacement goes
     in without a version. A `replace` answered as a detail that gives another number than its sentence is a
     correction too.
+- **No sentence corrects one of another day** (`anotherDay`; round 7): one that names a day the story's sentence
+  doesn't tells another day's figure, not another value for that sentence's. A day is named by a word of the day
+  it is said on (`אתמול` and `אמש` are one day, `היום`, `הבוקר`, `הערב` and `הלילה` another, `מחר`, `שלשום`), a day
+  of the week (`ביום שלישי`, `יום ג׳`, `בשבת`, `ברביעי`), a month, or a date or a year in digits. The words of the
+  days of the week are numbers' words and no content words, so `ביום שלישי` passed for `ביום שני` until then.
+  - An inserted sentence that would otherwise be a sentence's correction stays inserted, with its kind.
+  - A `replace` answered as a correction, or as a detail with another number, is inserted after its sentence, as
+    a detail, and the sentence stays. A `replace` answered as a development is Gemini's to place, as before.
+  - A day the old sentence names and the new one doesn't is no other day: the new one says nothing of when.
+  - Two sentences that say `אמש` on two different days name the same day by their words, and are not told apart.
+  `MergeStats.OtherDay` counts them, and `MergeNote.OtherDay` marks each.
 - **A version is made when one of these survives, with an article published after the version before among its
   sources**:
   - a development or a correction;
@@ -459,9 +509,10 @@ ids is joined to its story by its reports, as the server did then. It reports:
 - the steps without a version where **sentences went into the story quietly**, apart the same way. They are not
   versions, and are in no recall but the one that counts what Gemini found;
 - the sentences Gemini answered, and how many each rule dropped (among them the ones with a number none of their
-  articles states, and how many of those were a count of a country's people in a word); the restatement rate, and
-  how many of the restatements had only a time word more; the inserted sentences made the correction of the
-  sentence they gave another number for; the developments and corrections from older articles; the details that
+  articles states, and how many of those were a count of a country's people that none gives of that people); the
+  restatement rate, and how many of the restatements had only a time word more; the inserted sentences made the
+  correction of the sentence they gave another number for, and the sentences made no correction because they name
+  another day; the developments and corrections from older articles; the details that
   add a number, a name or an outcome, how many of them stand on an article published after the version before, how
   many add a name alone or an outcome alone, and the ones that add nothing because their only new numbers are dates
   or years; the sentences in versions, the ones added quietly with no version made, and the ones kept out with no

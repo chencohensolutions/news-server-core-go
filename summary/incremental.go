@@ -674,8 +674,8 @@ type MergeStats struct {
 	Unknown   int `json:"unknown"`
 	Garbled   int `json:"garbled"`
 	Unbacked  int `json:"unbacked"`
-	// Worded are the ones of Unbacked whose number is a count of a country's people written in a word ("שלושה
-	// איראנים").
+	// Worded are the ones of Unbacked whose number is a count of a country's people, in a word or in digits, that
+	// no article they cite gives of that people ("שלושה סינים" where it tells of a Chinese tourist and two Japanese).
 	Worded int `json:"worded"`
 	// Timed are the ones of Restated that say a sentence of the story again with a time word more ("היום", "אמש").
 	Timed int `json:"timed"`
@@ -708,6 +708,10 @@ type MergeStats struct {
 	// that sentence's replacement, a correction, which is in the story only with a version (NotInserted has the
 	// ones that stayed out).
 	Corrected int `json:"corrected"`
+	// OtherDay are sentences that were made no correction because they name a day the story's sentence doesn't
+	// ("אתמול", "ביום שלישי", a date): inserted ones that otherwise said that sentence again with another number,
+	// and replacements answered as a correction, each inserted after its sentence as a detail.
+	OtherDay int `json:"otherDay"`
 	// Unanchored are inserted sentences whose place wasn't a sentence of the story: they lead.
 	Unanchored int `json:"unanchored"`
 	// Old are sound developments and corrections all of whose articles were published before the version
@@ -742,6 +746,7 @@ func (s *MergeStats) add(o MergeStats) {
 	s.ByDetail += o.ByDetail
 	s.Dated += o.Dated
 	s.Corrected += o.Corrected
+	s.OtherDay += o.OtherDay
 	s.Unanchored += o.Unanchored
 	s.Old += o.Old
 }
@@ -808,6 +813,10 @@ type MergeNote struct {
 	// Corrects is the sentence of the story ("s1.2") an inserted sentence said again with another number: it was
 	// made that sentence's replacement, a correction (its Kind), and no longer stands beside it.
 	Corrects string `json:"corrects,omitempty"`
+	// OtherDay says the sentence names a day the story's sentence doesn't, and so corrects nothing: an inserted one
+	// that otherwise said that sentence again with another number stays inserted, and a replacement answered as a
+	// correction is inserted after its sentence, as a detail (its Kind).
+	OtherDay bool `json:"otherDay,omitempty"`
 }
 
 // What the rules say of an operation they drop (MergeNote.Why).
@@ -827,6 +836,7 @@ const (
 	whyReshown   = "no version, and not in the story: every article it cites is one the story was written from, shown again"
 	whyNotInsert = "no version, and not in the story: without a version a sentence is only inserted, and never a correction"
 	whyUnbacked  = "states a number (%s) that none of the articles it cites does"
+	whyUncounted = "counts a country's people (%s) as none of the articles it cites does"
 	whyTimed     = "says again what %s.%d does, with a time word more"
 )
 
@@ -1004,27 +1014,42 @@ func (c *cited) sentence(text string, refs []string, allowed map[string]bool) (S
 // unbacked is a number of s that neither the articles s cites state, as the request showed them, nor the story
 // (told): a count or a sum of another event, or of no article at all. "" when there is none, and when the request's
 // text of one of the articles isn't known. A date or a year is no such number: Gemini works them out ("yesterday").
-// worded says it is a count of a country's people written in a word ("שלושה איראנים" where no article counts
-// three: rounds 4 and 5 of the replay): three and more, as "שני" is too much else, and only of such a people
-// (nationals, in the two words after it), as any other count in a word is as often one Gemini rightly works out
-// (three ministers, of three names; three days, of a date) or part of a place's name.
-func (a *asked) unbacked(s Sentence, told *numbers) (number string, worded bool) {
+// people says it is a count of a country's people, three and more (headcounts: "שלושה איראנים", "3 בעלי אזרחות
+// איראנית"), that none of them gives of that people (headcounted): the same count beside the people's word, or as
+// many of them named one by one. That an article has the number is not enough there: one that tells of three
+// rescued, a Chinese tourist and two Japanese, states no three Chinese (round 7 of the replay). Only of such a
+// people, as any other count in a word is as often one Gemini rightly works out (three ministers, of three names;
+// three days, of a date) or part of a place's name; and three and more, as "שני" is too much else.
+func (a *asked) unbacked(s Sentence, told *numbers) (number string, people bool) {
 	cited := newNumbers()
+	var texts []string
 	for _, url := range s.Sources {
 		shown, ok := a.shown[url]
 		if !ok {
 			return "", false
 		}
 		cited.add(shown)
+		texts = append(texts, shown)
 	}
 	for _, f := range figures(s.Text) {
 		if !f.date && !cited.states(f) && !told.states(f) {
 			return f.text, false
 		}
 	}
-	for _, c := range counts(s.Text) {
-		if f := c.figure(); c.value > 2 && nationals(c.of...) && !cited.states(f) && !told.states(f) {
-			return c.word, true
+	story := false
+	for _, h := range headcounts(s.Text, false) {
+		if h.value <= 2 {
+			continue
+		}
+		if !story {
+			story = true
+			texts = append(texts, a.step.Prev.Title)
+			for _, kept := range a.plan.Kept {
+				texts = append(texts, kept.Text)
+			}
+		}
+		if !headcounted(h, texts...) {
+			return h.word, true
 		}
 	}
 	return "", false
@@ -1043,13 +1068,19 @@ type edit struct {
 // merge applies what Gemini answered for a story (id in the request, "s1") to the version before. The rules:
 //   - A new or replaced sentence cites at least one new article of this story, or it is dropped. So is one that only
 //     says again what the story has (restates; also when all it adds is a time word), or what an
-//     earlier sentence of the answer does, and one with a number that neither the articles it cites nor the story
-//     state (unbacked).
+//     earlier sentence of the answer does (a count read as its number, and an inserted one read with the story's
+//     words too: "three men were arrested" beside the answer's own "3 were arrested"), and one with a number that
+//     neither the articles it cites nor the story state, or a count of a country's people that none of them gives
+//     of that people (unbacked).
 //   - An old sentence changes only by being replaced or deleted, by its number; an operation on a number the story
 //     doesn't have is dropped. Its text and footnotes are otherwise kept exactly; a citation adds a footnote.
 //   - An inserted sentence that says a sentence of the story again with another number (contradicted) takes that
 //     sentence's place, as a correction: the story must not say both. A replacement answered as a detail that
 //     gives another number than the sentence it replaces (differ) is a correction too.
+//   - No sentence corrects one of another day: an inserted one that names a day the story's sentence doesn't
+//     (anotherDay: "yesterday", a day of the week, a date) stays inserted, and a replacement that is a correction
+//     and names one is inserted after its sentence, as a detail. Last night's figure is no correction of the night
+//     before's.
 //   - A version is made when a development or a correction survives, or a detail that adds what makes one news: a
 //     number the story lacks (no date or year; a count in a word as recount reads it), a person or a body it doesn't name (newName, newBody), an outcome or a decision it doesn't tell
 //     (outcome); and one of that sentence's articles was published after the version before was written
@@ -1125,9 +1156,20 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		// A sentence is checked without its time words too: "the roads were closed today" tells nothing that "the
 		// roads were closed" didn't, whatever kind it was given (until round 6 only a development was read so:
 		// nothing else went into a story without a version).
-		timed, unbacked, worded := -1, "", false
+		timed, unbacked, worded, again := -1, "", false, false
 		if why == "" {
 			unbacked, worded = a.unbacked(s, told)
+			// What another sentence of the answer says, a count read as its number: "שלושה נעצרו" after "3 נעצרו".
+			// An inserted one is read as by someone who has the story too: beside the answer's sentence that
+			// replaces "2 נעצרו" with "3 נעצרו", one that says the three again with words of the story, or with
+			// words that tell nothing ("בסך הכול"), tells nothing.
+			if plain := numbered(s.Text); replace {
+				again = answered.restates(plain)
+			} else {
+				_, again = answered.restatedTo(plain, func(word string) bool {
+					return answered.has(word) || index.has(word) || functionWord(word)
+				})
+			}
 			if text, stripped := timeless(s.Text); stripped && !index.restates(s.Text) {
 				if of, ok := index.restated(text); ok {
 					timed = max(of, 0)
@@ -1145,6 +1187,8 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			m.Stats.Unbacked++
 			if worded {
 				m.Stats.Worded++
+				drop(op, fmt.Sprintf(whyUncounted, unbacked))
+				break
 			}
 			drop(op, fmt.Sprintf(whyUnbacked, unbacked))
 		case index.restates(s.Text):
@@ -1158,7 +1202,7 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			m.Stats.Restated++
 			m.Stats.Timed++
 			drop(op, fmt.Sprintf(whyTimed, id, timed+1))
-		case answered.restates(s.Text):
+		case again:
 			m.Stats.Repeated++
 			drop(op, whyRepeated)
 		default:
@@ -1167,7 +1211,14 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 			if replace && kind == Detail && differ(s.Text, p.Kept[at-1].Text) {
 				kind = Correction
 			}
-			answered.add(s.Text)
+			// Unless it names a day its sentence doesn't: another day's figure corrects nothing, and the sentence
+			// stays, with this one after it as a detail.
+			if replace && kind == Correction && anotherDay(s.Text, p.Kept[at-1].Text) {
+				replace, kind = false, Detail
+				op.OtherDay = true
+				m.Stats.OtherDay++
+			}
+			answered.add(numbered(s.Text))
 			op.Kind = kind
 			edits = append(edits, edit{sentence: s, kind: kind, at: at, replace: replace, note: note(op)})
 			if replace {
@@ -1211,11 +1262,19 @@ func merge(a *asked, answer Answer, id string, ids *sources, now time.Time) Merg
 		if e.replace || e.kind == Background || e.kind == Reaction {
 			continue
 		}
-		if at := index.contradicted(e.sentence.Text, p.Kept); at > 0 && !replaced[at] {
+		at := index.contradicted(e.sentence.Text, p.Kept)
+		switch {
+		case at > 0 && !replaced[at]:
 			e.replace, e.at, e.kind = true, at, Correction
 			replaced[at] = true
 			m.Stats.Corrected++
 			m.Notes[e.note].Kind, m.Notes[e.note].Corrects = Correction, fmt.Sprintf("%s.%d", id, at)
+		case at == 0 && !m.Notes[e.note].OtherDay:
+			// Only the day it names keeps it from being a sentence's correction: it stays inserted.
+			if other := index.contradicting(e.sentence.Text, p.Kept, true); other > 0 && !replaced[other] {
+				m.Notes[e.note].OtherDay = true
+				m.Stats.OtherDay++
+			}
 		}
 	}
 	// What the story counts, to tell a count in a word that is news to it (recount).
