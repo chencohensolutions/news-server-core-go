@@ -32,7 +32,9 @@ decisions and milestones next to the code.
   from its version before and the new articles only, many stories a request, instead of written again from all its
   articles: about a third of the rewrites add nothing, and they are most of the input tokens. Built as a shadow
   beside the rewrite (`incremental: shadow`, kept in `story_shadow`, never shown) and a replay of the archive
-  (`news-server eval-incremental`); turning it on waits for their numbers. See [incremental.md](incremental.md).
+  (`news-server eval-incremental`). After seven replays the mode itself was built (Nov 13, 2026): `incremental: on`
+  makes the update the next version of a story that has one, and the owner turns it on and off
+  (`news-server incremental on`). See [incremental.md](incremental.md).
 - **The app connects like the journal app:** gqlgen schema-first GraphQL, Apollo Kotlin in the app with the schema
   copied by a Gradle task, mTLS with enrollment codes and QR codes.
 
@@ -66,9 +68,9 @@ decisions and milestones next to the code.
 2. **Server behavior:** a fake clock for the scheduler (10-minute runs, the 12-hour edge, overlapping runs skipped,
    only changed stories re-summarized); a local test site with 403, 429 and 304; a fake Gemini with recorded answers;
    an end-to-end mTLS test (`newTestEnv`).
-3. **Incremental updates:** the merge rules, the shadow and the replay on recorded answers and a temporary archive;
-   on the real archive, `news-server eval-incremental`: against the live rewrites' own new facts, with controls that
-   need no labels ([incremental.md](incremental.md#the-replay)).
+3. **Incremental updates:** the merge rules, the shadow, the mode on and the replay on recorded answers and a
+   temporary archive; on the real archive, `news-server eval-incremental`: against the live rewrites' own new facts,
+   with controls that need no labels ([incremental.md](incremental.md#the-replay)).
 4. **Summary eval:** `news-server eval` on a few frozen 12-hour windows in `testdata/`: Hebrew, one paragraph, valid
    JSON, faithful to the sources (a judge model with a fixed rubric), covers each site's main fact. On the free tier
    too, so a small set, optionally in a second Google project.

@@ -35,9 +35,9 @@ const usage = `usage:
   news-server summarize            group the stories and summarize what changed with Gemini now, and print them
   news-server eval-stories         score the story model on the app's 348 labeled headline pairs
   news-server eval-gemini-grouping score Gemini's grouping on the same pairs (one request of the day's budget)
-  news-server incremental [off|shadow]
-                                   the incremental story update: turn its shadow on or off, and print what the shadow
-                                   recorded (docs/incremental.md)
+  news-server incremental [off|shadow|on]
+                                   the incremental story update: off, in shadow beside the whole rewrite, or on in its
+                                   place; and print what it recorded (docs/incremental.md)
   news-server eval-incremental [-days N] [-until day] [-batch 8] [-max-requests 10] [-sample N] [-seed 1] [-offset N]
                                [-cases file] [-dry]
                                    replay the archive's rewrites through the incremental update and report; -cases

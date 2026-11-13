@@ -809,6 +809,8 @@ type ShadowRef struct {
 	At      time.Time
 	// Again says the row is of a story to be asked about again (its "again"): no step of the story yet.
 	Again bool
+	// Applied says the row is of a step made with the incremental update on (its "applied"): the story itself has it.
+	Applied bool
 }
 
 // SaveShadow keeps what the incremental update made of the story key (of story id) in shadow, at now.
@@ -821,8 +823,8 @@ func (s *Store) SaveShadow(ctx context.Context, key, id string, shadow json.RawM
 
 // ShadowRefs are the shadow rows written since since, oldest first.
 func (s *Store) ShadowRefs(ctx context.Context, since time.Time) ([]ShadowRef, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT key, id, written_at, COALESCE(json_extract(shadow, '$.again'), 0) FROM story_shadow
-		WHERE written_at >= ? ORDER BY written_at`, millis(since))
+	rows, err := s.db.QueryContext(ctx, `SELECT key, id, written_at, COALESCE(json_extract(shadow, '$.again'), 0),
+		COALESCE(json_extract(shadow, '$.applied'), 0) FROM story_shadow WHERE written_at >= ? ORDER BY written_at`, millis(since))
 	if err != nil {
 		return nil, err
 	}
@@ -831,7 +833,7 @@ func (s *Store) ShadowRefs(ctx context.Context, since time.Time) ([]ShadowRef, e
 	for rows.Next() {
 		var r ShadowRef
 		var at int64
-		if err := rows.Scan(&r.Key, &r.ID, &at, &r.Again); err != nil {
+		if err := rows.Scan(&r.Key, &r.ID, &at, &r.Again, &r.Applied); err != nil {
 			return nil, err
 		}
 		r.At = time.UnixMilli(at).UTC()

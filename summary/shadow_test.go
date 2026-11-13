@@ -267,8 +267,8 @@ func TestTheShadowTakesOnlyWhatTheDaySpares(t *testing.T) {
 	if _, err := w.Run(ctx, found); err != nil || len(rec.requests) != 1 || shadowOf(t, w, found[0]) == nil {
 		t.Fatalf("%v, %d shadow requests", err, len(rec.requests))
 	}
-	// Off: the shadow is not run. "on" is not built: off too.
-	for _, mode := range []string{IncrementalOff, "", "on"} {
+	// Off: the shadow is not run. A word that is no mode: off too.
+	for _, mode := range []string{IncrementalOff, "", "later"} {
 		if err := SaveSettings(ctx, w.Store, Settings{FullArticles: true, Length: "short", Incremental: mode}); err != nil {
 			t.Fatal(err)
 		}

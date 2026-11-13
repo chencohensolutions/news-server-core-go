@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,8 +15,10 @@ import (
 
 	"github.com/chencohensolutions/news-server-core-go/auth"
 	"github.com/chencohensolutions/news-server-core-go/backup"
+	"github.com/chencohensolutions/news-server-core-go/gemini"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/store"
+	"github.com/chencohensolutions/news-server-core-go/stories"
 	"github.com/chencohensolutions/news-server-core-go/summary"
 )
 
@@ -24,12 +27,17 @@ func TestTheIncrementalCommandsSetTheShadowAndReplayDry(t *testing.T) {
 	tmp := t.TempDir()
 	config := auth.AppConfig{DatabaseFile: filepath.Join(tmp, "news.db"), ArchiveDir: filepath.Join(tmp, "archive"), SourcesDir: filepath.Join(tmp, "sources")}
 	var out bytes.Buffer
-	// Off until it is turned on; "on" is refused.
+	// Off until it is turned on; a word that is no mode is refused.
 	if err := incrementalCommand(config, nil, &out); err != nil || !strings.Contains(out.String(), "incremental: off") {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if err := incrementalCommand(config, []string{"on"}, &out); err == nil {
-		t.Fatal("on is not built")
+	if err := incrementalCommand(config, []string{"later"}, &out); err == nil {
+		t.Fatal("later is no mode")
+	}
+	// On: the stories' next versions are updates.
+	out.Reset()
+	if err := incrementalCommand(config, []string{"on"}, &out); err != nil || !strings.Contains(out.String(), "incremental: on (a story that has a version is updated from its new articles, 8 stories a request") {
+		t.Fatalf("%v\n%s", err, out.String())
 	}
 	out.Reset()
 	if err := incrementalCommand(config, []string{"shadow"}, &out); err != nil || !strings.Contains(out.String(), "incremental: shadow (at most 48 requests a day") {
@@ -236,5 +244,257 @@ func TestTheReplayWritesItsCasesToAFile(t *testing.T) {
 	}
 	if requests != 0 {
 		t.Fatalf("%d requests were sent", requests)
+	}
+}
+
+// recordedGemini answers the summary job with recorded answers: a whole writing's request with whole, and the
+// incremental requests with updates, one each in order. It keeps the incremental requests.
+type recordedGemini struct {
+	whole   string
+	updates []string
+	wholes  int
+	asked   []gemini.Request
+}
+
+func (g *recordedGemini) Generate(_ context.Context, req gemini.Request) (json.RawMessage, gemini.Usage, error) {
+	usage := gemini.Usage{PromptTokens: 500, AnswerTokens: 80}
+	// Only the incremental request has the story so far as numbered sentences, and its new articles under them.
+	if !strings.Contains(req.Prompt, "כתבות חדשות:") {
+		g.wholes++
+		return json.RawMessage(g.whole), usage, nil
+	}
+	g.asked = append(g.asked, req)
+	if len(g.asked) > len(g.updates) {
+		return nil, gemini.Usage{}, fmt.Errorf("no recorded answer for incremental request %d", len(g.asked))
+	}
+	return json.RawMessage(g.updates[len(g.asked)-1]), usage, nil
+}
+
+// Recorded answers: a story's first version, and three updates of it.
+const (
+	wholeAnswer = `{"stories": [{"story": "s1", "title": "גשם כבד בצפון", "new": [],
+		"sentences": [{"text": "גשם כבד ירד הבוקר בצפון.", "sources": ["a1", "a2"]}, {"text": "שני כבישים נסגרו.", "sources": ["a2", "a3"]}],
+		"contradictions": [], "unrelated": []}]}`
+	// A development from an article published since, a footnote, and a title: a version.
+	versionAnswer = `{"stories": [{"story": "s1", "unrelated": [],
+		"insert": [{"after": "top", "kind": "development", "text": "נחל עלה על גדותיו והציף שכונה.", "sources": ["a1"]}],
+		"replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": ["a1"]}], "title": "הצפות בצפון", "contradictions": []}]}`
+	// A detail from an article published before the version: into the text, quietly.
+	quietAnswer = `{"stories": [{"story": "s1", "unrelated": [],
+		"insert": [{"after": "s1.2", "kind": "detail", "text": "בעיר הסמוכה ירדו 80 מילימטרים של גשם.", "sources": ["a1"]}],
+		"replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
+	// Nothing new: the article states a sentence's fact.
+	nothingAnswer = `{"stories": [{"story": "s1", "unrelated": [], "insert": [], "replace": [], "delete": [],
+		"cite": [{"sentence": "s1.4", "sources": ["a1"]}], "title": "", "contradictions": []}]}`
+)
+
+// appSummary is a story's generated article as the app asks for it (its ServerStorySummary fragment), with the
+// updates.
+const appSummary = `title sentences { text footnotes { url sourceId title video publishedAt } }
+	contradictions { text footnotes { url sourceId title video publishedAt } } unrelated reports headlineOnly writtenAt
+	writtenWith { fullArticles length } id version versions current
+	changes { since title sentences { kind parts { text added } } removed { text footnotes { url sourceId title video publishedAt } } }
+	updates { at sentences { text footnotes { url sourceId title video publishedAt } } }`
+
+type appSentence struct {
+	Text      string `json:"text"`
+	Footnotes []struct {
+		URL      string  `json:"url"`
+		SourceID *string `json:"sourceId"`
+		Title    *string `json:"title"`
+	} `json:"footnotes"`
+}
+
+type appStory struct {
+	Title          string        `json:"title"`
+	Sentences      []appSentence `json:"sentences"`
+	Contradictions []appSentence `json:"contradictions"`
+	Unrelated      []string      `json:"unrelated"`
+	Reports        []string      `json:"reports"`
+	WrittenAt      time.Time     `json:"writtenAt"`
+	ID             string        `json:"id"`
+	Version        int           `json:"version"`
+	Versions       int           `json:"versions"`
+	Current        bool          `json:"current"`
+	Changes        *struct {
+		Since     time.Time `json:"since"`
+		Title     string    `json:"title"`
+		Sentences []struct {
+			Kind  string `json:"kind"`
+			Parts []struct {
+				Text  string `json:"text"`
+				Added bool   `json:"added"`
+			} `json:"parts"`
+		} `json:"sentences"`
+		Removed []appSentence `json:"removed"`
+	} `json:"changes"`
+	Updates []struct {
+		At        time.Time     `json:"at"`
+		Sentences []appSentence `json:"sentences"`
+	} `json:"updates"`
+}
+
+func (s appStory) text() string {
+	var out []string
+	for _, sentence := range s.Sentences {
+		out = append(out, sentence.Text)
+	}
+	return strings.Join(out, " | ")
+}
+
+func (s appStory) kinds() string {
+	if s.Changes == nil {
+		return ""
+	}
+	var out []string
+	for _, c := range s.Changes.Sentences {
+		out = append(out, c.Kind)
+	}
+	return strings.Join(out, " ")
+}
+
+// The writer with the incremental update on, on recorded answers, read as the app reads it: a version the update
+// makes, a quiet update and an answer with nothing new, then off again.
+func TestTheAppReadsAStoryTheIncrementalUpdateKeeps(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	env.api.Summaries = true
+	at := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	report := func(site, title string) scrape.ArticleSummary {
+		return scrape.ArticleSummary{SourceID: site, URL: "https://" + site + "/rain", Title: title}
+	}
+	story := stories.Story{Reports: []scrape.ArticleSummary{report("siteh", "גשם בצפון"), report("sitee", "סערה בצפון"), report("sited", "כבישים נסגרו בצפון"), report("siteg", "גשם כבד")}}
+	if err := env.db.SaveHeadlines(ctx, story.Reports, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := summary.SaveSettings(ctx, env.db, summary.Settings{FullArticles: true, Length: "medium", Incremental: summary.IncrementalOn}); err != nil {
+		t.Fatal(err)
+	}
+	recorded := &recordedGemini{whole: wholeAnswer, updates: []string{versionAnswer, quietAnswer, nothingAnswer}}
+	writer := &summary.Writer{Gemini: recorded, Store: env.db, Now: func() time.Time { return at }, Log: t.Logf, ThreadsEvery: -1}
+	env.api.Stories = func() ([]stories.Story, time.Time) { return []stories.Story{story}, at }
+	// run adds reports to the story a quarter of an hour on, runs the writer and reads the story as the app does: in
+	// the stories, and its versions, newest first.
+	run := func(want summary.Result, added ...scrape.ArticleSummary) (appStory, []appStory) {
+		t.Helper()
+		if len(added) > 0 {
+			at = at.Add(15 * time.Minute)
+			if err := env.db.SaveHeadlines(ctx, added, at); err != nil {
+				t.Fatal(err)
+			}
+			story.Reports = append(append([]scrape.ArticleSummary{}, story.Reports...), added...)
+		}
+		if result, err := writer.Run(ctx, []stories.Story{story}); err != nil || result != want {
+			t.Fatalf("%+v %v", result, err)
+		}
+		resp := mustQuery(t, env, `{ stories { stories { summary { `+appSummary+` } } } }`, nil)
+		var list struct {
+			Stories []struct {
+				Summary *appStory `json:"summary"`
+			} `json:"stories"`
+		}
+		if err := json.Unmarshal(resp.Data["stories"], &list); err != nil || len(list.Stories) != 1 || list.Stories[0].Summary == nil {
+			t.Fatalf("%v: %s", err, resp.Data["stories"])
+		}
+		shown := *list.Stories[0].Summary
+		resp = mustQuery(t, env, `query($id: ID!) { storyVersions(id: $id) { `+appSummary+` } }`, map[string]any{"id": shown.ID})
+		var versions []appStory
+		if err := json.Unmarshal(resp.Data["storyVersions"], &versions); err != nil {
+			t.Fatalf("%v: %s", err, resp.Data["storyVersions"])
+		}
+		// What the app counts on, of the story and of each version: every sentence has footnotes, each an article
+		// the server has the headline of; a change for each sentence; no empty update; the newest version first,
+		// and the story is it.
+		reports := map[string]bool{}
+		for _, r := range story.Reports {
+			reports[r.URL] = true
+		}
+		for _, s := range append([]appStory{shown}, versions...) {
+			var all []appSentence
+			all = append(append(all, s.Sentences...), s.Contradictions...)
+			if len(s.Sentences) == 0 || len(s.Updates) == 0 || s.Title == "" || s.Changes != nil && len(s.Changes.Sentences) != len(s.Sentences) {
+				t.Fatalf("%+v", s)
+			}
+			for _, u := range s.Updates {
+				if len(u.Sentences) == 0 || u.At.After(s.WrittenAt) {
+					t.Fatalf("an update of %+v", s)
+				}
+				all = append(all, u.Sentences...)
+			}
+			for _, sentence := range all {
+				if len(sentence.Footnotes) == 0 || len(sentence.Footnotes) > 5 {
+					t.Fatalf("%q has %d footnotes", sentence.Text, len(sentence.Footnotes))
+				}
+				for _, f := range sentence.Footnotes {
+					if f.SourceID == nil || f.Title == nil || !reports[f.URL] {
+						t.Fatalf("%q cites %+v", sentence.Text, f)
+					}
+				}
+			}
+		}
+		if len(versions) != shown.Versions || shown.Version != shown.Versions || !shown.Current || versions[0].text() != shown.text() || !versions[0].WrittenAt.Equal(shown.WrittenAt) ||
+			len(shown.Reports) != len(story.Reports) {
+			t.Fatalf("the story %+v\nits versions %+v", shown, versions)
+		}
+		for i, v := range versions {
+			if v.Version != len(versions)-i || (v.Changes == nil) != (v.Version == 1) {
+				t.Fatalf("version %d of %d: %+v", i, len(versions), v)
+			}
+		}
+		return shown, versions
+	}
+
+	// The first version is written whole.
+	first, _ := run(summary.Result{Written: 1})
+	written := at
+	if first.Version != 1 || first.Title != "גשם כבד בצפון" || first.text() != "גשם כבד ירד הבוקר בצפון. | שני כבישים נסגרו." || !first.WrittenAt.Equal(written) || len(first.Updates) != 1 || recorded.wholes != 1 {
+		t.Fatalf("%+v", first)
+	}
+
+	// An article with news: a version, by one incremental request. The app shows it as any version: its number, the
+	// new title with the one before, the new sentence marked, and it is the latest update.
+	second, versions := run(summary.Result{Written: 1}, report("sitef", "נחל עלה על גדותיו"))
+	updated := at
+	if second.Version != 2 || second.ID != first.ID || second.Title != "הצפות בצפון" || !second.WrittenAt.Equal(updated) ||
+		second.text() != "נחל עלה על גדותיו והציף שכונה. | גשם כבד ירד הבוקר בצפון. | שני כבישים נסגרו." || second.kinds() != "NEW SAME SAME" ||
+		second.Changes.Title != first.Title || !second.Changes.Since.Equal(written) || len(second.Changes.Removed) != 0 || len(second.Sentences[1].Footnotes) != 3 {
+		t.Fatalf("%+v", second)
+	}
+	if len(second.Updates) != 2 || !second.Updates[1].At.Equal(updated) || len(second.Updates[1].Sentences) != 1 || second.Updates[1].Sentences[0].Text != second.Sentences[0].Text ||
+		versions[1].text() != first.text() || recorded.wholes != 1 || len(recorded.asked) != 1 {
+		t.Fatalf("updates %+v, versions %+v", second.Updates, versions)
+	}
+
+	// An article published before that version, with a detail: the sentence goes into the newest version's text, and
+	// no version is added: its number, its time, its title and its updates stay. The app marks the sentence as new
+	// since the version before, which it is.
+	earlier := report("sitei", "80 מילימטרים של גשם ירדו בעיר הסמוכה")
+	earlier.PublishedAt = scrape.FormatInstant(written.Add(-time.Hour))
+	quiet, versions := run(summary.Result{}, earlier)
+	if quiet.Version != 2 || quiet.Title != second.Title || !quiet.WrittenAt.Equal(updated) || quiet.kinds() != "NEW SAME NEW SAME" ||
+		quiet.text() != "נחל עלה על גדותיו והציף שכונה. | גשם כבד ירד הבוקר בצפון. | בעיר הסמוכה ירדו 80 מילימטרים של גשם. | שני כבישים נסגרו." ||
+		len(quiet.Updates) != 2 || len(quiet.Updates[1].Sentences) != 1 || versions[1].text() != first.text() || len(recorded.asked) != 2 {
+		t.Fatalf("%+v", quiet)
+	}
+
+	// An article with nothing new: one more report and a footnote, and nothing else.
+	same, _ := run(summary.Result{}, report("sitej", "כבישים נסגרו בגלל הגשם"))
+	if same.Version != 2 || !same.WrittenAt.Equal(updated) || same.text() != quiet.text() || same.kinds() != quiet.kinds() || len(same.Updates) != 2 ||
+		len(same.Sentences[3].Footnotes) != len(quiet.Sentences[3].Footnotes)+1 || recorded.wholes != 1 || len(recorded.asked) != 3 {
+		t.Fatalf("%+v", same)
+	}
+	// Nothing changed: nothing is asked, and the app reads the same.
+	if again, _ := run(summary.Result{}); again.text() != same.text() || len(recorded.asked) != 3 {
+		t.Fatalf("%+v", again)
+	}
+
+	// Off again: the next article makes a whole rewrite, the third version, with nothing to migrate.
+	if err := summary.SaveSettings(ctx, env.db, summary.Settings{FullArticles: true, Length: "medium"}); err != nil {
+		t.Fatal(err)
+	}
+	third, versions := run(summary.Result{Written: 1}, report("sitek", "גשם"))
+	if third.Version != 3 || third.ID != first.ID || third.text() != first.text() || !third.Changes.Since.Equal(updated) || third.Changes.Title != second.Title ||
+		versions[1].text() != same.text() || recorded.wholes != 2 || len(recorded.asked) != 3 {
+		t.Fatalf("%+v", third)
 	}
 }

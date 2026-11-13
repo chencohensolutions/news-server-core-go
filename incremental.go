@@ -17,14 +17,15 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/summary"
 )
 
-// The incremental update's commands (docs/incremental.md): `incremental` turns its shadow on and off and reports
-// what the shadow recorded, `eval-incremental` replays the archive through it.
+// The incremental update's commands (docs/incremental.md): `incremental` sets its mode (off, shadow or on) and
+// reports what it recorded, `eval-incremental` replays the archive through it.
 
-// incrementalCommand is the incremental command: with "off" or "shadow" it sets the mode in the database (the
-// running server follows it from its next run), and either way it prints the mode and the shadow's last week.
+// incrementalCommand is the incremental command: with "off", "shadow" or "on" it sets the mode in the database (the
+// running server follows it from its next run), and either way it prints the mode and what the update recorded in
+// the last week, in shadow and on.
 func incrementalCommand(config auth.AppConfig, args []string, out io.Writer) error {
-	if len(args) > 1 || len(args) == 1 && args[0] != summary.IncrementalOff && args[0] != summary.IncrementalShadow {
-		return fmt.Errorf("usage: news-server incremental [off|shadow] (on is not built yet)")
+	if len(args) > 1 || len(args) == 1 && args[0] != summary.IncrementalOff && args[0] != summary.IncrementalShadow && args[0] != summary.IncrementalOn {
+		return fmt.Errorf("usage: news-server incremental [off|shadow|on]")
 	}
 	db, err := store.Open(config.DatabaseFile)
 	if err != nil {
@@ -54,6 +55,9 @@ func incrementalCommand(config auth.AppConfig, args []string, out io.Writer) err
 		}
 		fmt.Fprintf(out, " (at most %d requests a day, from what the day's budget has to spare)", daily)
 	}
+	if mode == summary.IncrementalOn {
+		fmt.Fprintf(out, " (a story that has a version is updated from its new articles, %d stories a request, in place of its whole rewrite; first versions are written whole)", summary.IncrementalPerRequest)
+	}
 	fmt.Fprintln(out)
 	report, err := summary.ReportShadow(ctx, db, time.Now().Add(-7*24*time.Hour))
 	if err != nil {
@@ -75,7 +79,11 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 		fmt.Fprintln(out, "the shadow recorded nothing in the last 7 days")
 		return
 	}
-	fmt.Fprintf(out, "the shadow's last 7 days: %d changed stories\n", r.Steps)
+	fmt.Fprintf(out, "the shadow's last 7 days: %d changed stories", r.Steps)
+	if r.Applied > 0 {
+		fmt.Fprintf(out, ", %d of them with the update on: made in the stories themselves", r.Applied)
+	}
+	fmt.Fprintln(out)
 	fmt.Fprintf(out, "  %d (%s) had no new article: kept by the server, no request\n", r.Local, percent(r.Local, r.Steps))
 	rebuilt := 0
 	reasons := make([]string, 0, len(r.Rebuild))
@@ -84,7 +92,7 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 		reasons = append(reasons, reason)
 	}
 	sort.Strings(reasons)
-	fmt.Fprintf(out, "  %d (%s) would be written whole again:\n", rebuilt, percent(rebuilt, r.Steps))
+	fmt.Fprintf(out, "  %d (%s) would be written whole again (on: were):\n", rebuilt, percent(rebuilt, r.Steps))
 	for _, reason := range reasons {
 		fmt.Fprintf(out, "    %d %s\n", r.Rebuild[reason], reason)
 	}
@@ -104,7 +112,7 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 	fmt.Fprintf(out, "    with no version made: %d sentences went into the story quietly; %d stayed out (%d from the story's own articles, %d replacements and corrections)\n",
 		s.Quiet, s.Unapplied, s.Reshown, s.NotInserted)
 	live := r.LiveNewVersion + r.LiveNewQuiet
-	fmt.Fprintf(out, "  against the live rewrite of the same reports (%d steps):\n", r.Compared)
+	fmt.Fprintf(out, "  the shadow's steps against the live rewrite of the same reports (%d steps):\n", r.Compared)
 	fmt.Fprintf(out, "    live had new facts:  %d a version, %d none: recall %s\n", r.LiveNewVersion, r.LiveNewQuiet, percent(r.LiveNewVersion, live))
 	fmt.Fprintf(out, "    live had none:       %d a version, %d none\n", r.LiveQuietVersion, r.LiveQuietQuiet)
 }

@@ -163,9 +163,9 @@ type Settings struct {
 	// ReserveAfter is the day's requests after which only new stories are written, not new versions; 0 is off.
 	ReserveAfter int `json:"reserveAfter"`
 	// Incremental is the incremental update of a story's next version (incremental.go, docs/incremental.md): "" or
-	// "off"; or "shadow": the stories are written as before, and beside them each new version is also made as an
-	// update of the one before, in the requests the day has to spare, and kept in story_shadow. The app never shows
-	// it.
+	// "off"; "shadow": the stories are written as before, and beside them each new version is also made as an
+	// update of the one before, in the requests the day has to spare, and kept in story_shadow, which the app never
+	// shows; or "on": the update is the next version of a story that has one, in place of its whole rewrite (on.go).
 	Incremental string `json:"incremental,omitempty"`
 	// ShadowDaily is the most requests a day the shadow sends; 0 is DefaultShadowDaily.
 	ShadowDaily int `json:"shadowDaily,omitempty"`

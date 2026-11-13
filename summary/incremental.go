@@ -20,13 +20,14 @@ import (
 // of them: Gemini is shown the version before as numbered sentences and only the new articles, and answers with what
 // they change: sentences to insert, replace or delete, and old sentences the new articles state too. The server
 // applies that to the version before, so the old text and its footnotes stay exactly as they were, and what was
-// inserted or replaced is what's new. Many stories go in one request. For now it runs in shadow only (shadow.go) and
-// in the replay (replay.go).
+// inserted or replaced is what's new. Many stories go in one request. It runs in shadow (shadow.go), in the replay
+// (replay.go), and, on, in place of the whole rewrite (on.go).
 
 // Settings.Incremental's values.
 const (
 	IncrementalOff    = "off"
-	IncrementalShadow = "shadow"
+	IncrementalShadow = "shadow" // beside the whole rewrite, kept in story_shadow (shadow.go)
+	IncrementalOn     = "on"     // in place of the whole rewrite of a story that has a version (on.go)
 )
 
 // What an inserted or replaced sentence is.
@@ -225,7 +226,7 @@ func mergedInto(story stories.Story, id string, written map[string]StorySummary)
 		if s.ID == "" || s.ID == id {
 			continue
 		}
-		if l, ok := latest[s.ID]; !ok || s.WrittenAt.After(l.WrittenAt) {
+		if l, ok := latest[s.ID]; !ok || s.newer(l) {
 			latest[s.ID] = s
 		}
 	}

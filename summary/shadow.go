@@ -75,7 +75,10 @@ type Shadow struct {
 	Skipped int  `json:"skipped,omitempty"`
 	Again   bool `json:"again,omitempty"`
 	// Full is how many articles the story had when it was last written whole.
-	Full    int            `json:"full"`
+	Full int `json:"full"`
+	// Applied says the step was made with the mode on (on.go): Story is what readers got of it, saved as the story
+	// itself, and no step of the shadow's own line.
+	Applied bool           `json:"applied,omitempty"`
 	Stats   *MergeStats    `json:"stats,omitempty"`
 	Request *ShadowRequest `json:"request,omitempty"`
 }
@@ -192,6 +195,11 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 			continue
 		}
 		done[r.Key] = true
+		if r.Applied {
+			// Made with the mode on: the live story has it, and the shadow's line of the story starts there again.
+			delete(latest, r.ID)
+			continue
+		}
 		latest[r.ID] = r
 	}
 	written, err := Summaries(ctx, w.Store)
@@ -227,7 +235,7 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 		if prev == nil {
 			continue // a first version: written whole
 		}
-		step := Step{Story: s, Prev: *prev, Seen: firstSeen}
+		step := Step{Story: s, Prev: *prev, Full: prev.Full, Seen: firstSeen}
 		row := Shadow{ID: prev.ID, Key: key, At: now, Base: BaseLive, BaseAt: prev.WrittenAt}
 		if again[key] {
 			data, err := w.Store.Shadow(ctx, key)
@@ -393,10 +401,13 @@ func newFacts(prev, next StorySummary) (listed, genuine int) {
 	return listed, genuine
 }
 
-// ShadowReport is what the shadow recorded over a time, and how its steps compare with the live rewrites of the same
-// stories.
+// ShadowReport is what the incremental update recorded over a time, in shadow and on, and how the shadow's steps
+// compare with the live rewrites of the same stories.
 type ShadowReport struct {
 	Steps int // changed stories recorded
+	// Applied are the ones of Steps made with the mode on: the stories themselves have them. They are not compared
+	// with a live rewrite: there was none.
+	Applied int
 	// How they were made: without a request (no new article), sent to be written whole (by reason, the tripwire's
 	// too), or asked.
 	Local   int
@@ -437,6 +448,9 @@ func ReportShadow(ctx context.Context, db *store.Store, since time.Time) (Shadow
 			return nil
 		}
 		report.Steps++
+		if s.Applied {
+			report.Applied++
+		}
 		switch {
 		case s.Plan == PlanLocal:
 			report.Local++
@@ -481,7 +495,7 @@ func ReportShadow(ctx context.Context, db *store.Store, since time.Time) (Shadow
 					report.Salvaged++
 				}
 			}
-			if s.Skipped == 0 {
+			if s.Skipped == 0 && !s.Applied {
 				asked = append(asked, s)
 				ids = append(ids, s.ID)
 			}

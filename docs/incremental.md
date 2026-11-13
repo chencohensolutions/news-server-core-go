@@ -1,13 +1,14 @@
 # Incremental story updates
 
-A story that gains an article is written again from all of its articles today. The incremental update asks Gemini
-only what the new articles change in the version before, and the server applies that. It is built to run **in shadow**
-beside the whole rewrite, and to be replayed on the archive, before it writes a story anyone reads. Decided Nov 12,
-2026.
+A story that gains an article was written again from all of its articles. The incremental update asks Gemini
+only what the new articles change in the version before, and the server applies that. It was built to run **in
+shadow** beside the whole rewrite, and to be replayed on the archive, before it wrote a story anyone reads (decided
+Nov 12, 2026). Since Nov 13, 2026 it can be turned **on**: then it is how a story that has a version gets its next
+one, and the app shows what it makes ([On](#on)). It is off until the owner turns it on.
 
 Code: [summary/incremental.go](../summary/incremental.go) (the request, the rules), [summary/novelty.go](../summary/novelty.go)
 (the checks by words), [summary/facts.go](../summary/facts.go) (a sentence's numbers, names and time words),
-[summary/shadow.go](../summary/shadow.go), [summary/replay.go](../summary/replay.go),
+[summary/shadow.go](../summary/shadow.go), [summary/on.go](../summary/on.go), [summary/replay.go](../summary/replay.go),
 [incremental.go](../incremental.go) (the commands).
 
 ## Why
@@ -399,27 +400,33 @@ among the JSON Schema keywords the API documents for `responseJsonSchema`.
     article the story was written from, shown again. The replay counts it apart, as the headline tripwire.
 - A cut answer is read up to the cut: the stories that are whole stand, the rest wait.
 
-## Shadow
+## The mode
 
 `incremental` is one of the summaries' settings in the database (`server_settings`, key `summaries`), beside the
 ones the app changes. It is not in the GraphQL schema.
 
 | Value | What |
 |---|---|
-| `off`, or missing | as before |
-| `shadow` | the rewrite as before, and the incremental update beside it |
-| `on` | not built: treated as off, and the command refuses it |
+| `off`, or missing | every changed story is written again whole |
+| `shadow` | the rewrite as before, and the incremental update beside it, kept apart ([Shadow](#shadow)) |
+| `on` | the incremental update in place of the rewrite, for a story that has a version ([On](#on)) |
 
-`shadowDaily` (same place) is the most requests a day the shadow sends: 48 unless set.
+Any other value is off, and the log says so. `shadowDaily` (same place) is the most requests a day the shadow sends:
+48 unless set; it is not counted when the mode is on.
 
 On the server (Windows: `news-server.exe`), in its folder, while it runs or not; the running server follows from its
 next run:
 
 ```
-news-server incremental shadow     turn the shadow on
-news-server incremental            the mode, and what the shadow recorded in the last 7 days
-news-server incremental off        turn it off
+news-server incremental on         the stories' next versions are updates
+news-server incremental shadow     the shadow, beside the whole rewrite
+news-server incremental off        neither: every changed story is written whole
+news-server incremental            the mode, and what was recorded in the last 7 days, in shadow and on
 ```
+
+Going from one to another needs no migration, either way (see [Off again](#off-again)).
+
+## Shadow
 
 In shadow a run does everything it did, then (`shadow`):
 
@@ -443,7 +450,8 @@ run asks about the story again, first in its request, before the stories that ch
 it is left to be written whole (`again` off, the reason in `reason`), as the mode would do; it is not asked a third
 time. The archive keeps the table
 (`story_shadow/`, restored like the others); the database keeps 7 days. Nothing reads it for the app, and nothing
-it does reaches `summaries`, `story_records`, `story_versions`, the threads or the grouping's unrelated flags.
+the shadow does reaches `summaries`, `story_records`, `story_versions`, the threads or the grouping's unrelated
+flags. (With the mode on the table keeps the steps made in the stories themselves too, marked `applied`: [On](#on).)
 
 The shadow keeps its own line of each story: a step starts from the shadow's own story when it has one, so sentences
 pile up as they would with the mode on, and from the live version when it has none or the step before sent the story
@@ -563,23 +571,99 @@ the live rewrite had nothing (the thin ones): `select(.kind == "extra" and .merg
 headline tripwire: `select(.merge.headlineTripwire)`; the inserts made corrections:
 `select(any(.merge.notes[]; .corrects))`.
 
-## What turning it on still needs
+## On
 
-`on` is refused until the shadow and the replay say it is good enough. Then:
+With `incremental: on` a run (`Writer.Run`) finds the changed stories as before, and sends each that **has a version**
+one of the design's three ways (`route`, [on.go](../summary/on.go)). A story's **first version is written whole**,
+by the request it always was.
 
-- **The run.** First versions keep their own requests and go first; rewrites are packed into incremental requests.
-  A story to be written whole goes through today's rewrite, with its new articles marked, and publishes a version
-  only when the result has facts the version before lacks.
-- **Skipped stories.** The shadow's rule becomes the run's: a story whose answer names none of its new articles
-  keeps its version, is asked about again in the next run, and after a second such answer is written whole.
-- **Bookkeeping.** A step that makes no version must still be saved in `summaries` under the new `StoryKey` (the
-  version before, with the new reports and footnotes and the sentences that went in quietly, its `writtenAt`
-  unchanged), or `Run` asks about it every run;
-  `previous`, `Latest` and `PruneSummaries` then find it as they find a rewrite. It adds no row to
-  `story_versions`, and must not reset the story's place in the thread linking. `similarStory` reads whole
-  stories and is not touched.
-- **The app.** `Update.Kinds` is in the stored story and not in the GraphQL schema yet. After a quiet update the
-  story's text has sentences that are in none of its updates and in no row of `story_versions`: what shows a
-  version's changes must take them for old text. Since round 6 every sound sentence goes in so, and there are more
-  of them.
-- **The flags.** The shadow does not save the unrelated articles for the grouping; the mode must.
+| The plan | What the run does | Version |
+|---|---|---|
+| No new article | Nothing is asked. The version before is saved under the story's reports as they are now, without the footnotes of the articles that left and the sentences left without any | none |
+| An incremental request | Up to 8 stories in one request. The answer is applied by the rules above | a new one when the rules make one; otherwise none |
+| Written whole | The whole rewrite's request, as with the mode off: a sentence lost its sources, two written stories became one, the story doubled, it grew past its sentences; and after an answer, the tripwire, the headline tripwire, and a story Gemini skipped twice | a new one, as ever |
+
+**A version** (the answer has a development, a correction or a detail that adds, from an article published since
+the version before) is saved as the whole writing saves its own: in `summaries` under the story's key, as the
+story's latest in `story_records`, and as a row of `story_versions`; the archive takes them like any other. It has
+the version before's sentences with what was inserted, replaced and deleted, each sentence with its footnotes, the
+new articles among them where they were cited; the answer's title when it gave one (a story has no subtitle); and
+one more entry in `updates` with the sentences the version inserted and replaced, in the story's order, whatever
+their kind (`Update.Kinds` says each one's). So the app shows it as it shows any version: "version N", the marks on
+what changed since the version before, the title before.
+
+**Without a version** (nothing new, or sound sentences that make none: background, reactions, plain details, facts
+of articles older than the version) the version before is **changed in place**: its row in `story_versions` is
+written again at the same time (`SaveStoryVersion` replaces a row of the same story and time), so is the story's
+record when that version is its latest, and the story is saved in `summaries` under its new key. The text has the
+sentences that went in quietly and the footnotes the new articles gave; `writtenAt`, the title and `updates` stay,
+no version is added, and `story_records.written_at` stays too, which is the story's time in its threads.
+`updatedAt` in the stored story says when it was last changed so (not in the GraphQL schema).
+
+What else is kept, and why:
+
+- **`full`** in the stored story: how many articles it had when it was last written whole, carried through the
+  updates. The plan's "twice the articles of its last whole writing" counts from it. A whole writing has none.
+- **Two rows of one version.** The story as it was stays in `summaries` under its old key, beside the changed one
+  under the new key, both with the version's time. Of two saved stories that share as many reports with a story,
+  the later version is the version before, and of the same version the one changed last (`newer`).
+- **A row of `story_shadow` for every step**, marked `applied`, as the shadow keeps its own: the plan, the answer,
+  the story it made, the rules' counts. `news-server incremental` reports them with the shadow's, and leaves them
+  out of the comparison with the live rewrite: there is none. The shadow, turned on later, takes such a row for a
+  step that is made, and starts its own line of the story from the live story.
+- **The unrelated articles** an answer found are saved for the grouping, as the whole writing's are.
+
+**The requests** are the run's own, under its rules: the day's budget, at most `summary_requests_per_run` a run,
+the first whenever one is left and more only while the budget keeps two for each run left in the day and the day
+has used no more than its share (`fairShare`); a 429 or a busy Gemini (503) ends the run, the request counted, and
+the stories wait for the next. A cut answer's whole stories are applied and the rest wait. The stories written whole
+(first versions among them) and the stories to update take the run's requests in turn, the whole ones first, while
+both wait: a morning's first versions don't keep the updates waiting, nor the other way. The stories Gemini
+skipped go first in an update's request, then the most reported.
+
+**What holds a version holds an update**: past `reserveAfter` only first versions are written, and a story waits
+`rewriteMinutes` after its version, or after an update that made none, so a busy story is asked about once in that
+time and its articles go in together. A story without a new article is never held: it costs no request.
+
+**A skipped story** (the answer names none of its new articles) is not saved: readers keep the version before, not
+"current", and the next run asks about it again, first in its request. Skipped a second time, it is written whole,
+in the same run when the run has a request left. **The tripwire** likewise: nothing of the answer is saved, and the
+story is written whole. Its row in `story_shadow` is how the next run knows either.
+
+### What the app shows
+
+Nothing in the GraphQL schema changed, and the app needs no change. What differs from a whole rewrite:
+
+- **A version's marks are exact.** The old sentences are the version before's, word for word, so "what changed"
+  marks only what the update inserted or replaced. A whole rewrite rewords, and marks more.
+- **A story's text can change without a new version.** After a quiet update the newest version reads differently
+  than a minute before, under the same "version N" and the same time. Its marks are still against the version
+  before it, so a sentence that went in quietly is marked as new since then, which it is; a story with one version
+  has no marks, and its text only grows. `updates` has no entry for such a sentence.
+- **`writtenAt` is the version's**, while `reports` has the articles that joined since: "written an hour ago from
+  7 articles" can count articles of the last minutes.
+- **Stories grow** between whole writings: every sound sentence goes in, up to one and a half times the length's
+  most (15 for medium), and then the story is written whole and is short again.
+- **A sentence can leave without a version**, when its only article left the story.
+- **`updates` holds every sentence a version added**, background and reactions too, not only the news. The app
+  does not read `updates` today.
+
+### Off again
+
+`news-server incremental off` (or `shadow`) takes effect from the next run and needs no migration. The stories the
+update wrote are ordinary stories: the whole rewrite finds the version before as it always did, shows Gemini its
+sentences (the quiet ones too), and writes the next version after it. `updatedAt`, `full` and `Update.Kinds` in the
+stored stories are read by nothing else, and the rows in `story_shadow` leave after 7 days when a shadow or the mode
+runs again.
+
+### Not done
+
+- A story written whole because the plan or the tripwire sent it publishes a version even when the result has no
+  fact the version before lacks, as every whole rewrite does.
+- `Update.Kinds` is not in the GraphQL schema: the app can't tell a development from background in what a version
+  added.
+- A quiet update is in the archive's `summaries/` (and `story_shadow/`), not in its `story_versions/`: the row
+  there is the version as it was written, since the archive adds rows by their time. A restore brings the quiet
+  text back under the story's key, and the version's row as written.
+- The replay and the shadow's comparison measure the update against whole rewrites of the same steps. With the mode
+  on there are none of those steps to compare with: the replay then has only the archive from before.

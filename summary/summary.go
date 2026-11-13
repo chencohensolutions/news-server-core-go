@@ -64,6 +64,29 @@ type StorySummary struct {
 	HeadlineOnly []string `json:"headlineOnly,omitempty"`
 	// Written is the settings it was written with; nil for a story written before they were kept.
 	Written *Settings `json:"written,omitempty"`
+	// UpdatedAt is when the story last changed without a new version (the incremental update, on): sentences went in
+	// quietly, its footnotes changed, or its reports did. Zero for a story as its version was written.
+	UpdatedAt time.Time `json:"updatedAt,omitzero"`
+	// Full is how many articles the story had when it was last written whole, kept by the incremental updates since;
+	// 0 for a version written whole (its own articles).
+	Full int `json:"full,omitempty"`
+}
+
+// changedAt is when s last changed: when its version was written, or a later change without one.
+func (s StorySummary) changedAt() time.Time {
+	if s.UpdatedAt.After(s.WrittenAt) {
+		return s.UpdatedAt
+	}
+	return s.WrittenAt
+}
+
+// newer says s is a later text of a story than t: a later version, or the same version changed later without a
+// new one (the incremental update saves that under the story's new reports, beside the version as it was).
+func (s StorySummary) newer(t StorySummary) bool {
+	if !s.WrittenAt.Equal(t.WrittenAt) {
+		return s.WrittenAt.After(t.WrittenAt)
+	}
+	return s.UpdatedAt.After(t.UpdatedAt)
 }
 
 // Update is what a version of a story added, and when it was written.
@@ -96,7 +119,8 @@ func reportsOf(s StorySummary) []string {
 }
 
 // previous is the saved summary story is a later version of: the one that shares the most reports with it, at
-// least half of its own; nil for a new story. Its ID is set (its key, for one written before IDs).
+// least half of its own, and of two that share as many the one that changed last; nil for a new story. Its ID is set
+// (its key, for one written before IDs).
 func previous(story stories.Story, saved map[string]StorySummary) *StorySummary {
 	urls := map[string]bool{}
 	for _, r := range story.Reports {
@@ -112,7 +136,7 @@ func previous(story stories.Story, saved map[string]StorySummary) *StorySummary 
 				shared++
 			}
 		}
-		if shared > 0 && 2*shared >= len(reports) && (shared > bestShared || shared == bestShared && best != nil && s.WrittenAt.After(best.WrittenAt)) {
+		if shared > 0 && 2*shared >= len(reports) && (shared > bestShared || shared == bestShared && best != nil && s.newer(*best)) {
 			s := s
 			if s.ID == "" {
 				s.ID = key
@@ -131,13 +155,13 @@ func similarStory(sentences []Sentence, saved map[string]StorySummary) *StorySum
 		if s.ID == "" {
 			s.ID = key
 		}
-		if l, ok := latest[s.ID]; !ok || s.WrittenAt.After(l.WrittenAt) {
+		if l, ok := latest[s.ID]; !ok || s.newer(l) {
 			latest[s.ID] = s
 		}
 	}
 	var best *StorySummary
 	for _, s := range latest {
-		if (best == nil || s.WrittenAt.After(best.WrittenAt)) && Similar(sentences, s.Sentences) {
+		if (best == nil || s.newer(*best)) && Similar(sentences, s.Sentences) {
 			s := s
 			best = &s
 		}
@@ -165,7 +189,7 @@ func Latest(story stories.Story, written map[string]StorySummary) (latest StoryS
 		if s.ID == "" {
 			s.ID = key
 		}
-		if s.ID == latest.ID && s.WrittenAt.After(latest.WrittenAt) {
+		if s.ID == latest.ID && s.newer(latest) {
 			latest = s
 		}
 	}
@@ -335,27 +359,56 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		return result, err
 	}
 	reserve := settings.ReserveAfter > 0 && usedToday >= settings.ReserveAfter
+	// On, the incremental update takes the place of the whole rewrite of a story that has a version (on.go).
+	on := settings.Incremental == IncrementalOn
+	if on {
+		if err := w.Store.PruneShadows(ctx, now.Add(-shadowKeep)); err != nil {
+			return result, err
+		}
+	}
 	var changed []stories.Story
+	var updates []pending
+	kept := 0
 	for _, s := range window {
 		if _, ok := saved[StoryKey(s)]; ok {
 			continue
 		}
 		prev := previous(s, written)
+		var next *pending
+		if on && prev != nil {
+			if next, err = w.route(ctx, s, prev, written, firstSeen, settings, now); err != nil {
+				return result, err
+			}
+			if next == nil {
+				// No new article: the server kept the text, with no request, whatever holds a new version.
+				kept++
+				continue
+			}
+		}
 		switch {
 		case prev == nil:
 		case reserve:
 			// Past the reserve mark only new stories are written; new versions wait for tomorrow's budget.
 			result.Held++
 			continue
-		case gap > 0 && now.Sub(prev.WrittenAt) < gap && !(settings.RewriteOnNewSite && newSite(s, prev)):
+		case gap > 0 && now.Sub(prev.changedAt()) < gap && !(settings.RewriteOnNewSite && newSite(s, prev)):
 			// A story written lately waits for its next version: the reports joining it meanwhile go in together.
+			// So does one an incremental update changed lately without a version.
 			result.Held++
+			continue
+		}
+		if next != nil && next.plan.Kind == PlanIncremental {
+			updates = append(updates, *next)
 			continue
 		}
 		changed = append(changed, s)
 	}
+	if kept > 0 {
+		w.logf("summaries: incremental: %d stories without a new article kept as they are, with their reports as they are now", kept)
+	}
 	// The most reported first.
 	sort.SliceStable(changed, func(i, j int) bool { return len(changed[i].Reports) > len(changed[j].Reports) })
+	queue(updates)
 
 	day := Day(now)
 	used, err := w.Store.GeminiRequests(ctx, day)
@@ -365,9 +418,11 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	left := orDefault(w.Budget, DefaultBudget) - used
 	// Story requests while stories wait: the first whenever a request is left, more only while the day's budget keeps
 	// two for each run left until Google's day ends, and while the day so far has used no more than its share
-	// (fairShare): a morning's backlog doesn't spend what the evening needs.
+	// (fairShare): a morning's backlog doesn't spend what the evening needs. An incremental request is one of them:
+	// the stories written whole (the first versions among them) and the stories to update take the requests in turn,
+	// the whole ones first, while both wait.
 	budget := orDefault(w.Budget, DefaultBudget)
-	for sent := 0; len(changed) > 0 && sent < orDefault(w.MaxRequests, DefaultMaxRequests); sent++ {
+	for sent := 0; len(changed)+len(updates) > 0 && sent < orDefault(w.MaxRequests, DefaultMaxRequests); sent++ {
 		used, err := w.Store.GeminiRequests(ctx, day)
 		if err != nil {
 			return result, err
@@ -376,16 +431,30 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		if left < 1 || sent > 0 && (left-1 <= 2*w.runsLeft(now) || used >= fairShare(budget, now)) {
 			break
 		}
+		if len(updates) > 0 && (len(changed) == 0 || sent%2 == 1) {
+			out, err := w.updateStories(ctx, updates, day, now, settings)
+			result.Written += out.versions
+			updates = updates[out.asked:]
+			// Sent to be written whole by its answer: in this run, when it has a request left.
+			changed = append(changed, out.whole...)
+			waiting := out.asked - out.versions - out.settled - len(out.whole)
+			if err != nil {
+				result.Waiting = len(changed) + len(updates) + waiting
+				return result, err
+			}
+			result.Waiting += waiting
+			continue
+		}
 		written, asked, err := w.writeStories(ctx, changed, day, now)
 		result.Written += written
 		changed = changed[asked:]
 		if err != nil {
-			result.Waiting = len(changed) + asked - written
+			result.Waiting = len(changed) + len(updates) + asked - written
 			return result, err
 		}
 		result.Waiting += asked - written
 	}
-	result.Waiting += len(changed)
+	result.Waiting += len(changed) + len(updates)
 	if used, err = w.Store.GeminiRequests(ctx, day); err != nil {
 		return result, err
 	}
@@ -398,11 +467,11 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	// In shadow, the incremental update of the stories that got a new version, in the requests the day has to
 	// spare. What it does never reaches the stories above, and its failure is only logged.
 	switch settings.Incremental {
-	case "", IncrementalOff:
+	case "", IncrementalOff, IncrementalOn:
 	case IncrementalShadow:
 		w.shadowSafely(ctx, window, firstSeen, day, now, settings)
 	default:
-		w.logf("summaries: incremental %q is not built yet (off or shadow): off", settings.Incremental)
+		w.logf("summaries: incremental %q is not a mode (off, shadow or on): off", settings.Incremental)
 	}
 	keep := map[string]bool{}
 	for _, s := range found {
