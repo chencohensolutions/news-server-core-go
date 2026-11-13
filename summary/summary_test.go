@@ -28,7 +28,8 @@ type fakeGemini struct {
 	requests []map[string]any
 	prompts  []string
 	status   int
-	busy     int // answer 503 this many times first
+	busy     int    // answer 503 this many times first
+	stories  string // when set, the stories answer's text in place of testdata's
 }
 
 func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
@@ -60,6 +61,14 @@ func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
 		}
 		if strings.Contains(string(system), "group Israeli news headlines into stories") {
 			name = "grouping-answer.json"
+		}
+		f.mu.Lock()
+		answer := f.stories
+		f.mu.Unlock()
+		if answer != "" && name == "stories-answer.json" {
+			text, _ := json.Marshal(answer)
+			fmt.Fprintf(w, `{"candidates": [{"content": {"role": "model", "parts": [{"text": %s}]}, "finishReason": "STOP"}]}`, text)
+			return
 		}
 		data, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
@@ -621,3 +630,49 @@ func TestGeminiGroupsTheNewHeadlinesOnce(t *testing.T) {
 
 // rainBody makes the test article's body longer than a paywall stub.
 var rainBody = strings.TrimSpace(strings.Repeat("המשטרה ביקשה מהנהגים להימנע מנסיעה באזור עד שהמים ייסוגו. ", 4))
+
+// A rewrite whose "new" is longer than its sentences put the story into "new": it isn't saved, and the version before
+// stays.
+func TestARewriteWithMoreNewThanStoryIsNotSaved(t *testing.T) {
+	w, fake, found := setup(t)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	third := scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/rain", Title: "גשם"}
+	grown := stories.Story{Reports: append(append([]scrape.ArticleSummary{}, found[0].Reports...), third)}
+	fake.mu.Lock()
+	fake.stories = `{"stories": [{"story": "s1", "unrelated": [], "title": "גשם בגליל",
+		"sentences": [{"text": "גשם ירד גם בגליל.", "sources": ["a3"]}], "contradictions": [],
+		"new": [{"text": "גשם כבד ירד הבוקר בצפון.", "sources": ["a1", "a2"]}, {"text": "שני כבישים נסגרו.", "sources": ["a2"]},
+			{"text": "גשם ירד גם בגליל.", "sources": ["a3"]}]}]}`
+	fake.mu.Unlock()
+	if _, err := w.Run(ctx, []stories.Story{grown}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := Summaries(ctx, w.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, current, ok := Latest(grown, saved)
+	if !ok || current || latest.Title != "גשם כבד בצפון" || len(latest.Sentences) < 2 {
+		t.Fatalf("%+v current %v ok %v", latest, current, ok)
+	}
+}
+
+func TestTheStoriesSchemaAsksForTheSentencesBeforeWhatsNew(t *testing.T) {
+	var schema any
+	if err := json.Unmarshal(storiesSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	text := string(storiesSchema)
+	order := []string{`"story"`, `"unrelated"`, `"title"`, `"sentences"`, `"contradictions"`, `"new"`}
+	at := -1
+	for _, key := range order {
+		i := strings.Index(text, key)
+		if i <= at {
+			t.Fatalf("%s out of order in %s", key, text)
+		}
+		at = i
+	}
+}

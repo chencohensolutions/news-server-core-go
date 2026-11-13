@@ -952,6 +952,12 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		prev := prevOf[storyID(a.Story)]
 		if prev != nil {
 			added = ids.sentences(a.New, own)
+			if len(added) > len(summary.Sentences) {
+				// What's new can't be more than the whole story: the story went into "new" and the sentences kept a
+				// scrap of it. The version before stays, and the story is asked again next run.
+				w.logf("summaries: %q: what's new (%d sentences) is longer than the story (%d): not saved", summary.Title, len(added), len(summary.Sentences))
+				continue
+			}
 		} else if like := similarStory(summary.Sentences, saved); like != nil {
 			// The grouping made a new story of what an earlier one already tells (a report that joined split it, or
 			// it grouped the newer reports apart): it is that story's next version, with what it says that's new.
