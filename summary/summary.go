@@ -364,7 +364,8 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	}
 	left := orDefault(w.Budget, DefaultBudget) - used
 	// Story requests while stories wait: the first whenever a request is left, more only while the day's budget keeps
-	// two for each run left until Google's day ends.
+	// two for each run left until Google's day ends, and while the day so far has used no more than its share
+	// (fairShare): a morning's backlog doesn't spend what the evening needs.
 	budget := orDefault(w.Budget, DefaultBudget)
 	for sent := 0; len(changed) > 0 && sent < orDefault(w.MaxRequests, DefaultMaxRequests); sent++ {
 		used, err := w.Store.GeminiRequests(ctx, day)
@@ -372,7 +373,7 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 			return result, err
 		}
 		left = budget - used
-		if left < 1 || sent > 0 && left-1 <= 2*w.runsLeft(now) {
+		if left < 1 || sent > 0 && (left-1 <= 2*w.runsLeft(now) || used >= fairShare(budget, now)) {
 			break
 		}
 		written, asked, err := w.writeStories(ctx, changed, day, now)
@@ -430,6 +431,20 @@ func newSite(s stories.Story, prev *StorySummary) bool {
 	return false
 }
 
+// fairShare is how many of the day's budget requests may be used by now: the budget spread evenly over the free
+// tier's day (midnight to midnight Pacific time), plus two hours' share for a backlog.
+func fairShare(budget int, now time.Time) int {
+	pacific, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		pacific = time.UTC
+	}
+	local := now.In(pacific)
+	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, pacific)
+	end := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, pacific)
+	share := float64(budget) * float64(now.Sub(start)) / float64(end.Sub(start))
+	return int(share) + budget/12
+}
+
 // runsLeft is how many runs start before the free tier's day ends (midnight Pacific time).
 func (w *Writer) runsLeft(now time.Time) int {
 	pacific, err := time.LoadLocation("America/Los_Angeles")
@@ -459,7 +474,9 @@ func newestSeen(s stories.Story, firstSeen map[string]time.Time) time.Time {
 // send counts the request against the day's budget, then sends it; when Gemini is busy it waits and tries again,
 // each try counted.
 func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json.RawMessage, error) {
-	answer, _, err := w.generate(ctx, day, req, len(busyWaits))
+	// A busy Gemini (503) isn't tried again in the run: each try costs a request of the quota, and while Google is
+	// busy it mostly stays busy for a while. The next run tries again.
+	answer, _, err := w.generate(ctx, day, req, 0)
 	if err != nil {
 		return nil, err
 	}

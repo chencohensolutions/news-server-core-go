@@ -19,7 +19,7 @@ repository root.
   (AUC 0.950, best F1 0.83 for bge-m3; [storyjob.go](../storyjob.go), [stories/eval.go](../stories/eval.go)). The labeled
   set holds real headlines, so it lives in a private pack and not in this repository.
 - **LLM integration:** Gemini with structured output (a JSON schema), a daily request budget (400 by default) kept
-  under the free tier, a 429 ends the run, a busy model (500/503) is retried, each try counted (the quota counts it). `news-server eval-gemini-grouping`
+  under the free tier, a 429 ends the run, a busy model (500/503) ends the run too and is tried at the next one, each try counted (the quota counts it); the day's budget is spread over the day (`fairShare`). `news-server eval-gemini-grouping`
   scores Gemini's own grouping on the same labeled pairs. Tests run on recorded model answers
   ([summary/testdata/](../summary/testdata/)).
 - **Security:** mutual TLS, deny by default. Devices enroll with a one-time code or QR code and get a client

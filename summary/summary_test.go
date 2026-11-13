@@ -376,22 +376,33 @@ func TestASentenceEndsLikeOne(t *testing.T) {
 	}
 }
 
-func TestABusyGeminiIsTriedAgain(t *testing.T) {
+func TestABusyGeminiWaitsForTheNextRun(t *testing.T) {
+	// Busy: the run ends after one try, counted (Google's quota counts it), and the stories wait.
 	w, fake, found := setup(t)
 	fake.busy = 1
 	result, err := w.Run(context.Background(), found)
-	if err != nil || result.Written != 2 || fake.count() != 2 {
+	if !errors.Is(err, gemini.ErrUnavailable) || result.Written != 0 || fake.count() != 1 {
 		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
 	}
-	// Still busy after every wait: the run ends, the next one tries again.
-	w2, fake2, found2 := setup(t)
-	fake2.busy = 10
-	if _, err := w2.Run(context.Background(), found2); !errors.Is(err, gemini.ErrUnavailable) || fake2.count() != 3 {
-		t.Fatalf("%v, %d requests", err, fake2.count())
+	if used, err := w.Store.GeminiRequests(context.Background(), Day(w.now())); err != nil || used != 1 {
+		t.Fatalf("%d requests counted, %v; want 1", used, err)
 	}
-	// Every try is counted against the day's budget: Google's quota counts the busy ones too.
-	if used, err := w2.Store.GeminiRequests(context.Background(), Day(w2.now())); err != nil || used != 3 {
-		t.Fatalf("%d requests counted, %v; want 3", used, err)
+	// The next run writes them.
+	if result, err := w.Run(context.Background(), found); err != nil || result.Written != 2 || fake.count() != 2 {
+		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
+	}
+}
+
+func TestTheDaysBudgetIsSpreadOverTheDay(t *testing.T) {
+	pacific, _ := time.LoadLocation("America/Los_Angeles")
+	midnight := time.Date(2026, 11, 13, 0, 0, 0, 0, pacific)
+	for _, c := range []struct {
+		at   time.Duration
+		want int
+	}{{0, 25}, {6 * time.Hour, 100}, {12 * time.Hour, 175}, {23*time.Hour + 59*time.Minute, 324}} {
+		if got := fairShare(300, midnight.Add(c.at)); got != c.want {
+			t.Errorf("%s after midnight: %d, want %d", c.at, got, c.want)
+		}
 	}
 }
 
@@ -455,6 +466,16 @@ func TestARunSendsMoreRequestsWhileTheBudgetHasRoom(t *testing.T) {
 	w2.Budget = 146
 	if _, err := w2.Run(ctx, thirty(w2)); err != nil || fake2.count() != 1 {
 		t.Fatalf("%v, %d requests", err, fake2.count())
+	}
+	// Past the day's fair share by noon (200 of 400 + 33): one story request, the rest wait for the evening's share.
+	w3, fake3, _ := setup(t)
+	for range 240 {
+		if err := w3.Store.CountGeminiRequest(ctx, Day(now)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := w3.Run(ctx, thirty(w3)); err != nil || fake3.count() != 1 {
+		t.Fatalf("%v, %d requests", err, fake3.count())
 	}
 }
 
