@@ -34,7 +34,7 @@ const (
 	maxStories         = 12      // stories in one request: a long answer is where the model cuts sentences short
 	articleChars       = 600     // of each article's body
 	maxReports         = 40      // of a story's reports in the prompt, one per site first: every one but a runaway's
-	storyBodyChars     = 120_000 // of a story's bodies together (~45,000 tokens): only a story of 30+ reports is cut
+	storyBodyChars     = 120_000 // of a story's bodies together (~45,000 tokens): past it the longest are shortened first (bodies)
 	maxFootnotes       = 5       // of one sentence: more can't all state it
 )
 
@@ -710,22 +710,10 @@ func (w *Writer) siteName(id string) string {
 	return id
 }
 
-// report is one article as the prompt shows it: its id, site, time, title, subtitle and its body (articleText: the
-// first bodyChars characters, without what isn't the article or what the story's earlier reports sent).
-func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSummary, bodyChars int, seen map[string]bool) string {
-	return w.reportOf(ids, r, w.body(ctx, r, bodyChars, seen))
-}
-
-// body is r's body as the prompt shows it (articleText), "" for a paywall stub or an article not read.
-func (w *Writer) body(ctx context.Context, r scrape.ArticleSummary, bodyChars int, seen map[string]bool) string {
-	if article := w.article(ctx, r.URL); article != nil {
-		return articleText(article.Body, seen, bodyChars)
-	}
-	return ""
-}
-
-// reportOf is report with the body given. Each of notes that isn't "" follows the time on the first line (the
-// incremental request's: whether the article was published before or after the story was written).
+// reportOf is one article as the prompt shows it: its id, site, time, title, subtitle and its body (one of bodies:
+// without what isn't the article or what the story's earlier reports sent; "" for a paywall stub or an article not
+// read). Each of notes that isn't "" follows the time on the first line (the incremental request's: whether the
+// article was published before or after the story was written).
 func (w *Writer) reportOf(ids *sources, r scrape.ArticleSummary, body string, notes ...string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%s] %s", ids.id(r.URL), w.siteName(r.SourceID))
@@ -809,19 +797,15 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 	if err != nil {
 		return 0, 0, err
 	}
-	bodyChars := articleChars
-	if settings.FullArticles {
-		bodyChars = fullArticleChars
-	}
 	for i, s := range changed {
 		var b strings.Builder
 		seen := map[string]bool{}
 		id := fmt.Sprintf("s%d", i+1)
 		fmt.Fprintf(&b, "=== סיפור %s ===\n", id)
 		reports := shown(s)
-		each := min(bodyChars, max(articleChars, storyBodyChars/max(len(reports), 1)))
+		bodies := w.bodies(ctx, reports, bodyChars(settings), seen)
 		for _, r := range reports {
-			b.WriteString(w.report(ctx, ids, r, each, seen))
+			b.WriteString(w.reportOf(ids, r, bodies[r.URL]))
 			b.WriteString("\n")
 		}
 		prev := previous(s, saved)

@@ -22,7 +22,15 @@ type figure struct {
 	date bool
 	// scale is what the word after it multiplies it by: 1000 for "אלף", and so on; 0 for none.
 	scale int64
+	// apart says it is an hour or an age: "19:30", "בשעה 7", "בן 34", "(34)". With a date or a year, what is no
+	// count or measure of anything (measure).
+	apart bool
+	// of is the word it counts or measures: the one after it, and after its scale ("3 חשודים", "2 מיליון שקל").
+	of string
 }
+
+// measure says f is a count, a sum or a measure: no date or year, no hour and no age.
+func (f figure) measure() bool { return !f.date && !f.apart }
 
 var (
 	numberRun = regexp.MustCompile(`\d+(?:[.,:/]\d+)*`)
@@ -58,23 +66,72 @@ func plainNumber(raw string) string {
 }
 
 // wordAfter is the first word of rest, as compared: the word that follows a number ("" when a clause ends first).
-func wordAfter(rest string) string {
+// second is the word after that one, "" when the clause ends between them.
+func wordAfter(rest string) (first, second string) {
 	// The next words are near: no need to split a whole article after each of its numbers.
 	if len(rest) > 80 {
 		rest = strings.ToValidUTF8(rest[:80], "")
 	}
-	for i, field := range strings.Fields(rest) {
+	fields := strings.Fields(rest)
+	for i, field := range fields {
 		if i == 2 {
 			break
 		}
 		if ts := tokens(field); len(ts) > 0 && ts[0].key != "" {
-			return ts[0].key
+			if i+1 < len(fields) && !strings.ContainsAny(field, ".,;:!?") {
+				if next := tokens(fields[i+1]); len(next) > 0 {
+					second = next[0].key
+				}
+			}
+			return ts[0].key, second
 		}
 		if strings.ContainsAny(field, ".,;:!?") {
 			break
 		}
 	}
+	return "", ""
+}
+
+// wordBefore is the last word of before, as compared: the word a number follows, without the letters joined to
+// the number itself ("בן" of "בן 34", "שעה" of "בשעה 7" and of "בשעה ב-7").
+func wordBefore(before string) string {
+	if len(before) > 80 {
+		before = strings.ToValidUTF8(before[len(before)-80:], "")
+	}
+	fields := strings.Fields(before)
+	if r := []rune(before); len(r) > 0 && !unicode.IsSpace(r[len(r)-1]) && len(fields) > 0 {
+		fields = fields[:len(fields)-1] // what is joined to the number: "ב-", "(", "כ-"
+	}
+	if len(fields) == 0 {
+		return ""
+	}
+	if ts := tokens(fields[len(fields)-1]); len(ts) > 0 {
+		return ts[0].key
+	}
 	return ""
+}
+
+// ageWords are the words an age follows.
+var ageWords = map[string]bool{"בן": true, "בת": true, "כבן": true, "כבת": true, "בני": true, "בנות": true, "גיל": true, "בגיל": true, "גילאי": true, "בגילאי": true}
+
+// hourOrAge says a number written raw, after the text before and with rest after it, is an hour or an age.
+func hourOrAge(raw, before, rest string) bool {
+	if strings.Contains(raw, ":") {
+		return true
+	}
+	if strings.HasSuffix(before, "(") && strings.HasPrefix(rest, ")") {
+		return true // "(34)"
+	}
+	word := wordBefore(before)
+	if ageWords[word] {
+		return true
+	}
+	for _, stem := range stems(word) {
+		if stem == "שעה" {
+			return true
+		}
+	}
+	return false
 }
 
 // about says a number follows "כ-" ("בכ-", "לכ-"): about so many, which no year is.
@@ -104,8 +161,11 @@ func figures(text string) []figure {
 	var out []figure
 	for _, at := range numberRun.FindAllStringIndex(text, -1) {
 		raw := text[at[0]:at[1]]
-		next := wordAfter(text[at[1]:])
-		f := figure{text: plainNumber(raw), scale: scales[next]}
+		next, second := wordAfter(text[at[1]:])
+		f := figure{text: plainNumber(raw), scale: scales[next], of: next, apart: hourOrAge(raw, text[:at[0]], text[at[1]:])}
+		if f.scale > 0 {
+			f.of = second
+		}
 		switch {
 		case fullDate.MatchString(raw), slashDate.MatchString(raw):
 			f.date = true
@@ -223,10 +283,15 @@ func (n *numbers) written(v int64) bool {
 	return false
 }
 
-// states says the text states f, however it writes it: the same number; a part of a time, a date or a score of
+// states says the text states f, however it writes it (stating, with any word a number is written with): the same number; a part of a time, a date or a score of
 // the text's ("19" of "19:30"), or such a one whose parts the text has; in words ("שלושה" for 3, "חצי" for a half); or at another scale ("300 אלף" for 300,000,
 // "1.5 מיליון" for 1,500,000, and the other way).
-func (n *numbers) states(f figure) bool {
+func (n *numbers) states(f figure) bool { return n.stating(f, nil) }
+
+// stating is states for a text whose counts in a word are known (counted: what each of counts counts to; nil when
+// they are not). A number a count's word writes (2 to 10, the tens) is then stated in a word only by such a count,
+// and not by a word that is a number's elsewhere: "ביום שלישי" states no 3, "השופט השני" no 2.
+func (n *numbers) stating(f figure, counted map[int64]bool) bool {
 	if n.whole[f.text] {
 		return true
 	}
@@ -253,7 +318,13 @@ func (n *numbers) states(f figure) bool {
 	}
 	whole := int64(value)
 	isWhole := float64(whole) == value
-	if isWhole && n.written(whole) {
+	switch {
+	case !isWhole:
+	case counted != nil && cardinalValues[whole]:
+		if counted[whole] {
+			return true
+		}
+	case n.written(whole):
 		return true
 	}
 	if !isWhole && n.fraction(f.text) {
@@ -299,6 +370,26 @@ var cardinals = map[string]int64{
 	"עשרים": 20, "שלושים": 30, "ארבעים": 40, "חמישים": 50, "שישים": 60, "ששים": 60, "שבעים": 70, "שמונים": 80, "תשעים": 90,
 }
 
+// cardinalValues are what the words of cardinals count to.
+var cardinalValues = func() map[int64]bool {
+	out := map[int64]bool{}
+	for _, value := range cardinals {
+		out[value] = true
+	}
+	return out
+}()
+
+// cardinal is what word counts to when it is a count's word, alone or after joined letters ("ושלושה"); 0 when it
+// is none.
+func cardinal(word string) int64 {
+	for _, stem := range stems(word) {
+		if value := cardinals[stem]; value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
 // numberWords are the words a number is written with, the ordinals and the scales too: a count beside one of them
 // is part of a longer number ("שלוש עשרה", "עשרים ושלושה", "שלושת אלפים").
 var numberWords = func() map[string]bool {
@@ -342,8 +433,8 @@ func (c count) figure() figure { return figure{text: strconv.FormatInt(c.value, 
 
 // counts are the counts text writes in a word of their own ("שלושה חשודים", "עשרים בתים"), alone or after joined
 // letters. A word beside another number's word or a number in digits is part of a longer number and is none
-// ("שלוש עשרה", "עשרים ושלושה", "3 אלפים"), and neither is an hour or a day ("בשעה שבע", "ביום שני"): narrow on
-// purpose, as the checks they serve drop or replace a sentence.
+// ("שלוש עשרה", "עשרים ושלושה", "3 אלפים"), and neither is an hour or a day ("בשעה שבע", "ביום שני") or the other
+// hand ("מצד שני"): narrow on purpose, as the checks they serve drop or replace a sentence.
 func counts(text string) []count {
 	var out []count
 	ts := keys(tokens(text))
@@ -362,7 +453,7 @@ func counts(text string) []count {
 		if value == 0 || beside(i-1) || beside(i+1) {
 			continue
 		}
-		if i > 0 && (alike(ts[i-1], "שעה") || alike(ts[i-1], "יום")) {
+		if i > 0 && (alike(ts[i-1], "שעה") || alike(ts[i-1], "יום") || ts[i-1] == "מצד" || ts[i-1] == "ומצד") {
 			continue
 		}
 		out = append(out, count{word: word, value: value, of: ts[i+1 : min(i+3, len(ts))]})
@@ -394,21 +485,32 @@ func nationals(words ...string) bool {
 	return false
 }
 
-// another says text has a number that than doesn't state: in digits (a date or a year aside), or a count in words.
-// dates says that of its dates and years instead.
+// another says text has a number that than doesn't state: in digits (a date or a year aside), or a count in a
+// word. A count is compared with than's counts, in digits or in a word ("שלושה" and "3", "שתי" and "שניים"), and
+// not with every word of than that a number is written with: "שלושה חשודים נעצרו" is another number than "שני
+// חשודים נעצרו ביום שלישי". dates says that of its dates and years instead.
 func another(text, than string, dates bool) bool {
 	n := newNumbers()
 	n.add(than)
+	if dates {
+		for _, f := range figures(text) {
+			if f.date && !n.states(f) {
+				return true
+			}
+		}
+		return false
+	}
+	counted := map[int64]bool{}
+	for _, c := range counts(than) {
+		counted[c.value] = true
+	}
 	for _, f := range figures(text) {
-		if f.date == dates && !n.states(f) {
+		if !f.date && !n.stating(f, counted) {
 			return true
 		}
 	}
-	if dates {
-		return false
-	}
 	for _, c := range counts(text) {
-		if !n.states(c.figure()) {
+		if !n.stating(c.figure(), counted) {
 			return true
 		}
 	}
@@ -436,6 +538,133 @@ func (n *numbers) news(text string) (number, dated bool) {
 		}
 	}
 	return number, dated && !number
+}
+
+// functionWords are words that tell nothing of what a sentence is about: two sentences that differ only in them
+// say the same thing ("שלושה חשודים נעצרו עד כה" and "שלושה חשודים נעצרו"). Not "לא" and its like, which turn a
+// fact over, and no word that says where, when or more of what.
+var functionWords = map[string]bool{
+	"את": true, "של": true, "על": true, "עם": true, "כי": true, "גם": true, "הוא": true, "היא": true, "הם": true, "הן": true,
+	"זה": true, "זו": true, "זאת": true, "אלה": true, "אלו": true, "הזה": true, "הזו": true, "הזאת": true, "האלה": true,
+	"אם": true, "או": true, "כל": true, "בכל": true, "לכל": true, "מכל": true, "עד": true, "אשר": true, "אך": true, "אבל": true,
+	"רק": true, "כבר": true, "אף": true, "לפי": true, "כדי": true, "כך": true, "כה": true, "היה": true, "היתה": true,
+	"הייתה": true, "היו": true, "יש": true, "לו": true, "לה": true, "להם": true, "שלו": true, "שלה": true, "שלהם": true,
+	"אותו": true, "אותה": true, "אותם": true, "בו": true, "בה": true, "בהם": true, "מן": true, "ידי": true, "אכן": true,
+	"בסך": true, "סך": true, "הכול": true, "הכל": true, "כולל": true, "בסה״כ": true, "סהכ": true, "בסהכ": true, "כלומר": true,
+}
+
+// functionWord says word is one of functionWords, alone or after "ו" or "ש" ("וגם", "שכבר").
+func functionWord(word string) bool {
+	if functionWords[word] {
+		return true
+	}
+	r := []rune(word)
+	return len(r) > 2 && r[0] == 'ו' && functionWords[string(r[1:])] || len(r) > 3 && r[0] == 'ש' && functionWords[string(r[1:])]
+}
+
+// content says word tells what a sentence is about: no number, no word a number is written with, no function word.
+func content(word string) bool { return !isNumber(word) && !numberWord(word) && !functionWord(word) }
+
+// tally is a number with the word it counts or measures: "3 חשודים", "שלושה חשודים", "2 מיליון שקל".
+type tally struct{ value, of string }
+
+// tallies are text's counts and measures with what each is of: in digits (no date, year, hour or age) and in a
+// word.
+func tallies(text string) []tally {
+	var out []tally
+	for _, f := range figures(text) {
+		if f.measure() && f.of != "" {
+			out = append(out, tally{f.text, f.of})
+		}
+	}
+	for _, c := range counts(text) {
+		if len(c.of) > 0 {
+			out = append(out, tally{c.figure().text, c.of[0]})
+		}
+	}
+	return out
+}
+
+// recount is a count text writes in a word that is news to the story, "" when there is none: the story counts
+// the same thing with another number and not with this one ("שלושה חשודים" where it has "2 חשודים"; tallied are
+// the story's tallies); text counts more of something ("שני נאשמים נוספים"); or it is three or more and the story
+// states no such number, in digits or in a count's word (told and counted are the story's numbers and what its
+// counts in a word count to). "שני" alone is no news: it is two of anything ("שני הצדדים"), where a number in
+// digits is copied from the article.
+func recount(text string, told *numbers, counted map[int64]bool, tallied []tally) string {
+	_, more := said(text)
+	for _, c := range counts(text) {
+		value := c.figure().text
+		same, other := false, false
+		for _, t := range tallied {
+			if len(c.of) > 0 && alike(t.of, c.of[0]) {
+				same = same || t.value == value
+				other = other || t.value != value
+			}
+		}
+		if !same && (other || more || c.value > 2 && !told.stating(c.figure(), counted)) {
+			return c.word
+		}
+	}
+	return ""
+}
+
+// outcomes are the words of an outcome or a decision: what a court, an authority or an employer did, and what
+// became of someone. Each form is written out: Hebrew's passive and its feminine are other words to the word
+// likeness (alike).
+var outcomes = func() map[string]bool {
+	out := map[string]bool{}
+	for _, word := range strings.Fields(`
+		החליט החליטה החליטו הוחלט אישר אישרה אישרו אושר אושרה אושרו דחה דחתה דחו נדחה נדחתה נדחו
+		קבע קבעה קבעו נקבע נקבעה פסק פסקה פסקו נפסק הורה הורתה הורו ביטל ביטלה ביטלו בוטל בוטלה בוטלו
+		הטיל הטילה הוטל הוטלה הוטלו אסר אסרה נאסר נאסרה הכריז הכריזה הוכרז הוכרזה
+		הרשיע הרשיעה הורשע הורשעה הורשעו זיכה זיכתה זוכה זוכתה זוכו גזר גזרה נגזר נגזרו
+		האריך האריכה הוארך שחרר שחררה שוחרר שוחררה שוחררו נעצר נעצרה נעצרו
+		הגיש הגישה הגישו הוגש הוגשה הוגשו הואשם הואשמה הואשמו נחתם נחתמה נחתמו
+		מינה מינתה מונתה התמנה התמנתה מינוי מינויו מינויה נבחר נבחרה נבחרו
+		פיטר פיטרה פוטר פוטרה פוטרו יפוטרו תפטר יפטר מפטרת פיטורי פיטורים פיטוריו
+		התפטר התפטרה התפטרו הודח הודחה הושעה הושעתה`) {
+		out[word] = true
+	}
+	return out
+}()
+
+// outcome is the word of text that tells an outcome or a decision the story doesn't: one of outcomes, alone or
+// after joined letters, that known (the story's words) lacks. "" when there is none.
+func outcome(text string, known func(word string) bool) string {
+	for _, word := range words(text) {
+		for _, stem := range stems(word) {
+			if outcomes[stem] && !known(word) {
+				return word
+			}
+		}
+	}
+	return ""
+}
+
+// bodyWords are the words a body's name follows directly, each in the form that stands only before a name
+// ("חברת אורן", "עיריית גבעון"): the sign that the word after it is one, as a title is of a person's. Not the ones
+// that stand before other words as often ("בנק", "משרד", "ארגון", "קבוצת", "תנועת").
+var bodyWords = map[string]bool{
+	"חברת": true, "עיריית": true, "מועצת": true, "עמותת": true, "מפלגת": true, "ועדת": true, "אוניברסיטת": true, "סיעת": true,
+	"לשכת": true,
+}
+
+// newBody is a body (a company, a municipality, a party, a committee) that text names and the story doesn't: one
+// of bodyWords, alone or after joined letters, and directly after it a word known lacks. "" when there is none.
+func newBody(text string, known func(word string) bool) string {
+	ts := nameTokens(text)
+	for i := 0; i+1 < len(ts); i++ {
+		if ts[i].ends || !ts[i+1].named() || known(ts[i+1].key) {
+			continue
+		}
+		for _, stem := range stems(ts[i].key) {
+			if bodyWords[stem] {
+				return ts[i].core + " " + ts[i+1].core
+			}
+		}
+	}
+	return ""
 }
 
 // timeWords are the words that say when and nothing else: a development that is a sentence of the story with one

@@ -45,7 +45,7 @@ type ReplayOptions struct {
 	// gone on with from the story it stopped at (ReplayReport.Next), under the same other options.
 	Offset int
 	// Cases gets a line of JSON for every real step answered, every control answered wrong, and every repeat control
-	// whose story a quiet update changed (ReplayCase).
+	// whose answer wrote a sound sentence from the story's own article (ReplayCase).
 	Cases io.Writer
 }
 
@@ -120,7 +120,11 @@ type ReplayReport struct {
 	LiveNewVersion, LiveNewQuiet     int // the live rewrite had new facts: a version, or none (a miss)
 	LiveQuietVersion, LiveQuietQuiet int // the live rewrite had none
 	LiveListed                       int // real steps whose live "new" list wasn't empty, restated or not
-	Tripwire                         int // steps sent to be written whole after Gemini found nothing
+	Tripwire                         int // steps sent to be written whole after an answer that made no version
+	// Headline are the ones of Tripwire that the headline check sent: nothing of an article published after the
+	// version before went into the story, and its title or subtitle names what the story lacks. MissedHeadline and
+	// QuietHeadline are the same apart: of the steps where the live rewrite had new facts, and where it had none.
+	Headline, MissedHeadline, QuietHeadline int
 	// The steps without a version, apart by whether the live rewrite had new facts (Missed, of LiveNewQuiet) or
 	// none (Quiet, of LiveQuietQuiet): Found are the ones where Gemini answered sound sentences that made no version
 	// (left out, or added quietly), Tripwire the ones sent to be written whole, Both the ones that are both. MissedDropped
@@ -137,13 +141,13 @@ type ReplayReport struct {
 	// making one because its articles were all published before the version before (MergeStats.Old): of the steps
 	// where the live rewrite had new facts, and of the ones where it had none.
 	MissedOld, QuietOld int
-	// MissedDetail and QuietDetail are the steps without a version where a detail with a number the story lacks or
-	// a person it doesn't name stood on an article published after the version before (MergeStats.Since): until
-	// round 5 that made a version. Where the live rewrite had new facts it is the rule's cost (a key fact Gemini
-	// called a detail: read them), and where it had none, what the rule saved.
-	MissedDetail, QuietDetail int
-	// MissedUpdated and QuietUpdated are the steps without a version whose story a quiet update changed all the
-	// same (MergeStats.Quiet): sentences went into the text, with no version and nothing in what's new.
+	// NewsByDetail and ExtraByDetail are the versions that only details made (MergeStats.ByDetail): a detail with
+	// a number, a name or an outcome the story lacks, from an article published after the version before, and no
+	// development or correction. Where the live rewrite had new facts (NewsByDetail) they are what the rule won
+	// back since round 6, and where it had none (ExtraByDetail) the ones to read for a thin version.
+	NewsByDetail, ExtraByDetail int
+	// MissedUpdated and QuietUpdated are the steps without a version whose story changed all the same
+	// (MergeStats.Quiet): sentences went into the text quietly, with no version and nothing in what's new.
 	MissedUpdated, QuietUpdated int
 	// The new articles the requests showed for the real steps, by when they were published against the version
 	// before (Step.fresh): after it, before it, or not known. Unmentioned are the ones, of the steps answered, that
@@ -153,8 +157,8 @@ type ReplayReport struct {
 
 	Stats MergeStats     // of the real steps
 	Kinds map[string]int // the sentences that went into versions, by kind
-	// LeftOutKinds are the sound sentences left out with no version made, by kind; QuietKinds the ones that went
-	// into a story with no version made (a quiet update), by kind.
+	// LeftOutKinds are the sound sentences kept out of the story with no version made, by kind; QuietKinds the ones
+	// that went into a story quietly, with no version made, by kind.
 	LeftOutKinds map[string]int
 	QuietKinds   map[string]int
 	Cases        int // lines written to ReplayOptions.Cases
@@ -164,10 +168,9 @@ type ReplayReport struct {
 	// The controls whose answer names none of the story's new articles: of the repeats (nothing came of those, so
 	// they pass), and of the strangers (not found unrelated: they fail).
 	RepeatSkipped, StrangerSkipped int
-	// RepeatReshown are the repeats that passed whose answer wrote a sentence a quiet update takes (a development,
-	// a detail with a number or a name) from the article the story was written from: no version (the article is
-	// older than the story), and not in the story either (a quiet update takes nothing from a story's own
-	// article, MergeStats.Reshown). It is the padding that rule keeps out.
+	// RepeatReshown are the repeats that passed whose answer wrote a sound sentence from the article the story was
+	// written from: no version (the article is older than the story), and not in the story either (nothing goes in
+	// quietly from a story's own article, MergeStats.Reshown). It is the padding that rule keeps out.
 	RepeatReshown int
 	Positions     []PositionStats
 
@@ -343,11 +346,11 @@ func (w *Writer) liveChars(ctx context.Context, story stories.Story, prev, next 
 	ids := newSources()
 	seen := map[string]bool{}
 	reports := shown(story)
-	each := min(bodyChars(settings), max(articleChars, storyBodyChars/max(len(reports), 1)))
+	bodies := w.bodies(ctx, reports, bodyChars(settings), seen)
 	var b strings.Builder
 	b.WriteString("=== סיפור s1 ===\n")
 	for _, r := range reports {
-		b.WriteString(w.report(ctx, ids, r, each, seen))
+		b.WriteString(w.reportOf(ids, r, bodies[r.URL]))
 		b.WriteString("\n")
 	}
 	fmt.Fprintf(&b, "הגרסה הקודמת (%s):\n", israelTime(prev.WrittenAt))
@@ -655,7 +658,7 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 			}
 			item := sent[position]
 			m := merge(a, answer, id, req.ids, w.now())
-			tripwire := w.tripwire(ctx, a, m)
+			tripwire, headline := w.tripwire(ctx, a, m)
 			report.Answered++
 			at := &report.Positions[position]
 			at.Answered++
@@ -730,6 +733,7 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 				switch {
 				case item.liveGenuine > 0 && m.Version:
 					report.LiveNewVersion++
+					report.NewsByDetail += m.Stats.ByDetail
 					kind = CaseAgreeVersion
 				case item.liveGenuine > 0:
 					report.LiveNewQuiet++
@@ -741,14 +745,15 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					if m.Stats.Old > 0 {
 						report.MissedOld++
 					}
-					if m.Stats.Since > 0 {
-						report.MissedDetail++
+					if headline {
+						report.MissedHeadline++
 					}
 					if m.Stats.Quiet > 0 {
 						report.MissedUpdated++
 					}
 				case m.Version:
 					report.LiveQuietVersion++
+					report.ExtraByDetail += m.Stats.ByDetail
 					kind = CaseExtra
 				default:
 					report.LiveQuietQuiet++
@@ -757,8 +762,8 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 					if m.Stats.Old > 0 {
 						report.QuietOld++
 					}
-					if m.Stats.Since > 0 {
-						report.QuietDetail++
+					if headline {
+						report.QuietHeadline++
 					}
 					if m.Stats.Quiet > 0 {
 						report.QuietUpdated++
@@ -769,6 +774,9 @@ func (w *Writer) Replay(ctx context.Context, opts ReplayOptions) (*ReplayReport,
 				}
 				if tripwire != "" {
 					report.Tripwire++
+				}
+				if headline {
+					report.Headline++
 				}
 				report.Stats.add(m.Stats)
 				if m.Version {
@@ -814,13 +822,13 @@ const (
 	CaseRepeat       = "control-repeat"   // an article the story has, shown as new, made a version or was found unrelated
 	CaseStranger     = "control-stranger" // an article of another story was not found unrelated
 	// CaseRepeatReshown is a control answered right (no version, and the story as it was) all the same: the answer
-	// wrote a sentence a quiet update takes from the article the story has, and the rules kept it out. It is
+	// wrote a sound sentence from the article the story has, and the rules kept it out. It is
 	// written to be read for what Gemini makes of an article it was already given.
 	CaseRepeatReshown = "control-repeat-reshown"
 )
 
 // ReplayCase is one story of the replay with all that was sent and answered: a line of the cases file. A sentence
-// that went into the story without a version (a quiet update) has the outcome "quiet" among Merge.Notes. It is for
+// that went into the story without a version (quietly) has the outcome "quiet" among Merge.Notes. It is for
 // reading a disagreement and judging who is right, so it holds the sites' headlines and articles as they are:
 // the file is kept out of the archive and out of any repository.
 type ReplayCase struct {
@@ -889,6 +897,8 @@ type CaseMerge struct {
 	// TripwireWhy why.
 	Tripwire    bool   `json:"tripwire"`
 	TripwireWhy string `json:"tripwireWhy,omitempty"`
+	// Headline says the tripwire's reason is the headline check.
+	Headline bool `json:"headlineTripwire,omitempty"`
 	// Unrelated are the new articles found to be about another event, by their ids in the request.
 	Unrelated []string `json:"unrelated,omitempty"`
 	// Unmentioned are the new articles the answer names nowhere, by their ids in the request; Skipped says that is
@@ -953,7 +963,7 @@ func (w *Writer) replayCase(item replayItem, a *asked, id string, ids *sources, 
 		}
 		c.New = append(c.New, shown)
 	}
-	c.Merge = CaseMerge{Version: m.Version, Tripwire: tripwire != "", TripwireWhy: tripwire, Notes: m.Notes, Stats: m.Stats, Skipped: m.Skipped}
+	c.Merge = CaseMerge{Version: m.Version, Tripwire: tripwire != "", TripwireWhy: tripwire, Headline: strings.HasPrefix(tripwire, whyHeadline), Notes: m.Notes, Stats: m.Stats, Skipped: m.Skipped}
 	if c.Merge.Notes == nil {
 		c.Merge.Notes = []MergeNote{}
 	}
@@ -1065,6 +1075,8 @@ func (r *ReplayReport) Print(out io.Writer) {
 	read := r.Real - r.GeminiSkipped
 	fmt.Fprintf(out, "  of the %d not skipped, a new version: %d (%s); no version: %d (%s); of those, %d would be written whole (the tripwire)\n", read, version, share(version, read),
 		read-version, share(read-version, read), r.Tripwire)
+	fmt.Fprintf(out, "  headline tripwire (of the tripwire's: nothing of an article published after the version before went into the story, and its title or subtitle names what the story lacks): %d; %d where live had new facts, %d where it had none\n",
+		r.Headline, r.MissedHeadline, r.QuietHeadline)
 	live := r.LiveNewVersion + r.LiveNewQuiet
 	fmt.Fprintf(out, "  the live rewrite listed new facts in %d (%s); in %d (%s) they were not the version before's in other words\n", r.LiveListed, share(r.LiveListed, r.Real),
 		live+r.SkippedNews, share(live+r.SkippedNews, r.Real))
@@ -1089,22 +1101,21 @@ func (r *ReplayReport) Print(out io.Writer) {
 	}
 	fmt.Fprintf(out, "  the articles' time kept a development or a correction from making a version (every article it cites was published before the version before) in %d steps without one: %d where live had new facts, %d where it had none\n",
 		r.MissedOld+r.QuietOld, r.MissedOld, r.QuietOld)
-	fmt.Fprintf(out, "  a detail from an article published after the version before, with a number the story lacks or a person it doesn't name, made no version (it made one until round 5) in %d steps without one: %d where live had new facts, %d where it had none\n",
-		r.MissedDetail+r.QuietDetail, r.MissedDetail, r.QuietDetail)
-	fmt.Fprintf(out, "  quiet updates (such sentences went into the story with no version and nothing in what's new) in %d steps: %d where live had new facts, %d where it had none\n",
+	fmt.Fprintf(out, "  versions that only details made (a number, a name or an outcome the story lacks, from an article published after the version before; no development or correction): %d; %d where live had new facts, %d where it had none (read those for a thin version)\n",
+		r.NewsByDetail+r.ExtraByDetail, r.NewsByDetail, r.ExtraByDetail)
+	fmt.Fprintf(out, "  sentences went into the story quietly (no version, nothing in what's new) in %d steps: %d where live had new facts, %d where it had none\n",
 		r.MissedUpdated+r.QuietUpdated, r.MissedUpdated, r.QuietUpdated)
 	s := r.Stats
 	fmt.Fprintf(out, "\nsentences Gemini answered to insert or replace: %d\n", s.Asked)
 	fmt.Fprintf(out, "  dropped: %d say what the story has (restatements: %s; %d of them a development with only a time word more), %d without a new article of the story, %d say what another of the answer does, %d on unknown sentences, %d garbled or cut, %d with a number none of the articles they cite states (%d of them a count of a country's people in a word)\n",
 		s.Restated, share(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked, s.Worded)
-	fmt.Fprintf(out, "  left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
+	fmt.Fprintf(out, "  in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Inserted, s.Replaced, s.Deleted, s.Cited)
+	fmt.Fprintf(out, "  with no version made: %d went into the story quietly; %d stayed out: %d from articles the story was written from, shown again, and %d replacements and corrections\n",
+		s.Quiet, s.Unapplied, s.Reshown, s.NotInserted)
 	fmt.Fprintf(out, "  inserted sentences that gave another number for a sentence of the story, and were made its correction: %d\n", s.Corrected)
 	fmt.Fprintf(out, "  developments and corrections from articles published before the version before (they make no version): %d\n", s.Old)
-	fmt.Fprintf(out, "  details with a number the story lacks or a person it doesn't name (a detail makes no version): %d, %d of them from an article published after the version before\n", s.Adds, s.Since)
-	fmt.Fprintf(out, "  of those developments and details, added quietly, with no version made: %d\n", s.Quiet)
-	fmt.Fprintf(out, "  of them a quiet update didn't take: %d from articles the story was written from, shown again; %d replacements and corrections; %d past its %d sentences\n",
-		s.Reshown, s.NotInserted, s.Crowded, MaxQuiet)
-	fmt.Fprintf(out, "  of those details, for a person they name and no number: %d; details left out because the only numbers the story lacks in them are dates or years: %d\n", s.Named, s.Dated)
+	fmt.Fprintf(out, "  details with a number, a person or a body, or an outcome the story lacks: %d, %d of them from an article published after the version before (each makes a version)\n", s.Adds, s.Since)
+	fmt.Fprintf(out, "  of those details, for a person or a body they name and no number: %d; for an outcome alone: %d; details that add none because the only numbers the story lacks in them are dates or years: %d\n", s.Named, s.Decided, s.Dated)
 	var byKind, leftOut, quiet []string
 	for _, kind := range kinds {
 		byKind = append(byKind, fmt.Sprintf("%d %s", r.Kinds[kind], kind))
@@ -1113,7 +1124,7 @@ func (r *ReplayReport) Print(out io.Writer) {
 	}
 	fmt.Fprintf(out, "  in versions, by kind: %s\n", strings.Join(byKind, ", "))
 	fmt.Fprintf(out, "  added quietly with no version made, by kind: %s\n", strings.Join(quiet, ", "))
-	fmt.Fprintf(out, "  left out with no version made, by kind: %s\n", strings.Join(leftOut, ", "))
+	fmt.Fprintf(out, "  kept out of the story with no version made, by kind: %s\n", strings.Join(leftOut, ", "))
 	fmt.Fprintf(out, "\ncontrols:\n")
 	fmt.Fprintf(out, "  an article the story has, shown as new, made no version: %d of %d (%s); %d of the answers named no new article (skipped: nothing came of them); sentences written from it alone were kept out of the story in %d\n",
 		r.RepeatPassed, r.RepeatAsked, share(r.RepeatPassed, r.RepeatAsked), r.RepeatSkipped, r.RepeatReshown)

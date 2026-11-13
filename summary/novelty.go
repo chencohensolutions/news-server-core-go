@@ -22,8 +22,8 @@ const (
 	novelNumbers   = 2
 	// minWords is the fewest words of a sentence that is checked for news: a shorter one is a caption or a credit.
 	minWords = 5
-	// minSaid is the fewest words, its numbers aside, of a sentence that can give another number for an old
-	// sentence's fact (contradicted).
+	// minSaid is the fewest content words of a sentence that can give another number for an old sentence's fact
+	// (contradicted).
 	minSaid = 2
 )
 
@@ -48,10 +48,15 @@ func words(text string) []string { return distinct(keys(tokens(text))) }
 // isNumber says a word holds a digit: a number, a date, a sum.
 func isNumber(word string) bool { return strings.IndexFunc(word, unicode.IsDigit) >= 0 }
 
-// sameWord says two words are one: numbers only when they are the same, other words as alike has it.
+// sameWord says two words are one: numbers only when they are the same, a count's word only when the other counts
+// to the same ("שלוש" and "שלושה", not "שלושים", which the word likeness would take for it), other words as alike
+// has it.
 func sameWord(a, b string) bool {
 	if isNumber(a) || isNumber(b) {
 		return a == b
+	}
+	if x, y := cardinal(a), cardinal(b); x > 0 || y > 0 {
+		return x == y
 	}
 	return alike(a, b)
 }
@@ -192,16 +197,16 @@ func (x *wordIndex) restated(text string) (sentence int, ok bool) {
 // another value for that one's: more of the same ("4 more roads were closed").
 var moreWords = map[string]bool{"עוד": true, "נוסף": true, "נוספת": true, "נוספים": true, "נוספות": true}
 
-// said are text's words without its numbers, in digits and in words: what it tells a number of. more says one of
-// them is of moreWords, alone or after joined letters.
+// said are text's content words: what it tells a number of, without its numbers, in digits and in words, and
+// without the words that tell nothing (functionWords). more says one of its words is of moreWords, alone or after
+// joined letters.
 func said(text string) (out []string, more bool) {
 	for _, word := range words(text) {
-		if isNumber(word) || numberWord(word) {
-			continue
-		}
-		out = append(out, word)
 		for _, stem := range stems(word) {
 			more = more || moreWords[stem]
+		}
+		if content(word) {
+			out = append(out, word)
 		}
 	}
 	return out, more
@@ -209,11 +214,12 @@ func said(text string) (out []string, more bool) {
 
 // contradicted is the sentence of story (the one x is the index of), from 1, that text says again with another
 // number: "3 were arrested" beside "2 were arrested". 0 when there is none. It is the same sentence but for the
-// number: that sentence has every word of text, the numbers aside (minSaid of them at least), and text has most of
-// that sentence's (restatedAt); each gives a number the other doesn't state (differ), and neither a date or a
-// year the other lacks (sameTime). Narrow on purpose, as text then takes that sentence's place: one word more in
-// text (another place, "killed" for "hurt") makes it another fact, and so does a word of moreWords ("4 more").
-// Of several, the first.
+// number: that sentence has every content word of text (said: the numbers and the words that tell nothing aside;
+// minSaid of them at least), and text has most of that sentence's (restatedAt); each gives a number the other
+// doesn't state (differ: in digits or in a count's word, "שלושה" beside "שני" or "2"), and neither a date or a
+// year the other lacks (sameTime). Narrow on purpose, as text then takes that sentence's place: one content word
+// more in text (another place, "killed" for "hurt") makes it another fact, and so does a word of moreWords
+// ("4 more"). Of several, the first.
 func (x *wordIndex) contradicted(text string, story []Sentence) int {
 	now, more := said(text)
 	if len(now) < minSaid || more {
@@ -280,6 +286,75 @@ func (x *wordIndex) novelty(article string) (sentences, novel, numbers int) {
 // it is to be doubted.
 func clearlyNovel(sentences, novel, numbers int) bool {
 	return novel >= novelSentences && float64(novel) >= novelShare*float64(sentences) && numbers >= novelNumbers
+}
+
+// The headline check's thresholds: conservative, as each story it flags is a whole writing's request.
+const (
+	// headlineLetters is the fewest letters of a word that can be what a headline names: shorter ones are joined
+	// letters and small words more often than not.
+	headlineLetters = 4
+	// headlineWords is how many such words the story must lack. One is what any rewording has (Hebrew inflects,
+	// and the word likeness knows only joined letters and endings); a number, or a word of an outcome or a
+	// decision, is enough alone.
+	headlineWords = 2
+)
+
+// commonWords are words a headline has whatever it tells: who said and how it is presented. With the function
+// words, the time words, the months and the words of "more", they are never what a headline names.
+var commonWords = func() map[string]bool {
+	out := map[string]bool{}
+	for _, word := range strings.Fields(`
+		אמר אמרה אמרו מסר מסרה מסרו נמסר הודיע הודיעה הודיעו ציין ציינה טען טענה טוען טוענים הוסיף הוסיפה
+		דיווח דיווחה דווח דיווחים לדברי לדבריו לדבריה לטענת לטענתו בעקבות במהלך לאחר אחרי לפני אחר אתמול מחר
+		השבוע החודש השנה עכשיו צפו תיעוד וידאו סרטון תמונות תמונה בלעדי עדכון עדכונים פרשנות דעה ראיון פרסום
+		חדש חדשה חדשים חדשות גדול גדולה קטן קטנה רבים רבות כולם אנשים דברים הכל למה איך מדוע האם כך ככה
+		אחרים אחרת מאוד יותר פחות ביותר שוב עדיין כמעט בערך לגבי בנוגע מול נגד בעד אצל דרך תחת מעל בלי ללא`) {
+		out[word] = true
+	}
+	return out
+}()
+
+// commonWord says word is never what a headline names: a function word, a time word, a month, a word of "more"
+// or one of commonWords, alone or after joined letters.
+func commonWord(word string) bool {
+	if functionWord(word) || isMonth(word) {
+		return true
+	}
+	for _, stem := range stems(word) {
+		if commonWords[stem] || timeWords[stem] || moreWords[stem] {
+			return true
+		}
+	}
+	return false
+}
+
+// headlineNews is what a headline (an article's title and subtitle) names that the story lacks, by its words
+// alone; "" when nothing. index and told are the words and the numbers of the story and of the articles it has. It
+// is one of: a number that is no date, year, hour or age and that they don't state, however written; a word of an
+// outcome or a decision (outcomes) they lack; headlineWords content words of headlineLetters letters or more that
+// they lack, the common ones (commonWord) aside.
+func headlineNews(headline string, index *wordIndex, told *numbers) string {
+	for _, f := range figures(headline) {
+		if f.measure() && !told.states(f) {
+			return "the number " + f.text
+		}
+	}
+	var lacking []string
+	for _, word := range words(headline) {
+		if !content(word) || commonWord(word) || len([]rune(word)) < headlineLetters || index.has(word) {
+			continue
+		}
+		for _, stem := range stems(word) {
+			if outcomes[stem] {
+				return word
+			}
+		}
+		lacking = append(lacking, word)
+	}
+	if len(lacking) >= headlineWords {
+		return strings.Join(lacking[:headlineWords], ", ")
+	}
+	return ""
 }
 
 // splitSentences is text's sentences: cut after a period, a question or exclamation mark, or a line's end. A period

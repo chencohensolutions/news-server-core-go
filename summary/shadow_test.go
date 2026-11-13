@@ -196,37 +196,37 @@ func TestTheShadowRecordsAQuietUpdate(t *testing.T) {
 	if want := "[a1] siteg · 2026-11-10T18:00:00Z · פורסמה לפני שהסיפור נכתב\n"; len(rec.requests) != 1 || !strings.Contains(rec.requests[0].Prompt, want) {
 		t.Fatalf("the request lacks %q:\n%s", want, rec.requests[0].Prompt)
 	}
-	// Its detail with a number makes no version, and is in the shadow's story all the same: a quiet update, recorded
-	// as one. The story's title, time and updates are the live version's; nothing was deleted, and the background is
-	// left out.
+	// Its detail with a number makes no version, and is in the shadow's story all the same, quietly, and so is the
+	// background: recorded as such. The story's title, time and updates are the live version's, and nothing was
+	// deleted.
 	quiet := shadowOf(t, w, found[0])
-	if quiet == nil || quiet.Version || quiet.Quiet != 1 || quiet.Story == nil || quiet.Reason != "" || *quiet.Stats != (MergeStats{Asked: 2, Quiet: 1, Adds: 1, Unapplied: 1}) {
+	if quiet == nil || quiet.Version || quiet.Quiet != 2 || quiet.Story == nil || quiet.Reason != "" || *quiet.Stats != (MergeStats{Asked: 2, Quiet: 2, Adds: 1}) {
 		t.Fatalf("%+v", quiet)
 	}
-	if got := texts(quiet.Story.Sentences); got != "גשם כבד ירד הבוקר בצפון. | בחיפה ירדו 80 מילימטרים של גשם. | שני כבישים נסגרו." ||
-		strings.Join(quiet.Story.Sentences[1].Sources, " ") != rainSiteg.URL {
+	if got := texts(quiet.Story.Sentences); got != "בחורף שעבר הוצף האזור פעמיים. | גשם כבד ירד הבוקר בצפון. | בחיפה ירדו 80 מילימטרים של גשם. | שני כבישים נסגרו." ||
+		strings.Join(quiet.Story.Sentences[2].Sources, " ") != rainSiteg.URL {
 		t.Fatalf("the shadow's story: %s", got)
 	}
 	if quiet.Story.Title != live.Title || !quiet.Story.WrittenAt.Equal(live.WrittenAt) || len(quiet.Story.Updates) != len(live.Updates) || len(quiet.Story.Reports) != 3 {
 		t.Fatalf("%+v, live %+v", quiet.Story, live)
 	}
 	// In the table's JSON a quiet update is told from a version and from nothing new.
-	if data, err := w.Store.Shadow(ctx, StoryKey(found[0])); err != nil || !strings.Contains(string(data), `"version":false,"quiet":1,`) {
+	if data, err := w.Store.Shadow(ctx, StoryKey(found[0])); err != nil || !strings.Contains(string(data), `"version":false,"quiet":2,`) {
 		t.Fatalf("%s %v", data, err)
 	}
 	// The shadow's line of the story goes on from the changed text: the next request shows the sentence as the
 	// story's own, with its site.
 	join(t, w, found, rainSited)
-	if want := "s1.2 [מקורות: siteg] בחיפה ירדו 80 מילימטרים של גשם.\ns1.3 [מקורות: SiteE] שני כבישים נסגרו.\n"; len(rec.requests) != 2 || !strings.Contains(rec.requests[1].Prompt, want) {
+	if want := "s1.3 [מקורות: siteg] בחיפה ירדו 80 מילימטרים של גשם.\ns1.4 [מקורות: SiteE] שני כבישים נסגרו.\n"; len(rec.requests) != 2 || !strings.Contains(rec.requests[1].Prompt, want) {
 		t.Fatalf("the second request lacks %q:\n%s", want, rec.requests[1].Prompt)
 	}
 	next := shadowOf(t, w, found[0])
-	if next == nil || next.Version || next.Quiet != 0 || next.Base != BaseShadow || texts(next.Story.Sentences) != texts(quiet.Story.Sentences) || len(next.Story.Sentences[1].Sources) != 2 {
+	if next == nil || next.Version || next.Quiet != 0 || next.Base != BaseShadow || texts(next.Story.Sentences) != texts(quiet.Story.Sentences) || len(next.Story.Sentences[1].Sources) != len(quiet.Story.Sentences[1].Sources)+1 {
 		t.Fatalf("%+v", next)
 	}
 	// The report tells the two apart: neither made a version, one changed the text.
 	report, err := ReportShadow(ctx, w.Store, now.Add(-time.Hour))
-	if err != nil || report.Asked != 2 || report.Versions != 0 || report.Quiet != 2 || report.QuietUpdates != 1 || report.Stats.Quiet != 1 || report.Tripwire != 0 {
+	if err != nil || report.Asked != 2 || report.Versions != 0 || report.Quiet != 2 || report.QuietUpdates != 1 || report.Stats.Quiet != 2 || report.Tripwire != 0 {
 		t.Fatalf("%+v %v", report, err)
 	}
 }

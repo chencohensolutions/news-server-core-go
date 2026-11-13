@@ -65,7 +65,7 @@ type Shadow struct {
 	Story *StorySummary `json:"story,omitempty"`
 	// Version says the step made a new version: the story's latest update is what's new.
 	Version bool `json:"version"`
-	// Quiet is how many sentences the step put into Story without a version (a quiet update, MergeStats.Quiet): the
+	// Quiet is how many sentences the step put into Story without a version (quietly, MergeStats.Quiet): the
 	// text changed, and nothing else of the story. Never with Version.
 	Quiet int `json:"quiet,omitempty"`
 	// Skipped is how many answers in a row named none of the story's new articles (Merged.Skipped). Such an answer
@@ -332,7 +332,7 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 				row.Reason = whySkipped
 				rebuilt++
 			}
-		} else if why := w.tripwire(ctx, a, m); why != "" {
+		} else if why, _ := w.tripwire(ctx, a, m); why != "" {
 			row.Skipped = 0
 			row.Reason = why
 			rebuilt++
@@ -357,8 +357,8 @@ func (w *Writer) shadow(ctx context.Context, window []stories.Story, firstSeen m
 	if !whole {
 		cutShort = " (the answer was cut: the whole stories of it)"
 	}
-	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d, updated quietly (no version): %d, nothing new: %d, to be written whole: %d, skipped by Gemini and asked again next run: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled, %d with a number their articles don't state; %d inserted ones made the correction of the sentence they gave another number for; no version from %d developments and corrections for their articles' time and from %d details with a number or a name, %d of them added quietly",
-		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, quietly, none, rebuilt, skipped, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled, dropped.Unbacked, dropped.Corrected, dropped.Old, dropped.Adds, dropped.Quiet)
+	w.logf("incremental shadow: Gemini answered for %d of %d stories%s, %d more wait for a request; new versions: %d (%d of them made by details alone), updated quietly (no version): %d, nothing new: %d, to be written whole: %d, skipped by Gemini and asked again next run: %d; sentences dropped: %d without a new article of the story, %d said already, %d twice, %d on unknown sentences, %d garbled, %d with a number their articles don't state; %d inserted ones made the correction of the sentence they gave another number for; no version from %d developments and corrections for their articles' time; %d sentences went into stories quietly, %d stayed out with no version made",
+		sent-len(req.asked), sent, cutShort, len(steps)-sent, versions, dropped.ByDetail, quietly, none, rebuilt, skipped, dropped.Unsourced, dropped.Restated, dropped.Repeated, dropped.Unknown, dropped.Garbled, dropped.Unbacked, dropped.Corrected, dropped.Old, dropped.Quiet, dropped.Unapplied)
 	return nil
 }
 
@@ -402,9 +402,11 @@ type ShadowReport struct {
 	Local   int
 	Rebuild map[string]int
 	Asked   int
-	// Of the asked: a new version, none, or sent to be written whole after the answer (the tripwire). QuietUpdates
-	// are the ones of Quiet whose text changed all the same: a quiet update (Shadow.Quiet).
+	// Of the asked: a new version, none, or sent to be written whole after the answer (the tripwire; Headline are
+	// the ones of those the headline check sent). QuietUpdates are the ones of Quiet whose text changed all the
+	// same: sentences went in quietly (Shadow.Quiet).
 	Versions, Quiet, Tripwire int
+	Headline                  int
 	QuietUpdates              int
 	// Skipped are the asked whose answer named none of their new articles and that wait to be asked again (or were
 	// never asked again: the story changed first); GaveUp the ones left to be written whole after shadowTries such
@@ -448,6 +450,10 @@ func ReportShadow(ctx context.Context, db *store.Store, since time.Time) (Shadow
 			case s.Story == nil && s.Skipped > 0:
 				report.GaveUp++
 				report.Rebuild[whySkipped]++
+			case s.Story == nil && strings.HasPrefix(s.Reason, whyHeadline):
+				report.Tripwire++
+				report.Headline++
+				report.Rebuild["nothing went into the story of an article whose headline names what the story lacks (the headline tripwire)"]++
 			case s.Story == nil:
 				report.Tripwire++
 				report.Rebuild["Gemini found nothing new in an article that is clearly news (the tripwire)"]++

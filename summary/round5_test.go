@@ -9,34 +9,9 @@ import (
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 )
 
-// The rules round 5 of the replay added (docs/incremental.md): a detail makes no version (TestADetailMakesNoVersion),
-// an official act is a development, an inserted sentence with another number for an old one's fact replaces it, and
-// a count of a country's people that no cited article states.
-
-func TestTheInstructionsSayWhatEachKindIs(t *testing.T) {
-	system := strings.Join(strings.Fields(incrementalSystem), " ")
-	for _, want := range []string{
-		// The event's own figures are developments, and a changed one a correction that replaces.
-		`"development": news of the story's main event.`,
-		"the toll or the count the event is about (how many were arrested or hurt, how many attacks a report counted), its main sum or rate (how far a share fell, what was paid)",
-		`"correction": a fact of the story changed or was wrong`, "(three arrested where the story says two)",
-		`A correction is always a "replace" of that sentence, never an "insert" beside it: the story must not say both.`,
-		`is not inserted beside it: it replaces that sentence.`,
-		// A detail is what stands beside the event, and makes no news alone.
-		`"detail": a fact beside the main event, or a finer point of what the story already tells`,
-		"A side figure (a related figure of another country, another day or another company; an option's amount; a project's size in megawatts or dunams)",
-		"one more name on a list (another signer of a bill)",
-		`A "detail" alone never makes the story news again, so don't call a central fact of the event one.`,
-		// An official act is a development, not a reaction.
-		`An official act is a "development" too, also when it is made of words: a letter sent, an appeal or a petition filed, a decision, an order, a formal statement or announcement by a leader, a minister or an official body`,
-		`"reaction": what someone said about the event: a comment, praise, criticism, a call, a commentator's view. Not an official act: that is a "development".`,
-		"a statement or an announcement by a leader, a minister or an official body), that is an insert",
-	} {
-		if !strings.Contains(system, want) {
-			t.Errorf("the instructions lack %q", want)
-		}
-	}
-}
+// The rules round 5 of the replay added (docs/incremental.md): an inserted sentence with another number for an old
+// one's fact replaces it, and a count of a country's people that no cited article states. Its instructions on the
+// kinds and its rule that a detail makes no version were taken back after round 6: round6_test.go.
 
 func TestASentenceSaysAnotherAgainWithAnotherNumber(t *testing.T) {
 	story := []Sentence{
@@ -157,7 +132,7 @@ func TestAnInsertedSentenceWithAnotherNumberForAnOldOnesFactReplacesIt(t *testin
 	if m.Stats != (MergeStats{Asked: 2, Quiet: 1, Old: 1, Adds: 1, Corrected: 1, Unapplied: 1, NotInserted: 1}) {
 		t.Fatalf("%+v", m.Stats)
 	}
-	wantNotes := "insert s1.3: left out (" + whyNotInsert + "); insert s1.3: quiet (" + whyQuietAdds + ")"
+	wantNotes := "insert s1.3: left out (" + whyNotInsert + "); insert s1.3: quiet (" + whyQuiet + ")"
 	if got := strings.Join(notesOf(m), "; "); got != wantNotes || m.Notes[0].Corrects != "s1.2" || !m.Notes[0].Old {
 		t.Fatalf("notes\n got %s\nwant %s", got, wantNotes)
 	}
@@ -185,8 +160,9 @@ func TestAnInsertedSentenceWithAnotherNumberForAnOldOnesFactReplacesIt(t *testin
 	if m = merge(a, twice, "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 2, Replaced: 1, Inserted: 1, Adds: 1, Since: 1}) {
 		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
-	// More roads are another fact: inserted, a detail, and no version.
-	if m = merge(a, answerOf(t, oneInsert(Detail, "3 כבישים נוספים נסגרו בגלל הגשם.")), "s1", ids, now); m.Version || m.Stats != (MergeStats{Asked: 1, Quiet: 1, Adds: 1, Since: 1}) {
+	// More roads are another fact: inserted beside the old sentence, a detail, whose number makes a version.
+	if m = merge(a, answerOf(t, oneInsert(Detail, "3 כבישים נוספים נסגרו בגלל הגשם.")), "s1", ids, now); !m.Version || m.Stats != (MergeStats{Asked: 1, Inserted: 1, Adds: 1, Since: 1, ByDetail: 1}) ||
+		len(m.Story.Sentences) != 4 {
 		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
 }
@@ -197,14 +173,14 @@ func TestAReplacementWithAnotherNumberIsACorrectionWhateverItIsCalled(t *testing
 	replace := func(text string) Answer {
 		return Answer{Story: "s1", Replace: []AnswerReplace{{Sentence: "s1.2", Kind: "detail", Text: text, Sources: []string{"a1"}}}}
 	}
-	// As a detail it would make no version and never go in: 3 for 2 is a correction.
+	// A replacement never goes in without a version: 3 for 2 is a correction, and makes one.
 	m := merge(a, replace("3 כבישים נסגרו בגלל הגשם ליד עכו."), "s1", ids, now)
 	if !m.Version || m.Stats != (MergeStats{Asked: 1, Replaced: 1}) || m.Notes[0].Kind != Correction || m.Story.Sentences[1].Text != "3 כבישים נסגרו בגלל הגשם ליד עכו." {
 		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
 	// With the same number it is the detail it was called: no version, and the sentence stays.
 	m = merge(a, replace("2 כבישים נסגרו בגלל הגשם ליד עכו."), "s1", ids, now)
-	if m.Version || m.Stats != (MergeStats{Asked: 1, Unapplied: 1}) || m.Notes[0].Kind != Detail || texts(m.Story.Sentences) != texts(prev.Sentences) {
+	if m.Version || m.Stats != (MergeStats{Asked: 1, Unapplied: 1, NotInserted: 1}) || m.Notes[0].Kind != Detail || texts(m.Story.Sentences) != texts(prev.Sentences) {
 		t.Fatalf("%+v %v", m.Stats, notesOf(m))
 	}
 }

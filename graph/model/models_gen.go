@@ -300,7 +300,7 @@ type SummaryRun struct {
 
 type SummarySettings struct {
 	// Gemini reads each article's whole body (default): without the lines that aren't the article (promotions, "more on
-	// this", other news), a paywall stub, or paragraphs another site of the story has word for word, and up to 4,000
+	// this", other news), a paywall stub, or paragraphs another site of the story has word for word, and up to 12,000
 	// characters. Off, it reads the first 600 characters. The title and subtitle are always sent.
 	FullArticles bool `json:"fullArticles"`
 	// How long a generated story is (default MEDIUM). Stories are written at it from the next round.

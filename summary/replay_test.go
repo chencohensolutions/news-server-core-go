@@ -240,7 +240,7 @@ func TestTheReplayAsksAboutTheArchivesSteps(t *testing.T) {
 	if report.Real != 3 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 1 || report.LiveQuietQuiet != 1 || report.LiveQuietVersion != 0 || report.LiveListed != 3 {
 		t.Fatalf("%+v", report)
 	}
-	if report.Stats != (MergeStats{Asked: 3, Inserted: 1, Cited: 2, Restated: 1, Unapplied: 1}) || report.Kinds[Development] != 1 {
+	if report.Stats != (MergeStats{Asked: 3, Inserted: 1, Cited: 2, Restated: 1, Quiet: 1}) || report.Kinds[Development] != 1 {
 		t.Fatalf("%+v %v", report.Stats, report.Kinds)
 	}
 	if report.TokensIn != 500 || report.TokensOut != 80 || report.Positions[0] != (PositionStats{Asked: 1, Answered: 1, Steps: 1, Agree: 1}) ||
@@ -409,7 +409,8 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 	report.Print(&log)
 	t.Log(log.String())
 	// The live rewrite had new facts in three of the four steps, and the update made a version of one (the rain).
-	// In the fire story Gemini answered a sound sentence, background, that the version rule left out: a miss. The
+	// In the fire story Gemini answered a sound sentence, background, that made no version and went in quietly: a
+	// miss. The
 	// lake story it skipped: counted apart, and recall is given without it and with it as a miss. The tripwire would
 	// write it whole.
 	if report.Real != 4 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 1 || report.LiveQuietQuiet != 1 || report.Tripwire != 0 ||
@@ -417,7 +418,7 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 		report.GeminiSkipped != 1 || report.SkippedNews != 1 || report.SkippedTripwire != 1 || report.Unmentioned != 1 || report.ArticlesAfter != 4 || report.ArticlesBefore != 0 {
 		t.Fatalf("%+v", report)
 	}
-	if report.LeftOutKinds[Background] != 1 || len(report.LeftOutKinds) != 1 || report.Kinds[Development] != 1 || report.Cases != 4 {
+	if report.QuietKinds[Background] != 1 || len(report.QuietKinds) != 1 || len(report.LeftOutKinds) != 0 || report.Kinds[Development] != 1 || report.Cases != 4 {
 		t.Fatalf("%+v", report)
 	}
 	for _, want := range []string{
@@ -430,7 +431,7 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 		"recall counting the sound sentences that made no version (Gemini found facts, a version or not): 100%",
 		"recall counting the tripwire's whole writings (a version, or written whole): 50%; counting both: 100%",
 		"the 1 without a version: sound sentences that made no version in 0; the tripwire would write 0 whole (0 of them with sound sentences that made no version)",
-		"left out with no version made, by kind: 0 development, 0 correction, 0 detail, 1 background, 0 reaction",
+		"added quietly with no version made, by kind: 0 development, 0 correction, 0 detail, 1 background, 0 reaction",
 	} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("the report lacks %q:\n%s", want, log.String())
@@ -480,11 +481,12 @@ func TestTheReplayExplainsItsSteps(t *testing.T) {
 		strings.Join(notesOf(Merged{Notes: budget.Merge.Notes}), "; ") != "cite s2.1: applied" {
 		t.Fatalf("%+v %+v", budget.Live, budget.Merge)
 	}
-	// A miss, by the rules: one sentence said the story again, and the other was sound and made no version.
+	// A miss, by the rules: one sentence said the story again, and the other was sound and made no version: it
+	// went into the story quietly.
 	fire := got[2]
-	wantNotes := "insert top: dropped (says again what s3.1 does); insert top: left out (" + whyNoVersion + ")"
+	wantNotes := "insert top: dropped (says again what s3.1 does); insert top: quiet (" + whyQuietPlain + ")"
 	if fire.ID != "s3" || fire.Merge.Version || fire.Merge.Tripwire || strings.Join(notesOf(Merged{Notes: fire.Merge.Notes}), "; ") != wantNotes ||
-		fire.Merge.Notes[1].Kind != Background || fire.Merge.Notes[1].Text != "באזור היו שריפות גם בקיץ שעבר." || fire.Merge.Stats.Unapplied != 1 ||
+		fire.Merge.Notes[1].Kind != Background || fire.Merge.Notes[1].Text != "באזור היו שריפות גם בקיץ שעבר." || fire.Merge.Stats.Quiet != 1 || fire.Merge.Stats.Unapplied != 0 ||
 		len(fire.Live.New) != 1 || fire.Live.New[0].Text != "השריפה כובתה לאחר 5 שעות." {
 		t.Fatalf("%+v %+v", fire.Merge, fire.Live)
 	}
@@ -541,18 +543,18 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The request says the preview is older than the story. Its detail with a number makes no version, as no detail
-	// does: it is counted among the details that add a number, and not among the ones from an article published
-	// since the story. It goes into the story quietly, and that is counted apart, by its kind.
+	// The request says the preview is older than the story. Its detail with a number makes no version: it is
+	// counted among the details that add a number, and not among the ones from an article published since the
+	// story. It goes into the story quietly, and that is counted apart, by its kind.
 	if want := "[a4] siteg · 2026-11-10T16:00:00Z · פורסמה לפני שהסיפור נכתב\nכותרת: לקראת הפסטיבל\n"; !strings.Contains(rec.requests[0].Prompt, want) {
 		t.Fatalf("the request lacks %q:\n%s", want, rec.requests[0].Prompt)
 	}
 	if report.Real != 4 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 2 || report.MissedOld != 0 || report.QuietOld != 0 || report.Stats.Old != 0 || report.MissedFound != 2 ||
-		report.Stats.Adds != 1 || report.Stats.Since != 0 || report.MissedDetail != 0 || report.QuietDetail != 0 || report.ArticlesAfter != 3 || report.ArticlesBefore != 1 || report.ArticlesUndated != 0 || report.GeminiSkipped != 0 {
+		report.Stats.Adds != 1 || report.Stats.Since != 0 || report.NewsByDetail != 0 || report.ExtraByDetail != 0 || report.ArticlesAfter != 3 || report.ArticlesBefore != 1 || report.ArticlesUndated != 0 || report.GeminiSkipped != 0 {
 		t.Fatalf("%+v", report)
 	}
-	if report.Stats.Quiet != 1 || report.Stats.Unapplied != 1 || report.MissedUpdated != 1 || report.QuietUpdated != 0 || report.QuietKinds[Detail] != 1 || len(report.QuietKinds) != 1 ||
-		report.LeftOutKinds[Detail] != 0 || report.LeftOutKinds[Background] != 1 || report.Kinds[Detail] != 0 {
+	if report.Stats.Quiet != 2 || report.Stats.Unapplied != 0 || report.MissedUpdated != 2 || report.QuietUpdated != 0 || report.QuietKinds[Detail] != 1 || report.QuietKinds[Background] != 1 ||
+		len(report.QuietKinds) != 2 || len(report.LeftOutKinds) != 0 || report.Kinds[Detail] != 0 {
 		t.Fatalf("%+v", report)
 	}
 	var log bytes.Buffer
@@ -560,17 +562,17 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 	for _, want := range []string{
 		"the real steps' 4 new articles: 3 (75%) published after the version before, 1 (25%) before it, 0 of no known time",
 		"(every article it cites was published before the version before) in 0 steps without one: 0 where live had new facts, 0 where it had none",
-		"made no version (it made one until round 5) in 0 steps without one: 0 where live had new facts, 0 where it had none",
+		"no development or correction): 0; 0 where live had new facts, 0 where it had none (read those for a thin version)",
+		"headline tripwire (of the tripwire's:",
 		"inserted sentences that gave another number for a sentence of the story, and were made its correction: 0",
 		"developments and corrections from articles published before the version before (they make no version): 0",
-		"details with a number the story lacks or a person it doesn't name (a detail makes no version): 1, 0 of them from an article published after the version before",
-		"of those developments and details, added quietly, with no version made: 1",
-		"quiet updates (such sentences went into the story with no version and nothing in what's new) in 1 steps: 1 where live had new facts, 0 where it had none",
-		"added quietly with no version made, by kind: 0 development, 0 correction, 1 detail, 0 background, 0 reaction",
+		"details with a number, a person or a body, or an outcome the story lacks: 1, 0 of them from an article published after the version before (each makes a version)",
+		"with no version made: 2 went into the story quietly; 0 stayed out: 0 from articles the story was written from, shown again, and 0 replacements and corrections",
+		"sentences went into the story quietly (no version, nothing in what's new) in 2 steps: 2 where live had new facts, 0 where it had none",
+		"added quietly with no version made, by kind: 0 development, 0 correction, 1 detail, 1 background, 0 reaction",
 		"0 garbled or cut, 0 with a number none of the articles they cite states (0 of them a count of a country's people in a word)",
-		"of them a quiet update didn't take: 0 from articles the story was written from, shown again; 0 replacements and corrections; 0 past its 2 sentences",
-		"of those details, for a person they name and no number: 0; details left out because the only numbers the story lacks in them are dates or years: 0",
-		"left out with no version made, by kind: 0 development, 0 correction, 0 detail, 1 background, 0 reaction",
+		"of those details, for a person or a body they name and no number: 0; for an outcome alone: 0; details that add none because the only numbers the story lacks in them are dates or years: 0",
+		"kept out of the story with no version made, by kind: 0 development, 0 correction, 0 detail, 0 background, 0 reaction",
 	} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("the report lacks %q:\n%s", want, log.String())
@@ -579,12 +581,12 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 	got := casesOf(t, cases.Bytes())
 	preview := got[len(got)-1]
 	if preview.Story != "festival" || preview.Kind != CaseMissed || preview.Merge.Version || preview.New[0].When != "before" || preview.New[0].Published != "2026-11-10T16:00:00Z" ||
-		strings.Join(notesOf(Merged{Notes: preview.Merge.Notes}), "; ") != "insert s4.1: quiet ("+whyQuietAdds+")" || preview.Merge.Notes[0].Old || !preview.Merge.Notes[0].Adds ||
+		strings.Join(notesOf(Merged{Notes: preview.Merge.Notes}), "; ") != "insert s4.1: quiet ("+whyQuiet+")" || preview.Merge.Notes[0].Old || !preview.Merge.Notes[0].Adds ||
 		got[0].New[0].When != "after" {
 		t.Fatalf("%+v", preview)
 	}
 	// The case marks the sentence: its outcome is "quiet", and the step's count has it.
-	if preview.Merge.Notes[0].Outcome != NoteQuiet || preview.Merge.Stats.Quiet != 1 || !strings.Contains(cases.String(), `"outcome":"quiet","why":"`+whyQuietAdds+`","adds":true`) {
+	if preview.Merge.Notes[0].Outcome != NoteQuiet || preview.Merge.Stats.Quiet != 1 || !strings.Contains(cases.String(), `"outcome":"quiet","why":"`+whyQuiet+`","adds":true,"news":"number"`) {
 		t.Fatalf("%+v", preview.Merge)
 	}
 
@@ -592,7 +594,7 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 	// counted as such a step, where the live rewrite had new facts. It goes in quietly all the same.
 	w.Gemini = &recorded{answers: []string{strings.Replace(festivalAnswer, `{"after": "s4.1", "kind": "detail"`, `{"after": "s4.1", "kind": "development"`, 1)}}
 	if report, err = w.Replay(context.Background(), ReplayOptions{Archive: dir, NoControls: true}); err != nil || report.MissedOld != 1 || report.QuietOld != 0 || report.Stats.Old != 1 ||
-		report.Stats.Adds != 0 || report.MissedUpdated != 1 || report.QuietKinds[Development] != 1 || report.LiveNewVersion != 1 {
+		report.Stats.Adds != 0 || report.MissedUpdated != 2 || report.QuietKinds[Development] != 1 || report.LiveNewVersion != 1 {
 		t.Fatalf("%v %+v", err, report)
 	}
 	log.Reset()
@@ -602,32 +604,33 @@ func TestTheReplayTakesNoNewsFromAnArticleOlderThanTheStory(t *testing.T) {
 	}
 }
 
-func TestTheReplayCountsTheStepsWhereADetailMadeNoVersion(t *testing.T) {
+func TestTheReplayCountsTheVersionsOnlyDetailsMade(t *testing.T) {
 	dir, db := replayArchiveOf(t)
 	// The fire's new article, first seen after the story was written, is answered with a detail: how long the fire
-	// burned. Until round 5 its number made a version; now it goes into the story quietly, and the step is counted,
-	// to be read: the live rewrite gave the same fact as new.
+	// burned. Its number makes a version, by the detail alone, and the step is counted: the live rewrite gave the
+	// same fact as new, so it is no thin version.
 	answer := strings.Replace(replayAnswer, `{"after": "top", "kind": "development", "text": "בדרום פרצה שריפה.", "sources": ["a3"]}`,
 		`{"after": "s3.1", "kind": "detail", "text": "השריפה כובתה לאחר 5 שעות.", "sources": ["a3"]}`, 1)
 	var cases bytes.Buffer
 	w := &Writer{Gemini: &recorded{answers: []string{answer}}, Store: db, Now: func() time.Time { return now }, Log: t.Logf}
 	report, err := w.Replay(context.Background(), ReplayOptions{Archive: dir, NoControls: true, Cases: &cases})
-	if err != nil || report.Real != 3 || report.LiveNewVersion != 1 || report.LiveNewQuiet != 1 || report.MissedDetail != 1 || report.QuietDetail != 0 || report.MissedOld != 0 ||
-		report.MissedUpdated != 1 || report.Stats.Adds != 1 || report.Stats.Since != 1 || report.Stats.Quiet != 1 || report.QuietKinds[Detail] != 1 {
+	if err != nil || report.Real != 3 || report.LiveNewVersion != 2 || report.LiveNewQuiet != 0 || report.NewsByDetail != 1 || report.ExtraByDetail != 0 || report.MissedOld != 0 ||
+		report.MissedUpdated != 0 || report.Stats.Adds != 1 || report.Stats.Since != 1 || report.Stats.ByDetail != 1 || report.Stats.Quiet != 0 || report.Kinds[Detail] != 1 {
 		t.Fatalf("%v %+v", err, report)
 	}
 	var log bytes.Buffer
 	report.Print(&log)
 	for _, want := range []string{
-		"made no version (it made one until round 5) in 1 steps without one: 1 where live had new facts, 0 where it had none",
-		"details with a number the story lacks or a person it doesn't name (a detail makes no version): 1, 1 of them from an article published after the version before",
+		"no development or correction): 1; 1 where live had new facts, 0 where it had none (read those for a thin version)",
+		"details with a number, a person or a body, or an outcome the story lacks: 1, 1 of them from an article published after the version before (each makes a version)",
 	} {
 		if !strings.Contains(log.String(), want) {
 			t.Fatalf("the report lacks %q:\n%s", want, log.String())
 		}
 	}
 	fire := casesOf(t, cases.Bytes())[2]
-	if fire.Kind != CaseMissed || fire.Merge.Version || !fire.Merge.Notes[0].Adds || fire.Merge.Notes[0].MakesVersion || fire.Merge.Notes[0].Outcome != NoteQuiet || fire.New[0].When != "after" {
+	if fire.Kind != CaseAgreeVersion || !fire.Merge.Version || !fire.Merge.Notes[0].Adds || fire.Merge.Notes[0].News != NewsNumber || !fire.Merge.Notes[0].MakesVersion ||
+		fire.Merge.Notes[0].Outcome != NoteApplied || fire.New[0].When != "after" {
 		t.Fatalf("%+v", fire)
 	}
 }

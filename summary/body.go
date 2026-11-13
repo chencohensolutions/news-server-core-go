@@ -3,19 +3,25 @@ package summary
 import (
 	"context"
 	"encoding/json"
+	"maps"
+	"math"
+	"slices"
 	"strings"
 
+	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/store"
 )
 
 // Article bodies in the prompt. What the sites' bodies hold (measured on the Mac's saved articles, Nov 2026): a
 // median of about 2,000 characters; a paywall stub of about 120 at some sites; promotion and "more on
-// this" lines at the end of some; one site's "•" bullets about other news; live blogs of 10,000 and more.
+// this" lines at the end of some; one site's "•" bullets about other news; live blogs of 10,000 and more. An article
+// was cut at 4,000 characters until Nov 13, 2026: measured on the server, that cut one article in ten, and about
+// 12% of the articles' text was never sent.
 const (
-	fullArticleChars = 4000 // of a body when full articles are on: a live blog would fill the request
-	minBodyChars     = 200  // a body shorter than this is a paywall stub or a caption: the title and subtitle say more
-	sharedChars      = 80   // a paragraph this long that an earlier report of the story has word for word is sent once
-	promoChars       = 160  // a promotion line is short; a paragraph longer than this is the article's
+	fullArticleChars = 12_000 // of a body when full articles are on: the article whole; only a live blog is longer
+	minBodyChars     = 200    // a body shorter than this is a paywall stub or a caption: the title and subtitle say more
+	sharedChars      = 80     // a paragraph this long that an earlier report of the story has word for word is sent once
+	promoChars       = 160    // a promotion line is short; a paragraph longer than this is the article's
 )
 
 // endMarkers start the part of a body after the article: what follows is links and other stories.
@@ -72,6 +78,59 @@ func articleText(body []string, seen map[string]bool, max int) string {
 	return cut(text, max)
 }
 
+// bodyChars is how much of an article's body a request shows: the whole article when full articles are on, in a
+// whole writing and in an incremental update alike.
+func bodyChars(settings Settings) int {
+	if settings.FullArticles {
+		return fullArticleChars
+	}
+	return articleChars
+}
+
+// bodies are reports' bodies as a request shows them, by URL: each as articleText has it, up to each characters,
+// without the paragraphs seen has (an earlier report's of the same story), in the reports' order. No entry for an
+// article that wasn't read, "" for a paywall stub. When a story's bodies together pass storyBodyChars the longest
+// are shortened first, to the length that makes them fit (level), and the shorter ones stay whole: cutting all of
+// them evenly would cut the ones that fit to make room for a live blog.
+func (w *Writer) bodies(ctx context.Context, reports []scrape.ArticleSummary, each int, seen map[string]bool) map[string]string {
+	articles := make([]*scrape.Article, len(reports))
+	lengths := make([]int, len(reports))
+	// What a paragraph's being seen leaves of each body doesn't depend on where the bodies are cut: measured on a
+	// copy, so that seen is as it was for the reading that counts.
+	trial := maps.Clone(seen)
+	if trial == nil {
+		trial = map[string]bool{}
+	}
+	for i, r := range reports {
+		if articles[i] = w.article(ctx, r.URL); articles[i] != nil {
+			lengths[i] = len([]rune(articleText(articles[i].Body, trial, each)))
+		}
+	}
+	each = min(each, level(lengths, storyBodyChars, articleChars))
+	out := map[string]string{}
+	for i, r := range reports {
+		if articles[i] != nil {
+			out[r.URL] = articleText(articles[i].Body, seen, each)
+		}
+	}
+	return out
+}
+
+// level is the most characters a body keeps for bodies of these lengths to be total together at most: the ones
+// longer than it are cut to it, the longest first, and the others stay whole. No less than least; math.MaxInt when
+// they fit as they are.
+func level(lengths []int, total, least int) int {
+	sorted := slices.Sorted(slices.Values(lengths))
+	left := total
+	for i, n := range sorted {
+		if share := left / (len(sorted) - i); n > share {
+			return max(share, least)
+		}
+		left -= n
+	}
+	return math.MaxInt
+}
+
 func startsWithAny(s string, prefixes []string) bool {
 	for _, p := range prefixes {
 		if strings.HasPrefix(s, p) {
@@ -92,7 +151,7 @@ func containsAny(s string, parts []string) bool {
 
 // Settings are the summaries' settings that the app changes.
 type Settings struct {
-	// FullArticles sends each report's whole body (cleaned, up to 4,000 characters) instead of its first 600.
+	// FullArticles sends each report's whole body (cleaned, up to 12,000 characters) instead of its first 600.
 	FullArticles bool `json:"fullArticles"`
 	// Length is how long a story is written: "short", "medium", "long" or "full" (lengths).
 	Length string `json:"length"`

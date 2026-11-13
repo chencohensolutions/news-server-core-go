@@ -90,20 +90,19 @@ func printShadowReport(out io.Writer, r summary.ShadowReport) {
 	}
 	fmt.Fprintf(out, "  %d (%s) were asked, in about %.0f requests (%.0f tokens in, %.0f out, %.0f thinking):\n", r.Asked, percent(r.Asked, r.Steps),
 		r.Requests, r.TokensIn, r.TokensOut, r.TokensThoughts)
-	fmt.Fprintf(out, "    %d a new version (%s), %d none (%d of them updated quietly: sentences added, no version), %d the tripwire; %d started from the shadow's own story; %d read from a cut answer\n",
-		r.Versions, percent(r.Versions, r.Asked), r.Quiet, r.QuietUpdates, r.Tripwire, r.FromShadow, r.Salvaged)
+	fmt.Fprintf(out, "    %d a new version (%s), %d none (%d of them updated quietly: sentences added, no version), %d the tripwire (%d of them the headline tripwire); %d started from the shadow's own story; %d read from a cut answer\n",
+		r.Versions, percent(r.Versions, r.Asked), r.Quiet, r.QuietUpdates, r.Tripwire, r.Headline, r.FromShadow, r.Salvaged)
 	fmt.Fprintf(out, "    skipped by Gemini (the answer named none of the story's new articles): %d wait to be asked again or changed first, %d were skipped again and left to be written whole\n",
 		r.Skipped, r.GaveUp)
 	s := r.Stats
 	fmt.Fprintf(out, "    sentences answered: %d; dropped: %d said already (%s; %d of them a development with only a time word more), %d without a new article of the story, %d twice, %d on unknown sentences, %d garbled, %d with a number their articles don't state\n",
 		s.Asked, s.Restated, percent(s.Restated, s.Asked), s.Timed, s.Unsourced, s.Repeated, s.Unknown, s.Garbled, s.Unbacked)
-	fmt.Fprintf(out, "    left out with no version made: %d; in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n",
-		s.Unapplied, s.Inserted, s.Replaced, s.Deleted, s.Cited)
+	fmt.Fprintf(out, "    in versions: %d inserted, %d replaced, %d deleted; %d old sentences got a new source\n", s.Inserted, s.Replaced, s.Deleted, s.Cited)
 	fmt.Fprintf(out, "    inserted sentences made the correction of the sentence they gave another number for: %d\n", s.Corrected)
-	fmt.Fprintf(out, "    developments and corrections kept from making a version by their articles' time (all published before the story was written): %d; details with a number or a name the story lacks (a detail makes no version): %d, %d of them from an article published since\n",
-		s.Old, s.Adds, s.Since)
-	fmt.Fprintf(out, "    of those, added quietly, with no version: %d (not taken: %d from the story's own articles, %d replacements and corrections, %d past %d sentences)\n",
-		s.Quiet, s.Reshown, s.NotInserted, s.Crowded, summary.MaxQuiet)
+	fmt.Fprintf(out, "    developments and corrections kept from making a version by their articles' time (all published before the story was written): %d; details with a number, a name or an outcome the story lacks: %d, %d of them from an article published since (each makes a version; %d versions were made by details alone)\n",
+		s.Old, s.Adds, s.Since, s.ByDetail)
+	fmt.Fprintf(out, "    with no version made: %d sentences went into the story quietly; %d stayed out (%d from the story's own articles, %d replacements and corrections)\n",
+		s.Quiet, s.Unapplied, s.Reshown, s.NotInserted)
 	live := r.LiveNewVersion + r.LiveNewQuiet
 	fmt.Fprintf(out, "  against the live rewrite of the same reports (%d steps):\n", r.Compared)
 	fmt.Fprintf(out, "    live had new facts:  %d a version, %d none: recall %s\n", r.LiveNewVersion, r.LiveNewQuiet, percent(r.LiveNewVersion, live))
@@ -154,7 +153,7 @@ func evalIncremental(config auth.AppConfig, args []string, out io.Writer) error 
 	sample := flags.Int("sample", 0, "ask about `N` of the steps, spread over all of them in time (0: all, the oldest first)")
 	seed := flags.Int64("seed", 1, "which steps -sample picks: the same `seed` picks the same ones")
 	offset := flags.Int("offset", 0, "skip the first `N` stories to ask about, controls among them: a replay that stopped prints the offset that goes on from there")
-	cases := flags.String("cases", "", "write every real step answered, every control answered wrong and every control changed by a quiet update to `file`, a line of JSON each (outside the archive and any repository; with -offset it is added to)")
+	cases := flags.String("cases", "", "write every real step answered, every control answered wrong and every repeat control whose answer wrote from the story's own article to `file`, a line of JSON each (outside the archive and any repository; with -offset it is added to)")
 	dry := flags.Bool("dry", false, "build the requests and print their sizes; nothing is sent")
 	noControls := flags.Bool("no-controls", false, "leave the controls out")
 	if err := flags.Parse(args); err != nil {

@@ -161,9 +161,9 @@ func TestADateOrAYearIsNoNumberADetailAdds(t *testing.T) {
 			t.Errorf("figures(%q) = %s, want %s", text, strings.Join(got, ", "), want)
 		}
 	}
-	// A detail whose only numbers the story lacks are a date or a year adds nothing, and is marked: it is left out.
-	// One with a count beside them adds it, and so does a number that only looks like a year: they go in quietly.
-	// None makes a version.
+	// A detail whose only numbers the story lacks are a date or a year adds nothing, and is marked: it goes in
+	// quietly. One with a count beside them adds it, and so does a number that only looks like a year: from an
+	// article published since the story, they make a version.
 	for text, adds := range map[string]bool{
 		"תקנות הסגירה נקבעו ב-14.3.2021.":            false,
 		"הנחל עלה על גדותיו לאחרונה ב-2023.":         false,
@@ -174,12 +174,12 @@ func TestADateOrAYearIsNoNumberADetailAdds(t *testing.T) {
 	} {
 		a, ids := askedOf(t, rainStory(), rainSiteh, rainSiteE, rainSiteg)
 		m := merge(a, answerOf(t, oneInsert(Detail, text)), "s1", ids, now)
-		if m.Version || m.Notes[0].Adds != adds || (m.Stats.Adds == 1) != adds || (m.Stats.Dated == 1) == adds || m.Notes[0].Dated == adds {
+		if m.Version != adds || m.Notes[0].Adds != adds || (m.Stats.Adds == 1) != adds || (m.Stats.Dated == 1) == adds || m.Notes[0].Dated == adds {
 			t.Errorf("%q: version %v, adds %v, want %v: %+v, %v", text, m.Version, m.Notes[0].Adds, adds, m.Stats, notesOf(m))
 		}
-		want := "insert s1.1: left out (" + whyNoVersion + ")"
+		want := "insert s1.1: quiet (" + whyQuietPlain + ")"
 		if adds {
-			want = "insert s1.1: quiet (" + whyQuietAdds + ")"
+			want = "insert s1.1: applied, makes a version"
 		}
 		if got := strings.Join(notesOf(m), "; "); got != want {
 			t.Errorf("%q: %s", text, got)
@@ -201,14 +201,14 @@ const namedAnswer = `{"stories": [{"story": "s1", "unrelated": [],
 		{"after": "s1.3", "kind": "detail", "text": "ראש העיר לוי אמר שהכבישים ייפתחו מחר.", "sources": ["a1"]}],
 	"replace": [], "delete": [], "cite": [], "title": "", "contradictions": []}]}`
 
-func TestADetailThatNamesAPersonTheStoryDoesntGoesInQuietly(t *testing.T) {
+func TestADetailThatNamesAPersonTheStoryDoesntMakesAVersion(t *testing.T) {
 	prev := rainStory()
 	a, ids := askedOf(t, prev, rainSiteh, rainSiteE, rainSiteg)
 	m := merge(a, answerOf(t, namedAnswer), "s1", ids, now)
-	// The first detail has no number, and adds the person it names: it goes in, with no version (a detail makes
-	// none: round 5). The other adds nothing, and is left out.
-	if m.Version || m.Stats != (MergeStats{Asked: 2, Quiet: 1, Unapplied: 1, Adds: 1, Since: 1, Named: 1}) || m.Notes[0].Name != "ישראל ישראלי" || !m.Notes[0].Adds || m.Notes[0].MakesVersion ||
-		m.Notes[1].Adds || m.Notes[1].Name != "" {
+	// The first detail has no number, and adds the person it names: a version. The other adds nothing, and rides
+	// along.
+	if !m.Version || m.Stats != (MergeStats{Asked: 2, Inserted: 2, Adds: 1, Since: 1, Named: 1, ByDetail: 1}) || m.Notes[0].Name != "ישראל ישראלי" || !m.Notes[0].Adds || m.Notes[0].News != NewsActor ||
+		!m.Notes[0].MakesVersion || m.Notes[1].Adds || m.Notes[1].Name != "" {
 		t.Fatalf("%+v %+v", m.Stats, m.Notes)
 	}
 	// One more word of a name (a surname) is no person the story doesn't mention: no version, as before.
@@ -224,20 +224,20 @@ func TestADetailThatNamesAPersonTheStoryDoesntGoesInQuietly(t *testing.T) {
 	}
 	// A sentence that gives the name without a sign is read against the article it cites: there the same two words
 	// follow a rank, or an age in brackets follows them.
-	plain := "מנהל המחוז דן אלמוני הורה לסגור את הכבישים."
+	plain := "מנהל המחוז דן אלמוני סייר בכבישים שנסגרו."
 	for shown, adds := range map[string]bool{
-		"הצפות בגליל. מנהל המחוז, תנ״צ דן אלמוני, הורה לסגור את הכבישים.":    true,
-		"הצפות בגליל. דן אלמוני (52), מנהל המחוז, הורה לסגור את הכבישים.":    true,
-		"הצפות בגליל. לדברי דן אלמוני הראל (52), הכבישים ייסגרו.":            false, // the age follows other words
-		"הצפות בגליל. מנהל המחוז דן אלמוני הורה לסגור את הכבישים.":           false,
-		"הצפות בגליל. תנ״צ רון פלוני ומנהל המחוז דן אלמוני סגרו את הכבישים.": false,
+		"הצפות בגליל. מנהל המחוז, תנ״צ דן אלמוני, סייר בכבישים שנסגרו.":    true,
+		"הצפות בגליל. דן אלמוני (52), מנהל המחוז, סייר בכבישים שנסגרו.":    true,
+		"הצפות בגליל. לדברי דן אלמוני הראל (52), הכבישים ייסגרו.":          false, // the age follows other words
+		"הצפות בגליל. מנהל המחוז דן אלמוני סייר בכבישים שנסגרו.":           false,
+		"הצפות בגליל. תנ״צ רון פלוני ומנהל המחוז דן אלמוני סיירו בכבישים.": false,
 	} {
 		a, ids := askedShown(t, prev, map[string]string{rainSiteg.URL: shown}, rainSiteh, rainSiteE, rainSiteg)
-		if m := merge(a, answerOf(t, oneInsert(Detail, plain)), "s1", ids, now); m.Version || m.Notes[0].Adds != adds || (m.Notes[0].Name == "דן אלמוני") != adds {
+		if m := merge(a, answerOf(t, oneInsert(Detail, plain)), "s1", ids, now); m.Version != adds || m.Notes[0].Adds != adds || (m.Notes[0].Name == "דן אלמוני") != adds {
 			t.Errorf("%q: adds %v, want %v: %v", shown, m.Notes[0].Adds, adds, m.Notes[0].Name)
 		}
 	}
-	// From an article older than the story it goes in the same way: a quiet update.
+	// From an article older than the story it goes in quietly.
 	old := rainSiteg
 	old.PublishedAt = scrape.FormatInstant(prev.WrittenAt.Add(-2 * time.Hour))
 	a, ids = askedOf(t, prev, rainSiteh, rainSiteE, old)
@@ -318,9 +318,8 @@ func TestADevelopmentThatOnlyAddsATimeWordSaysTheStoryAgain(t *testing.T) {
 			t.Errorf("%q: version %v, want %v: %v", text, m.Version, version, notesOf(m))
 		}
 	}
-	// Only a development is read so: a detail with a time word and no number makes no version as it is, and is
-	// not called a restatement.
-	if m = merge(a, answerOf(t, oneInsert(Detail, "2 כבישים נסגרו היום בגלל הגשם.")), "s1", ids, now); m.Version || m.Stats != (MergeStats{Asked: 1, Unapplied: 1}) {
+	// Whatever kind it was given: a detail goes into the story without a version, and must not say the story again.
+	if m = merge(a, answerOf(t, oneInsert(Detail, "2 כבישים נסגרו היום בגלל הגשם.")), "s1", ids, now); m.Version || m.Stats != (MergeStats{Asked: 1, Restated: 1, Timed: 1}) {
 		t.Fatalf("%+v", m.Stats)
 	}
 	if got, stripped := timeless("מהבוקר נסגרו הכבישים, והיום ייפתחו."); got != "נסגרו הכבישים, ייפתחו." || !stripped {
