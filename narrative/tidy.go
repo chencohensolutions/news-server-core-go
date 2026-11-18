@@ -11,16 +11,17 @@ import (
 // affair (merge), one thread that is two (split), and a story far from its thread (stray). Gemini decides on each.
 
 const (
-	// MergeSimilarity is how close two threads' vectors must be to be offered for a merge; MergeShared the share
-	// of the smaller thread's stories also in the other that offers it too (at MergeSharedSimilarity at least).
-	MergeSimilarity       = 0.85
-	MergeShared           = 1.0 / 3
-	MergeSharedSimilarity = 0.6
-	// SplitSimilarity is the average-link similarity a thread's stories are grouped at; a split needs two groups
-	// of SplitGroup stories or more, and a thread SplitStories.
-	SplitSimilarity = 0.55
-	SplitGroup      = 3
-	SplitStories    = 6
+	// MergeSimilarity is how close two threads' vectors must be, and MergeShared the share of the smaller thread's
+	// stories also in the other, to be offered for a merge. Measured on the archive (Nov 18, 2026): political threads
+	// are all 0.93 or closer, so closeness alone offers related affairs; sharing half the stories says more.
+	MergeSimilarity = 0.9
+	MergeShared     = 0.5
+	// SplitSimilarities are the average-link similarities a thread's stories are grouped at, the highest first, until
+	// they fall in 2 or 3 big groups: each SplitShare of the thread's stories at least, and SplitGroup stories. A
+	// thread needs SplitStories.
+	SplitShare   = 0.2
+	SplitGroup   = 3
+	SplitStories = 6
 	// StraySimilarity is how far from its thread's vector a story is a stray, in a thread of StrayThread stories.
 	StraySimilarity = 0.45
 	StrayThread     = 4
@@ -96,7 +97,7 @@ func FindTidyCandidates(threads []TidyThread) TidyCandidates {
 				}
 			}
 			smaller := min(len(a.Stories), len(b.Stories))
-			if sim >= MergeSimilarity || smaller > 0 && float64(shared) >= MergeShared*float64(smaller) && sim >= MergeSharedSimilarity {
+			if sim >= MergeSimilarity && smaller > 0 && float64(shared) >= MergeShared*float64(smaller) {
 				c.Merges = append(c.Merges, MergeCandidate{A: a.ID, B: b.ID, Similarity: sim, Shared: shared})
 			}
 		}
@@ -126,7 +127,7 @@ func FindTidyCandidates(threads []TidyThread) TidyCandidates {
 	}
 	// The most balanced splits first.
 	sort.SliceStable(c.Splits, func(i, j int) bool {
-		return len(c.Splits[i].Groups[1]) > len(c.Splits[j].Groups[1])
+		return balance(c.Splits[i]) > balance(c.Splits[j])
 	})
 	c.Splits = c.Splits[:min(len(c.Splits), maxSplits)]
 	sort.SliceStable(c.Strays, func(i, j int) bool { return c.Strays[i].Similarity < c.Strays[j].Similarity })
@@ -134,22 +135,44 @@ func FindTidyCandidates(threads []TidyThread) TidyCandidates {
 	return c
 }
 
-// splitGroups are list's stories in groups of SplitGroup or more, the small groups' stories with the group they are
-// closest to; nil when there aren't two.
+// SplitSimilarities are tried in order (see SplitShare).
+var SplitSimilarities = []float32{0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3}
+
+func balance(c SplitCandidate) float64 {
+	n := 0
+	for _, g := range c.Groups {
+		n += len(g)
+	}
+	return float64(len(c.Groups[1])) / float64(n)
+}
+
+// splitGroups are list's stories in 2 or 3 big groups (SplitShare), the other stories with the group they are
+// closest to; nil when no similarity gives that.
 func splitGroups(list []TidyStory) [][]string {
 	vectors := make([][]float32, len(list))
 	for i, s := range list {
 		vectors[i] = s.Vector
 	}
+	need := max(SplitGroup, int(SplitShare*float64(len(list))+0.999))
 	var big, small [][]int
-	for _, g := range stories.ClusterBySimilarity(vectors, SplitSimilarity, true, nil) {
-		if len(g) >= SplitGroup {
-			big = append(big, g)
-		} else {
-			small = append(small, g)
+	for _, threshold := range SplitSimilarities {
+		big, small = nil, nil
+		for _, g := range stories.ClusterBySimilarity(vectors, threshold, true, nil) {
+			if len(g) >= need {
+				big = append(big, g)
+			} else {
+				small = append(small, g)
+			}
+		}
+		if len(big) >= 2 && len(big) <= 3 {
+			break
+		}
+		if len(big) == 1 && 2*len(big[0]) > len(list) {
+			// One group holds most of the thread: lower similarities only make it bigger.
+			return nil
 		}
 	}
-	if len(big) < 2 {
+	if len(big) < 2 || len(big) > 3 {
 		return nil
 	}
 	for _, g := range small {

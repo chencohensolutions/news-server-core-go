@@ -229,8 +229,9 @@ func (w *Writer) Tidy(ctx context.Context, day string, dry bool) (TidyResult, er
 		if keep == drop {
 			continue
 		}
-		// The bigger thread keeps its id.
-		if byID[drop].Stories > byID[keep].Stories {
+		// The bigger thread keeps its id; of two the same size, the older.
+		k, d := byID[keep], byID[drop]
+		if d.Stories > k.Stories || d.Stories == k.Stories && d.StartedAt.Before(k.StartedAt) {
 			keep, drop = drop, keep
 		}
 		if err := w.Store.MergeThreads(ctx, keep, drop, name, sum); err != nil {

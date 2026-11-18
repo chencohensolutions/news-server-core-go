@@ -144,6 +144,10 @@ func TestTheWeeklyTidyUpMergesThreadsAndTakesOutStrays(t *testing.T) {
 	record("r1", "גשם בצפון", now.Add(-30*day), "rain")
 	record("r2", "גשם בדרום", now.Add(-20*day), "rain")
 	record("r3", "שוב גשם", now.Add(-2*day), "rain2")
+	// They share a story: half of the smaller one's.
+	if err := w.Store.LinkStory(ctx, "r2", []string{"rain", "rain2"}); err != nil {
+		t.Fatal(err)
+	}
 	for i := range 4 {
 		record(fmt.Sprintf("b%d", i), "התקציב", now.Add(-time.Duration(10+i)*day), "budget")
 	}

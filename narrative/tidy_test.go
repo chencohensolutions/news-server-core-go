@@ -20,7 +20,9 @@ func TestTheTidyUpFindsMergesSplitsAndStrays(t *testing.T) {
 	mixed = append(mixed, story("odd", 9, vec(0.9, 0.2, 0, 0)))
 	threads := []TidyThread{
 		{ID: "war", Vector: vec(1, 0, 0, 0), Stories: []TidyStory{story("a", 0, vec(1, 0, 0, 0))}},
-		{ID: "war-again", Vector: vec(1, 0.1, 0, 0), Stories: []TidyStory{story("b", 1, vec(1, 0.1, 0, 0))}},
+		{ID: "war-again", Vector: vec(1, 0.1, 0, 0), Stories: []TidyStory{story("a", 0, vec(1, 0, 0, 0)), story("b", 1, vec(1, 0.1, 0, 0))}},
+		// Close in meaning but sharing nothing: related affairs, not offered.
+		{ID: "war-north", Vector: vec(1, 0.05, 0, 0), Stories: []TidyStory{story("n", 1, vec(1, 0.05, 0, 0))}},
 		{ID: "mixed", Vector: vec(1, 1, 0, 0), Stories: mixed},
 		{ID: "strike", Vector: vec(0, 0, 1, 0), Stories: []TidyStory{
 			story("s1", 0, vec(0, 0, 1, 0)), story("s2", 1, vec(0, 0.1, 1, 0)), story("s3", 2, vec(0, 0, 1, 0.1)),

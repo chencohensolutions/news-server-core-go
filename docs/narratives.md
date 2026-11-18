@@ -49,12 +49,13 @@ stories' threads alone, both, and both with the latest threads (what the linking
 Once a week (`threads_tidy_days`, 7; -1 never) the vectors find what may be wrong with the threads, and one Gemini
 request decides on it (`summary/tidy.go`, `narrative/tidy.go`):
 
-- **Merge:** two threads whose vectors are 0.85 or closer, or that share a third of the smaller one's stories (at 0.6).
+- **Merge:** two threads whose vectors are 0.9 or closer and that share half the smaller one's stories (on the archive, political threads are all 0.93 or closer, so closeness alone would offer related affairs).
   Gemini says whether they are one affair under two names and names the merged thread. The bigger thread keeps its
   id; the other's id finds it from then on (`thread_aliases`), so the app's links keep working.
-- **Split:** a thread of 6 stories or more whose stories, grouped at 0.55 by the same average-link clustering as the
-  headlines, fall in two groups of 3 or more. Gemini says whether they are different affairs and names each part; the
-  first keeps the id, the others are new threads related to it.
+- **Split:** a thread of 6 stories or more whose stories, grouped by the same average-link clustering as the
+  headlines at the highest similarity (0.6 down to 0.3) that gives it, fall in 2 or 3 big groups, each a fifth of the
+  thread or more; the other stories go with the group they are closest to. Gemini says whether they are different
+  affairs and names each part; the first keeps the id, the others are new threads related to it.
 - **Stray:** a story whose similarity to its thread (of 4 stories or more) is under 0.45. Gemini says whether it
   belongs; one that doesn't leaves the thread.
 
