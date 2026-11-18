@@ -1,6 +1,9 @@
 package summary
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // The instructions are in English, which the model follows best; everything it writes is Hebrew.
 
@@ -62,61 +65,50 @@ For every story, write:
 
 Answer for every story in the input, by its id ("s1"). A story's sentences cite only that story's articles.`
 
-var contradictionSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"text": map[string]any{"type": "string"},
-		"sides": map[string]any{"type": "array", "items": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"value":   map[string]any{"type": "string"},
-				"sources": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-			},
-			"required": []string{"value", "sources"},
-		}},
-	},
-	"required": []string{"text", "sides"},
-}
+// storiesSchema is written out in order: Gemini answers a schema's fields in the order it gets them, and a Go map
+// would send them sorted, "new" before "sentences". Then the whole story went into "new" and "sentences" kept a
+// scrap of it (seen Nov 11-13, 2026: a rewrite's story of one sentence from one site).
+var storiesSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "stories": {"type": "array", "items": {
+      "type": "object",
+      "properties": {
+        "story": {"type": "string"},
+        "unrelated": {"type": "array", "items": {
+          "type": "object",
+          "properties": {"id": {"type": "string"}, "event": {"type": "string"}},
+          "required": ["id", "event"]
+        }},
+        "title": {"type": "string"},
+        "sentences": {"type": "array", "items": ` + sentenceSchemaJSON + `},
+        "contradictions": {"type": "array", "items": {
+          "type": "object",
+          "properties": {
+            "text": {"type": "string"},
+            "sides": {"type": "array", "items": {
+              "type": "object",
+              "properties": {"value": {"type": "string"}, "sources": {"type": "array", "items": {"type": "string"}}},
+              "required": ["value", "sources"]
+            }}
+          },
+          "required": ["text", "sides"]
+        }},
+        "new": {"type": "array", "items": ` + sentenceSchemaJSON + `}
+      },
+      "required": ["story", "unrelated", "title", "sentences", "contradictions", "new"]
+    }}
+  },
+  "required": ["stories"]
+}`)
 
-var sentenceSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"text":    map[string]any{"type": "string"},
-		"sources": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-	},
-	"required": []string{"text", "sources"},
-}
-
-var storiesSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"stories": map[string]any{
-			"type": "array",
-			"items": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"story":          map[string]any{"type": "string"},
-					"title":          map[string]any{"type": "string"},
-					"sentences":      map[string]any{"type": "array", "items": sentenceSchema},
-					"new":            map[string]any{"type": "array", "items": sentenceSchema},
-					"contradictions": map[string]any{"type": "array", "items": contradictionSchema},
-					"unrelated": map[string]any{"type": "array", "items": map[string]any{
-						"type":       "object",
-						"properties": map[string]any{"id": map[string]any{"type": "string"}, "event": map[string]any{"type": "string"}},
-						"required":   []string{"id", "event"},
-					}},
-				},
-				"required": []string{"story", "unrelated", "title", "sentences", "contradictions", "new"},
-			},
-		},
-	},
-	"required": []string{"stories"},
-}
+const sentenceSchemaJSON = `{"type": "object", "properties": {"text": {"type": "string"}, "sources": {"type": "array", "items": {"type": "string"}}}, "required": ["text", "sources"]}`
 
 const threadsSystem = `You keep the threads of a personal newspaper from Israeli news sites: affairs that run over weeks, months
 or years, such as a war, a police investigation, a trial, coalition talks, a strike, a scandal or a reform. The input
-lists the existing threads (id, name, how many stories and when, and the story so far), then the new stories (id,
-date, title and main facts).
+lists the existing threads (id, name, how many stories and when, and the story so far): every thread, or only the
+ones closest to the new stories and the latest ones; then the new stories (id, date, title and main facts); and
+sometimes earlier stories that are in no thread yet (ids o1, o2...), the ones closest to the new stories.
 
 Answer:
 - "stories": every new story, each with its id and its "threads": the ids of the existing threads it continues and
@@ -138,7 +130,56 @@ or a statement about an affair belongs to it. Don't put a story in an affair it 
 dispute is not the Iran war. Only a clearly one-time event
 with nothing before or after it (a road accident, a sports result, a celebrity item) is left out. A summary is 1 to 3 Hebrew
 sentences, facts only, the latest developments last; the first time a thread is named it says what the affair is.
+An earlier story (oN) is there for a new story that continues it, often weeks later: put both in the
+same thread, a new one named for the affair, by listing the earlier story in "stories" too with that thread. Leave an
+earlier story out when no new story continues its affair; it never goes in a thread without a new story.
 Use only ids from the input.`
+
+const tidySystem = `You tidy the threads of a personal newspaper from Israeli news sites: affairs that run over weeks, months
+or years (a war, a police investigation, a trial, coalition talks, a strike, a scandal). A search found what may be
+wrong with them; decide on each candidate, by its id in braces.
+- "merges": two threads that may be one affair (ids like m1a and m1b, with their latest stories). "same" is true only
+  when they are the same affair under two names, not two related affairs (a war and the strike during it stay
+  apart). When same, the merged thread's short Hebrew "name" (2 to 5 words) and its "summary" so far.
+- "splits": a thread whose stories fall into groups (ids like s1g1, s1g2). "separate" is true only when the groups are
+  different affairs that were put together by mistake, not stages of one affair. When separate, every group's
+  "group" id, short Hebrew "name" and "summary".
+- "strays": a story that may not belong to its thread. "belongs" is false only when the story is clearly not part of
+  that affair.
+Answer every candidate. When in doubt, leave things as they are. A summary is 1 to 3 Hebrew sentences, facts only,
+the latest developments last.`
+
+// tidySchema is written out so its keys go to Gemini in this order (see incrementalSchema): each decision before
+// the names it brings.
+var tidySchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "merges": {"type": "array", "items": {
+      "type": "object",
+      "properties": {"candidate": {"type": "string"}, "same": {"type": "boolean"}, "name": {"type": "string"}, "summary": {"type": "string"}},
+      "required": ["candidate", "same"]
+    }},
+    "splits": {"type": "array", "items": {
+      "type": "object",
+      "properties": {
+        "candidate": {"type": "string"},
+        "separate": {"type": "boolean"},
+        "parts": {"type": "array", "items": {
+          "type": "object",
+          "properties": {"group": {"type": "string"}, "name": {"type": "string"}, "summary": {"type": "string"}},
+          "required": ["group", "name", "summary"]
+        }}
+      },
+      "required": ["candidate", "separate"]
+    }},
+    "strays": {"type": "array", "items": {
+      "type": "object",
+      "properties": {"candidate": {"type": "string"}, "belongs": {"type": "boolean"}},
+      "required": ["candidate", "belongs"]
+    }}
+  },
+  "required": ["merges", "splits", "strays"]
+}`)
 
 var threadsSchema = map[string]any{
 	"type": "object",

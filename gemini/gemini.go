@@ -31,6 +31,16 @@ var ErrRateLimited = errors.New("gemini: rate limited (429)")
 // ErrUnavailable is a 500 or 503: the model is busy ("high demand"); trying again a little later usually works.
 var ErrUnavailable = errors.New("gemini: unavailable")
 
+// ErrCut is an answer that stopped early (the output limit, mostly) or isn't whole JSON. Generate returns what there
+// is of it beside the error: a caller may read the stories that are whole.
+var ErrCut = errors.New("gemini: the answer stopped early")
+
+// cutError is an ErrCut with its own words.
+type cutError string
+
+func (e cutError) Error() string        { return string(e) }
+func (e cutError) Is(target error) bool { return target == ErrCut }
+
 // Client is one API key and model.
 type Client struct {
 	Key     string
@@ -52,7 +62,9 @@ func ReadKey(path string) (string, error) {
 	return key, nil
 }
 
-// Request is one generateContent call: the instructions, the text, and the JSON schema the answer follows.
+// Request is one generateContent call: the instructions, the text, and the JSON schema the answer follows. Gemini
+// writes an answer's keys in the order the schema's "properties" list them (its structured output, from 2.5 on), so
+// a schema whose order matters is a json.RawMessage: a Go map goes out with its keys sorted.
 type Request struct {
 	System string
 	Prompt string
@@ -91,7 +103,8 @@ type response struct {
 	UsageMetadata Usage `json:"usageMetadata"`
 }
 
-// Generate sends req and returns the answer's JSON (the schema's shape) and its usage.
+// Generate sends req and returns the answer's JSON (the schema's shape) and its usage. With ErrCut it returns the
+// part of the answer that came, which is not valid JSON.
 func (c *Client) Generate(ctx context.Context, req Request) (json.RawMessage, Usage, error) {
 	body, err := json.Marshal(map[string]any{
 		"systemInstruction": content{Parts: []part{{Text: req.System}}},
@@ -159,10 +172,10 @@ func (c *Client) Generate(ctx context.Context, req Request) (json.RawMessage, Us
 		}
 	}
 	if candidate.FinishReason != "" && candidate.FinishReason != "STOP" {
-		return nil, answer.UsageMetadata, fmt.Errorf("gemini: the answer stopped early (%s)", candidate.FinishReason)
+		return json.RawMessage(text.String()), answer.UsageMetadata, fmt.Errorf("%w (%s)", ErrCut, candidate.FinishReason)
 	}
 	if !json.Valid([]byte(text.String())) {
-		return nil, answer.UsageMetadata, errors.New("gemini: the answer is not JSON")
+		return json.RawMessage(text.String()), answer.UsageMetadata, cutError("gemini: the answer is not JSON")
 	}
 	return json.RawMessage(text.String()), answer.UsageMetadata, nil
 }

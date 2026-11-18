@@ -35,6 +35,16 @@ const usage = `usage:
   news-server summarize            group the stories and summarize what changed with Gemini now, and print them
   news-server eval-stories         score the story model on the app's 348 labeled headline pairs
   news-server eval-gemini-grouping score Gemini's grouping on the same pairs (one request of the day's budget)
+  news-server incremental [off|shadow|on]
+                                   the incremental story update: off, in shadow beside the whole rewrite, or on in its
+                                   place; and print what it recorded (docs/incremental.md)
+  news-server eval-incremental [-days N] [-until day] [-batch 8] [-max-requests 10] [-sample N] [-seed 1] [-offset N]
+                               [-cases file] [-dry]
+                                   replay the archive's rewrites through the incremental update and report; -cases
+                                   writes every step with what was sent and answered, to read (docs/incremental.md)
+  news-server narratives           embed every kept story and thread for the thread linking's shortlist now (the server
+                                   does it before each linking), measure the shortlist on the threads linked so far, and
+                                   list what the weekly tidy-up (merge, split, strays) would ask Gemini about now
   news-server archive              bring the archive folder (archive_dir) up to date now; the server does it after each read
   news-server restore              make a new database_file from the archive folder (after installing from scratch)
 
@@ -84,9 +94,18 @@ func Main() {
 		return
 	}
 	local := map[string]func(auth.AppConfig, io.Writer) error{"refresh": refreshOnce, "discovery": func(c auth.AppConfig, _ io.Writer) error { return discoveryCommand(c) }, "models": downloadModels, "stories": printStories, "summarize": summarizeCommand,
-		"eval-stories": evalStories, "eval-gemini-grouping": evalGeminiGrouping, "archive": archiveCommand, "restore": restoreCommand}
+		"eval-stories": evalStories, "eval-gemini-grouping": evalGeminiGrouping, "archive": archiveCommand, "restore": restoreCommand,
+		"narratives": narrativesCommand}
 	if run, ok := local[os.Args[1]]; ok && len(os.Args) == 2 {
 		if err := run(config, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	withArgs := map[string]func(auth.AppConfig, []string, io.Writer) error{"incremental": incrementalCommand, "eval-incremental": evalIncremental}
+	if run, ok := withArgs[os.Args[1]]; ok {
+		if err := run(config, os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/scrape"
@@ -95,6 +96,13 @@ CREATE TABLE IF NOT EXISTS story_versions (
 	summary TEXT NOT NULL,       -- that version, as JSON
 	PRIMARY KEY (id, written_at)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS story_shadow (
+	key TEXT PRIMARY KEY,        -- a changed story (summary.StoryKey) as the incremental update handled it in shadow
+	id TEXT NOT NULL,            -- the story's id (story_records.id)
+	written_at INTEGER NOT NULL,
+	shadow TEXT NOT NULL         -- summary.Shadow as JSON: the plan, Gemini's operations, the story they make; not shown
+);
+CREATE INDEX IF NOT EXISTS story_shadow_id ON story_shadow (id, written_at);
 CREATE TABLE IF NOT EXISTS story_threads (
 	story TEXT NOT NULL,         -- a story in a thread: a story can be in several, a thread has many
 	thread TEXT NOT NULL,
@@ -141,10 +149,28 @@ CREATE TABLE IF NOT EXISTS user_reads (
 	PRIMARY KEY (user, url)
 );
 CREATE INDEX IF NOT EXISTS user_reads_at ON user_reads (user, read_at);
+CREATE TABLE IF NOT EXISTS thread_aliases (
+	alias TEXT PRIMARY KEY,      -- a thread merged into another by the weekly tidy-up
+	thread TEXT NOT NULL         -- the thread it is part of now
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS narratives (
+	rowid INTEGER PRIMARY KEY,   -- its vector's rowid in narrative_vec_<dims> (narratives.go)
+	space TEXT NOT NULL,         -- the model and what was embedded, e.g. "bge-m3/narrative"
+	kind TEXT NOT NULL,          -- "story" or "thread"
+	ref TEXT NOT NULL,           -- the story's or thread's id
+	at INTEGER NOT NULL,         -- the story's first time, the thread's latest story's; Unix milliseconds
+	hash TEXT NOT NULL,          -- what the vector was made from
+	dims INTEGER NOT NULL,
+	UNIQUE (space, kind, ref)
+);
 `
 
 // Store is the database. Safe for concurrent use.
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+	// vecTables are the narrative vector tables known to exist, by vector size.
+	vecTables sync.Map
+}
 
 // Open opens (creating if needed) the database at path.
 func Open(path string) (*Store, error) {
@@ -603,13 +629,6 @@ func (s *Store) CountGeminiRequest(ctx context.Context, day string) error {
 	return err
 }
 
-// UncountGeminiRequest takes back one of day's requests: one Gemini refused as busy (503), which its quota doesn't
-// count.
-func (s *Store) UncountGeminiRequest(ctx context.Context, day string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE gemini_requests SET requests = MAX(requests - 1, 0) WHERE day = ?`, day)
-	return err
-}
-
 // Tokens are Gemini tokens: the prompts (Cached of them read from its cache), the answers, and the thinking.
 type Tokens struct{ In, Cached, Out, Thoughts int }
 
@@ -803,6 +822,86 @@ func (s *Store) StoryVersions(ctx context.Context, ids []string) (map[string][]S
 	return out, nil
 }
 
+// ShadowRef is a row of story_shadow without its JSON.
+type ShadowRef struct {
+	Key, ID string
+	At      time.Time
+	// Again says the row is of a story to be asked about again (its "again"): no step of the story yet.
+	Again bool
+	// Applied says the row is of a step made with the incremental update on (its "applied"): the story itself has it.
+	Applied bool
+}
+
+// SaveShadow keeps what the incremental update made of the story key (of story id) in shadow, at now.
+func (s *Store) SaveShadow(ctx context.Context, key, id string, shadow json.RawMessage, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO story_shadow (key, id, written_at, shadow) VALUES (?, ?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET id = excluded.id, written_at = excluded.written_at, shadow = excluded.shadow`,
+		key, id, millis(now), string(shadow))
+	return err
+}
+
+// ShadowRefs are the shadow rows written since since, oldest first.
+func (s *Store) ShadowRefs(ctx context.Context, since time.Time) ([]ShadowRef, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, id, written_at, COALESCE(json_extract(shadow, '$.again'), 0),
+		COALESCE(json_extract(shadow, '$.applied'), 0) FROM story_shadow WHERE written_at >= ? ORDER BY written_at`, millis(since))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ShadowRef
+	for rows.Next() {
+		var r ShadowRef
+		var at int64
+		if err := rows.Scan(&r.Key, &r.ID, &at, &r.Again, &r.Applied); err != nil {
+			return nil, err
+		}
+		r.At = time.UnixMilli(at).UTC()
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// Shadow is the shadow row of the story key as JSON, or nil.
+func (s *Store) Shadow(ctx context.Context, key string) (json.RawMessage, error) {
+	var data string
+	err := s.db.QueryRowContext(ctx, `SELECT shadow FROM story_shadow WHERE key = ?`, key).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+// Shadows calls fn with every shadow row written since since, oldest first.
+func (s *Store) Shadows(ctx context.Context, since time.Time, fn func(ShadowRef, json.RawMessage) error) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, id, written_at, shadow FROM story_shadow WHERE written_at >= ? ORDER BY written_at`, millis(since))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r ShadowRef
+		var at int64
+		var data string
+		if err := rows.Scan(&r.Key, &r.ID, &at, &data); err != nil {
+			return err
+		}
+		r.At = time.UnixMilli(at).UTC()
+		if err := fn(r, json.RawMessage(data)); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// PruneShadows deletes the shadow rows written before before: the archive keeps them.
+func (s *Store) PruneShadows(ctx context.Context, before time.Time) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM story_shadow WHERE written_at < ?`, millis(before))
+	return err
+}
+
 const recordColumns = `id, summary, first_written, written_at, linked`
 
 func scanRecords(rows *sql.Rows) ([]StoryRecord, error) {
@@ -920,15 +1019,22 @@ func (s *Store) Threads(ctx context.Context, limit int) ([]Thread, error) {
 	return scanThreads(rows)
 }
 
-// ThreadByID is thread id, or nil.
+// ThreadByID is thread id, or the thread it was merged into, or nil.
 func (s *Store) ThreadByID(ctx context.Context, id string) (*Thread, error) {
 	rows, err := s.db.QueryContext(ctx, threadQuery+` WHERE t.id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
 	out, err := scanThreads(rows)
-	if err != nil || len(out) == 0 {
+	if err != nil {
 		return nil, err
+	}
+	if len(out) == 0 {
+		alias, err := s.ThreadAlias(ctx, id)
+		if err != nil || alias == "" || alias == id {
+			return nil, err
+		}
+		return s.ThreadByID(ctx, alias)
 	}
 	return &out[0], nil
 }

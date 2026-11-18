@@ -19,7 +19,7 @@ repository root.
   (AUC 0.950, best F1 0.83 for bge-m3; [storyjob.go](../storyjob.go), [stories/eval.go](../stories/eval.go)). The labeled
   set holds real headlines, so it lives in a private pack and not in this repository.
 - **LLM integration:** Gemini with structured output (a JSON schema), a daily request budget (400 by default) kept
-  under the free tier, a 429 ends the run, a busy model (500/503) is retried. `news-server eval-gemini-grouping`
+  under the free tier, a 429 ends the run, a busy model (500/503) ends the run too and is tried at the next one, each try counted (the quota counts it); the day's budget is spread over the day (`fairShare`). `news-server eval-gemini-grouping`
   scores Gemini's own grouping on the same labeled pairs. Tests run on recorded model answers
   ([summary/testdata/](../summary/testdata/)).
 - **Security:** mutual TLS, deny by default. Devices enroll with a one-time code or QR code and get a client
@@ -88,6 +88,8 @@ Key files:
 | Scheduler | [refresh/](../refresh/), [refresh/refresh_test.go](../refresh/refresh_test.go) |
 | Story clustering | [stories/](../stories/), eval in [stories/eval.go](../stories/eval.go) |
 | Summaries, threads, prompts | [summary/](../summary/), [summary/prompts.go](../summary/prompts.go), [summary/summary_test.go](../summary/summary_test.go) |
+| Incremental story updates: rules, shadow, on, replay | [incremental.md](incremental.md), [summary/incremental.go](../summary/incremental.go), [summary/shadow.go](../summary/shadow.go), [summary/on.go](../summary/on.go), [summary/replay.go](../summary/replay.go), tests beside them |
+| Narrative vectors and the threads' shortlist | [narratives.md](narratives.md), [narrative/](../narrative/), [store/narratives.go](../store/narratives.go), [summary/narratives.go](../summary/narratives.go) |
 | Gemini client | [gemini/gemini.go](../gemini/gemini.go) |
 | Gemini grouping eval | [evalgemini.go](../evalgemini.go) |
 | GraphQL schema | [graph/schema/](../graph/schema/) |
@@ -146,7 +148,16 @@ mostly say what a recent one does (the grouping split it off, or grouped the new
 story's next version, under its id, so the app shows one story. A report Gemini finds
 unrelated is moved to the closest other story. Once a day Gemini links stories into threads, affairs that run over
 months. Grouping by Gemini instead of the embedding model is a setting. The app changes the summary settings
-(`setSummarySettings`, admins only).
+(`setSummarySettings`, admins only). An incremental update of a story, from its version before and its new articles
+only, runs in shadow beside the rewrite and is replayed on the archive ([incremental.md](incremental.md)). Turned on
+(`news-server incremental on`), it is how a story that has a version gets its next one, in place of the rewrite.
+
+Narrative vectors (`narrative/`, [narratives.md](narratives.md)): every kept story gets a vector of its title and first
+sentences, by the story model, and every thread one from its stories' vectors, the recent ones weighing more; they
+are kept for good in news.db, searched with sqlite-vec (built into modernc's SQLite). A linking lists only the threads
+near each new story, the threads of the earlier stories near it, and the latest updated ones, in place of every
+thread, and the earlier stories in no thread near a new one, so a story that comes back after the grouping's days
+starts a thread with its first chapter. `news-server narratives` embeds the archive and measures the shortlist.
 
 ## Related repositories
 
@@ -171,6 +182,7 @@ bundle/                            downloads ONNX Runtime and the models, checke
 storyjob.go                        groups stories after each read; the models, stories and eval-stories commands
 summary/  gemini/  summaries.go    prompts, summaries, threads, Gemini grouping; the Gemini client
 evalgemini.go                      eval-gemini-grouping
+incremental.go                     the incremental and eval-incremental commands (summary/incremental.go, shadow.go, on.go, replay.go)
 backup/  archive.go                the plain-file archive and restore
 portmap/  portmapping.go           UPnP / NAT-PMP port forwarding on the home router
 discovery/  discover.go            the server's addresses in the BitTorrent DHT, sealed and signed

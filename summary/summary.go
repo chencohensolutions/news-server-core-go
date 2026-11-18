@@ -19,6 +19,7 @@ import (
 	_ "time/tzdata" // the free tier's day is Pacific time, also on Windows
 
 	"github.com/chencohensolutions/news-server-core-go/gemini"
+	"github.com/chencohensolutions/news-server-core-go/narrative"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/stories"
@@ -34,7 +35,7 @@ const (
 	maxStories         = 12      // stories in one request: a long answer is where the model cuts sentences short
 	articleChars       = 600     // of each article's body
 	maxReports         = 40      // of a story's reports in the prompt, one per site first: every one but a runaway's
-	storyBodyChars     = 120_000 // of a story's bodies together (~45,000 tokens): only a story of 30+ reports is cut
+	storyBodyChars     = 120_000 // of a story's bodies together (~45,000 tokens): past it the longest are shortened first (bodies)
 	maxFootnotes       = 5       // of one sentence: more can't all state it
 )
 
@@ -64,12 +65,37 @@ type StorySummary struct {
 	HeadlineOnly []string `json:"headlineOnly,omitempty"`
 	// Written is the settings it was written with; nil for a story written before they were kept.
 	Written *Settings `json:"written,omitempty"`
+	// UpdatedAt is when the story last changed without a new version (the incremental update, on): sentences went in
+	// quietly, its footnotes changed, or its reports did. Zero for a story as its version was written.
+	UpdatedAt time.Time `json:"updatedAt,omitzero"`
+	// Full is how many articles the story had when it was last written whole, kept by the incremental updates since;
+	// 0 for a version written whole (its own articles).
+	Full int `json:"full,omitempty"`
+}
+
+// changedAt is when s last changed: when its version was written, or a later change without one.
+func (s StorySummary) changedAt() time.Time {
+	if s.UpdatedAt.After(s.WrittenAt) {
+		return s.UpdatedAt
+	}
+	return s.WrittenAt
+}
+
+// newer says s is a later text of a story than t: a later version, or the same version changed later without a
+// new one (the incremental update saves that under the story's new reports, beside the version as it was).
+func (s StorySummary) newer(t StorySummary) bool {
+	if !s.WrittenAt.Equal(t.WrittenAt) {
+		return s.WrittenAt.After(t.WrittenAt)
+	}
+	return s.UpdatedAt.After(t.UpdatedAt)
 }
 
 // Update is what a version of a story added, and when it was written.
 type Update struct {
 	At        time.Time  `json:"at"`
 	Sentences []Sentence `json:"sentences"`
+	// Kinds are what each sentence is (development, correction, …), when the version is an incremental update's.
+	Kinds []string `json:"kinds,omitempty"`
 }
 
 // maxUpdates is how many updates a story keeps: the first and the latest.
@@ -94,7 +120,8 @@ func reportsOf(s StorySummary) []string {
 }
 
 // previous is the saved summary story is a later version of: the one that shares the most reports with it, at
-// least half of its own; nil for a new story. Its ID is set (its key, for one written before IDs).
+// least half of its own, and of two that share as many the one that changed last; nil for a new story. Its ID is set
+// (its key, for one written before IDs).
 func previous(story stories.Story, saved map[string]StorySummary) *StorySummary {
 	urls := map[string]bool{}
 	for _, r := range story.Reports {
@@ -110,7 +137,7 @@ func previous(story stories.Story, saved map[string]StorySummary) *StorySummary 
 				shared++
 			}
 		}
-		if shared > 0 && 2*shared >= len(reports) && (shared > bestShared || shared == bestShared && best != nil && s.WrittenAt.After(best.WrittenAt)) {
+		if shared > 0 && 2*shared >= len(reports) && (shared > bestShared || shared == bestShared && best != nil && s.newer(*best)) {
 			s := s
 			if s.ID == "" {
 				s.ID = key
@@ -129,13 +156,13 @@ func similarStory(sentences []Sentence, saved map[string]StorySummary) *StorySum
 		if s.ID == "" {
 			s.ID = key
 		}
-		if l, ok := latest[s.ID]; !ok || s.WrittenAt.After(l.WrittenAt) {
+		if l, ok := latest[s.ID]; !ok || s.newer(l) {
 			latest[s.ID] = s
 		}
 	}
 	var best *StorySummary
 	for _, s := range latest {
-		if (best == nil || s.WrittenAt.After(best.WrittenAt)) && Similar(sentences, s.Sentences) {
+		if (best == nil || s.newer(*best)) && Similar(sentences, s.Sentences) {
 			s := s
 			best = &s
 		}
@@ -163,7 +190,7 @@ func Latest(story stories.Story, written map[string]StorySummary) (latest StoryS
 		if s.ID == "" {
 			s.ID = key
 		}
-		if s.ID == latest.ID && s.WrittenAt.After(latest.WrittenAt) {
+		if s.ID == latest.ID && s.newer(latest) {
 			latest = s
 		}
 	}
@@ -205,6 +232,15 @@ type Writer struct {
 	MaxRequests int
 	// ThreadsEvery is how often stories are linked into threads; 0 is DefaultThreadsEvery, below 0 never.
 	ThreadsEvery time.Duration
+	// Narratives keeps the stories' and threads' vectors, so a linking lists only the threads near the new stories;
+	// nil lists every thread.
+	Narratives *narrative.Index
+	// ThreadCandidates is how many of the nearest threads and earlier stories each new story brings into a linking;
+	// 0 is DefaultThreadCandidates, below 0 lists every thread.
+	ThreadCandidates int
+	// TidyEvery is how often the threads are tidied (merged, split, strays taken out); 0 is DefaultTidyEvery, below
+	// 0 never. Only with Narratives.
+	TidyEvery time.Duration
 	// Every is how often a run starts (refresh_minutes); 0 is 10 minutes. Extra requests keep the budget's share of
 	// the runs left in the day.
 	Every time.Duration
@@ -214,6 +250,8 @@ type Writer struct {
 	Log      func(format string, args ...any)
 	// Sleep waits between tries when Gemini is busy; nil waits for real.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Articles reads an article's text for the prompt; nil reads the Store's. The replay reads the archive's.
+	Articles func(ctx context.Context, url string) *scrape.Article
 
 	mu     sync.Mutex
 	status Status
@@ -331,27 +369,56 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 		return result, err
 	}
 	reserve := settings.ReserveAfter > 0 && usedToday >= settings.ReserveAfter
+	// On, the incremental update takes the place of the whole rewrite of a story that has a version (on.go).
+	on := settings.Incremental == IncrementalOn
+	if on {
+		if err := w.Store.PruneShadows(ctx, now.Add(-shadowKeep)); err != nil {
+			return result, err
+		}
+	}
 	var changed []stories.Story
+	var updates []pending
+	kept := 0
 	for _, s := range window {
 		if _, ok := saved[StoryKey(s)]; ok {
 			continue
 		}
 		prev := previous(s, written)
+		var next *pending
+		if on && prev != nil {
+			if next, err = w.route(ctx, s, prev, written, firstSeen, settings, now); err != nil {
+				return result, err
+			}
+			if next == nil {
+				// No new article: the server kept the text, with no request, whatever holds a new version.
+				kept++
+				continue
+			}
+		}
 		switch {
 		case prev == nil:
 		case reserve:
 			// Past the reserve mark only new stories are written; new versions wait for tomorrow's budget.
 			result.Held++
 			continue
-		case gap > 0 && now.Sub(prev.WrittenAt) < gap && !(settings.RewriteOnNewSite && newSite(s, prev)):
+		case gap > 0 && now.Sub(prev.changedAt()) < gap && !(settings.RewriteOnNewSite && newSite(s, prev)):
 			// A story written lately waits for its next version: the reports joining it meanwhile go in together.
+			// So does one an incremental update changed lately without a version.
 			result.Held++
+			continue
+		}
+		if next != nil && next.plan.Kind == PlanIncremental {
+			updates = append(updates, *next)
 			continue
 		}
 		changed = append(changed, s)
 	}
+	if kept > 0 {
+		w.logf("summaries: incremental: %d stories without a new article kept as they are, with their reports as they are now", kept)
+	}
 	// The most reported first.
 	sort.SliceStable(changed, func(i, j int) bool { return len(changed[i].Reports) > len(changed[j].Reports) })
+	queue(updates)
 
 	day := Day(now)
 	used, err := w.Store.GeminiRequests(ctx, day)
@@ -360,27 +427,44 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	}
 	left := orDefault(w.Budget, DefaultBudget) - used
 	// Story requests while stories wait: the first whenever a request is left, more only while the day's budget keeps
-	// two for each run left until Google's day ends.
+	// two for each run left until Google's day ends, and while the day so far has used no more than its share
+	// (fairShare): a morning's backlog doesn't spend what the evening needs. An incremental request is one of them:
+	// the stories written whole (the first versions among them) and the stories to update take the requests in turn,
+	// the whole ones first, while both wait.
 	budget := orDefault(w.Budget, DefaultBudget)
-	for sent := 0; len(changed) > 0 && sent < orDefault(w.MaxRequests, DefaultMaxRequests); sent++ {
+	for sent := 0; len(changed)+len(updates) > 0 && sent < orDefault(w.MaxRequests, DefaultMaxRequests); sent++ {
 		used, err := w.Store.GeminiRequests(ctx, day)
 		if err != nil {
 			return result, err
 		}
 		left = budget - used
-		if left < 1 || sent > 0 && left-1 <= 2*w.runsLeft(now) {
+		if left < 1 || sent > 0 && (left-1 <= 2*w.runsLeft(now) || used >= fairShare(budget, now)) {
 			break
+		}
+		if len(updates) > 0 && (len(changed) == 0 || sent%2 == 1) {
+			out, err := w.updateStories(ctx, updates, day, now, settings)
+			result.Written += out.versions
+			updates = updates[out.asked:]
+			// Sent to be written whole by its answer: in this run, when it has a request left.
+			changed = append(changed, out.whole...)
+			waiting := out.asked - out.versions - out.settled - len(out.whole)
+			if err != nil {
+				result.Waiting = len(changed) + len(updates) + waiting
+				return result, err
+			}
+			result.Waiting += waiting
+			continue
 		}
 		written, asked, err := w.writeStories(ctx, changed, day, now)
 		result.Written += written
 		changed = changed[asked:]
 		if err != nil {
-			result.Waiting = len(changed) + asked - written
+			result.Waiting = len(changed) + len(updates) + asked - written
 			return result, err
 		}
 		result.Waiting += asked - written
 	}
-	result.Waiting += len(changed)
+	result.Waiting += len(changed) + len(updates)
 	if used, err = w.Store.GeminiRequests(ctx, day); err != nil {
 		return result, err
 	}
@@ -389,6 +473,18 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	}
 	if err := w.linkThreadsIfDue(ctx, day, now); err != nil {
 		w.logf("threads: %v", err)
+	}
+	if err := w.tidyIfDue(ctx, day, now); err != nil {
+		w.logf("threads tidy-up: %v", err)
+	}
+	// In shadow, the incremental update of the stories that got a new version, in the requests the day has to
+	// spare. What it does never reaches the stories above, and its failure is only logged.
+	switch settings.Incremental {
+	case "", IncrementalOff, IncrementalOn:
+	case IncrementalShadow:
+		w.shadowSafely(ctx, window, firstSeen, day, now, settings)
+	default:
+		w.logf("summaries: incremental %q is not a mode (off, shadow or on): off", settings.Incremental)
 	}
 	keep := map[string]bool{}
 	for _, s := range found {
@@ -415,6 +511,20 @@ func newSite(s stories.Story, prev *StorySummary) bool {
 		}
 	}
 	return false
+}
+
+// fairShare is how many of the day's budget requests may be used by now: the budget spread evenly over the free
+// tier's day (midnight to midnight Pacific time), plus two hours' share for a backlog.
+func fairShare(budget int, now time.Time) int {
+	pacific, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		pacific = time.UTC
+	}
+	local := now.In(pacific)
+	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, pacific)
+	end := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, pacific)
+	share := float64(budget) * float64(now.Sub(start)) / float64(end.Sub(start))
+	return int(share) + budget/12
 }
 
 // runsLeft is how many runs start before the free tier's day ends (midnight Pacific time).
@@ -446,36 +556,47 @@ func newestSeen(s stories.Story, firstSeen map[string]time.Time) time.Time {
 // send counts the request against the day's budget, then sends it; when Gemini is busy it waits and tries again,
 // each try counted.
 func (w *Writer) send(ctx context.Context, day string, req gemini.Request) (json.RawMessage, error) {
+	// A busy Gemini (503) isn't tried again in the run: each try costs a request of the quota, and while Google is
+	// busy it mostly stays busy for a while. The next run tries again.
+	answer, _, err := w.generate(ctx, day, req, 0)
+	if err != nil {
+		return nil, err
+	}
+	return answer, nil
+}
+
+// generate is send with the answer's usage, trying a busy Gemini again up to retries times. With an error it
+// returns what Gemini answered all the same (the part of a cut answer), and that answer's tokens are not counted.
+func (w *Writer) generate(ctx context.Context, day string, req gemini.Request, retries int) (json.RawMessage, gemini.Usage, error) {
 	for try := 0; ; try++ {
 		if err := w.Store.CountGeminiRequest(ctx, day); err != nil {
-			return nil, err
+			return nil, gemini.Usage{}, err
 		}
 		start := time.Now()
 		answer, usage, err := w.Gemini.Generate(ctx, req)
-		if errors.Is(err, gemini.ErrUnavailable) {
-			// Busy is Google's failure, not a request of the quota. Counted first all the same: a stop mid-request
-			// errs toward the budget.
-			if err := w.Store.UncountGeminiRequest(ctx, day); err != nil {
-				return nil, err
-			}
-		}
-		if errors.Is(err, gemini.ErrUnavailable) && try < len(busyWaits) {
+		// A busy answer (503) stays counted: the free tier's daily quota counts it too (seen Nov 13, 2026: 255
+		// requests counted here when Google had counted its 500 and answered 429 for the rest of the day).
+		if errors.Is(err, gemini.ErrUnavailable) && try < min(retries, len(busyWaits)) {
 			w.logf("summaries: %v; trying again in %s", err, busyWaits[try])
 			if err := w.sleep(ctx, busyWaits[try]); err != nil {
-				return nil, err
+				return nil, gemini.Usage{}, err
 			}
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return answer, usage, err
 		}
-		if err := w.Store.CountGeminiTokens(ctx, day, store.Tokens{In: usage.PromptTokens, Cached: usage.CachedTokens, Out: usage.AnswerTokens, Thoughts: usage.ThoughtsTokens}); err != nil {
-			return nil, err
+		if err := w.countTokens(ctx, day, usage); err != nil {
+			return nil, usage, err
 		}
 		w.logf("summaries: Gemini answered in %s, %d tokens in (%d cached), %d out, %d thinking", time.Since(start).Round(time.Millisecond),
 			usage.PromptTokens, usage.CachedTokens, usage.AnswerTokens, usage.ThoughtsTokens)
-		return answer, nil
+		return answer, usage, nil
 	}
+}
+
+func (w *Writer) countTokens(ctx context.Context, day string, usage gemini.Usage) error {
+	return w.Store.CountGeminiTokens(ctx, day, store.Tokens{In: usage.PromptTokens, Cached: usage.CachedTokens, Out: usage.AnswerTokens, Thoughts: usage.ThoughtsTokens})
 }
 
 func (w *Writer) sleep(ctx context.Context, d time.Duration) error {
@@ -671,23 +792,26 @@ func (w *Writer) siteName(id string) string {
 	return id
 }
 
-// report is one article as the prompt shows it: its id, site, time, title, subtitle and its body (articleText: the
-// first bodyChars characters, without what isn't the article or what the story's earlier reports sent).
-func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSummary, bodyChars int, seen map[string]bool) string {
+// reportOf is one article as the prompt shows it: its id, site, time, title, subtitle and its body (one of bodies:
+// without what isn't the article or what the story's earlier reports sent; "" for a paywall stub or an article not
+// read). Each of notes that isn't "" follows the time on the first line (the incremental request's: whether the
+// article was published before or after the story was written).
+func (w *Writer) reportOf(ids *sources, r scrape.ArticleSummary, body string, notes ...string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%s] %s", ids.id(r.URL), w.siteName(r.SourceID))
 	if r.PublishedAt != "" {
 		fmt.Fprintf(&b, " · %s", r.PublishedAt)
+	}
+	for _, note := range notes {
+		if note != "" {
+			fmt.Fprintf(&b, " · %s", note)
+		}
 	}
 	fmt.Fprintf(&b, "\nכותרת: %s\n", oneLine(r.Title))
 	if r.Subtitle != "" {
 		fmt.Fprintf(&b, "משנה: %s\n", oneLine(r.Subtitle))
 	} else if r.Summary != "" {
 		fmt.Fprintf(&b, "תקציר: %s\n", oneLine(r.Summary))
-	}
-	body := ""
-	if article, err := w.Store.Article(ctx, r.URL); err == nil && article != nil {
-		body = articleText(article.Body, seen, bodyChars)
 	}
 	if body != "" {
 		fmt.Fprintf(&b, "גוף: %s\n", body)
@@ -698,6 +822,17 @@ func (w *Writer) report(ctx context.Context, ids *sources, r scrape.ArticleSumma
 		ids.headlineOnly[r.URL] = true
 	}
 	return b.String()
+}
+
+// article is the article read from url, or nil.
+func (w *Writer) article(ctx context.Context, url string) *scrape.Article {
+	if w.Articles != nil {
+		return w.Articles(ctx, url)
+	}
+	if article, err := w.Store.Article(ctx, url); err == nil {
+		return article
+	}
+	return nil
 }
 
 // oneLine is s on one line, with Hebrew abbreviations' quote marks as the Hebrew ones: 'צה"ל' becomes 'צה״ל' and
@@ -744,19 +879,15 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 	if err != nil {
 		return 0, 0, err
 	}
-	bodyChars := articleChars
-	if settings.FullArticles {
-		bodyChars = fullArticleChars
-	}
 	for i, s := range changed {
 		var b strings.Builder
 		seen := map[string]bool{}
 		id := fmt.Sprintf("s%d", i+1)
 		fmt.Fprintf(&b, "=== סיפור %s ===\n", id)
 		reports := shown(s)
-		each := min(bodyChars, max(articleChars, storyBodyChars/max(len(reports), 1)))
+		bodies := w.bodies(ctx, reports, bodyChars(settings), seen)
 		for _, r := range reports {
-			b.WriteString(w.report(ctx, ids, r, each, seen))
+			b.WriteString(w.reportOf(ids, r, bodies[r.URL]))
 			b.WriteString("\n")
 		}
 		prev := previous(s, saved)
@@ -834,6 +965,12 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 		prev := prevOf[storyID(a.Story)]
 		if prev != nil {
 			added = ids.sentences(a.New, own)
+			if len(added) > len(summary.Sentences) {
+				// What's new can't be more than the whole story: the story went into "new" and the sentences kept a
+				// scrap of it. The version before stays, and the story is asked again next run.
+				w.logf("summaries: %q: what's new (%d sentences) is longer than the story (%d): not saved", summary.Title, len(added), len(summary.Sentences))
+				continue
+			}
 		} else if like := similarStory(summary.Sentences, saved); like != nil {
 			// The grouping made a new story of what an earlier one already tells (a report that joined split it, or
 			// it grouped the newer reports apart): it is that story's next version, with what it says that's new.

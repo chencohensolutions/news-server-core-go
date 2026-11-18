@@ -120,3 +120,56 @@ func TestTheArchiveKeepsRowsOfOneMillisecondPastABatch(t *testing.T) {
 		t.Fatalf("%d of %d headlines restored (%d lines)", got, len(items), result.Rows["headlines"])
 	}
 }
+
+func TestTheArchiveKeepsTheIncrementalShadow(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+	db := open(t, filepath.Join(tmp, "news.db"))
+	dir := filepath.Join(tmp, "archive")
+	day1 := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	db.SaveShadow(ctx, "k1", "s1", json.RawMessage(`{"id":"s1","key":"k1","plan":"incremental","version":true}`), day1)
+	db.SaveShadow(ctx, "k2", "s1", json.RawMessage(`{"id":"s1","key":"k2","plan":"local","version":false}`), day1.Add(24*time.Hour))
+	result, err := Archive(ctx, db, dir, day1.Add(48*time.Hour))
+	if err != nil || result.Rows["story_shadow"] != 2 {
+		t.Fatalf("%v %v", result, err)
+	}
+	// By the day written, like the versions; and read back without a database, as the replay reads the archive.
+	if _, err := os.Stat(filepath.Join(dir, "story_shadow/2026-11/2026-11-11.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	if err := Read(dir, "story_shadow", day1.Add(24*time.Hour), func(row struct {
+		Key    string          `json:"key"`
+		Shadow json.RawMessage `json:"shadow"`
+	}) error {
+		keys = append(keys, row.Key+" "+string(row.Shadow))
+		return nil
+	}); err != nil || len(keys) != 1 || keys[0] != `k2 {"id":"s1","key":"k2","plan":"local","version":false}` {
+		t.Fatalf("%v %v", keys, err)
+	}
+	if last, ok := LastDay(dir, "story_shadow"); !ok || last.Format(time.DateOnly) != "2026-11-11" {
+		t.Fatalf("%v %v", last, ok)
+	}
+	restored := open(t, filepath.Join(tmp, "restored.db"))
+	if got, err := Restore(ctx, restored, dir, t.Logf); err != nil || got.Rows["story_shadow"] != 2 {
+		t.Fatalf("%v %v", got, err)
+	}
+	rows := func(db *store.Store) (out []string) {
+		db.Rows(ctx, "story_shadow", "", 0, 0, 100, func(row store.Row) error {
+			data, _ := json.Marshal(row)
+			out = append(out, string(data))
+			return nil
+		})
+		return out
+	}
+	if want, got := rows(db), rows(restored); len(got) != 2 || !reflect.DeepEqual(want, got) {
+		t.Fatalf("restored\n got %v\nwant %v", got, want)
+	}
+	// The database's own rows grow old and go; the archive's stay.
+	if err := db.PruneShadows(ctx, day1.Add(time.Hour)); err != nil || len(rows(db)) != 1 {
+		t.Fatalf("%v %v", rows(db), err)
+	}
+	if refs, err := db.ShadowRefs(ctx, day1); err != nil || len(refs) != 1 || refs[0].Key != "k2" || refs[0].ID != "s1" {
+		t.Fatalf("%+v %v", refs, err)
+	}
+}

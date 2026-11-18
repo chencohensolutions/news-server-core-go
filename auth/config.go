@@ -82,6 +82,13 @@ type AppConfig struct {
 	// Hours between linkings of the stories into threads (affairs over months), one Gemini request or a few each;
 	// 0 is 24, -1 turns threads off.
 	ThreadsHours int `json:"threads_hours"`
+	// How many of the nearest threads, and of the nearest earlier stories, each new story brings into its linking
+	// request, by the story model's vectors (narrative vectors, kept for good); 0 is 10, -1 lists every thread as
+	// before.
+	ThreadCandidates int `json:"thread_candidates"`
+	// Days between tidy-ups of the threads (merging two that are one affair, splitting one that is two, taking out
+	// stories that don't belong), one Gemini request each; 0 is 7, -1 never.
+	ThreadsTidyDays int `json:"threads_tidy_days"`
 	// Whether the server asks the home router (UPnP or NAT-PMP) to forward its port, so the phone reaches it away
 	// from home; on unless false. With public_url empty, the router's outside address goes in the enrollment link.
 	PortMapping *bool `json:"port_mapping"`

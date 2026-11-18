@@ -28,7 +28,10 @@ type fakeGemini struct {
 	requests []map[string]any
 	prompts  []string
 	status   int
-	busy     int // answer 503 this many times first
+	busy     int    // answer 503 this many times first
+	stories  string // when set, the stories answer's text in place of testdata's
+	threads  string // when set, the threads answer's text in place of testdata's
+	tidy     string // the tidy-up's answer's text
 }
 
 func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
@@ -60,6 +63,24 @@ func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
 		}
 		if strings.Contains(string(system), "group Israeli news headlines into stories") {
 			name = "grouping-answer.json"
+		}
+		f.mu.Lock()
+		answer := f.stories
+		f.mu.Unlock()
+		if name == "threads-answer.json" {
+			f.mu.Lock()
+			answer = f.threads
+			f.mu.Unlock()
+		}
+		if strings.Contains(string(system), "You tidy the threads") {
+			f.mu.Lock()
+			answer, name = f.tidy, "threads-answer.json"
+			f.mu.Unlock()
+		}
+		if answer != "" && (name == "stories-answer.json" || name == "threads-answer.json") {
+			text, _ := json.Marshal(answer)
+			fmt.Fprintf(w, `{"candidates": [{"content": {"role": "model", "parts": [{"text": %s}]}, "finishReason": "STOP"}]}`, text)
+			return
 		}
 		data, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
@@ -376,18 +397,33 @@ func TestASentenceEndsLikeOne(t *testing.T) {
 	}
 }
 
-func TestABusyGeminiIsTriedAgain(t *testing.T) {
+func TestABusyGeminiWaitsForTheNextRun(t *testing.T) {
+	// Busy: the run ends after one try, counted (Google's quota counts it), and the stories wait.
 	w, fake, found := setup(t)
 	fake.busy = 1
 	result, err := w.Run(context.Background(), found)
-	if err != nil || result.Written != 2 || fake.count() != 2 {
+	if !errors.Is(err, gemini.ErrUnavailable) || result.Written != 0 || fake.count() != 1 {
 		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
 	}
-	// Still busy after every wait: the run ends, the next one tries again.
-	w2, fake2, found2 := setup(t)
-	fake2.busy = 10
-	if _, err := w2.Run(context.Background(), found2); !errors.Is(err, gemini.ErrUnavailable) || fake2.count() != 3 {
-		t.Fatalf("%v, %d requests", err, fake2.count())
+	if used, err := w.Store.GeminiRequests(context.Background(), Day(w.now())); err != nil || used != 1 {
+		t.Fatalf("%d requests counted, %v; want 1", used, err)
+	}
+	// The next run writes them.
+	if result, err := w.Run(context.Background(), found); err != nil || result.Written != 2 || fake.count() != 2 {
+		t.Fatalf("%+v %v, %d requests", result, err, fake.count())
+	}
+}
+
+func TestTheDaysBudgetIsSpreadOverTheDay(t *testing.T) {
+	pacific, _ := time.LoadLocation("America/Los_Angeles")
+	midnight := time.Date(2026, 11, 13, 0, 0, 0, 0, pacific)
+	for _, c := range []struct {
+		at   time.Duration
+		want int
+	}{{0, 25}, {6 * time.Hour, 100}, {12 * time.Hour, 175}, {23*time.Hour + 59*time.Minute, 324}} {
+		if got := fairShare(300, midnight.Add(c.at)); got != c.want {
+			t.Errorf("%s after midnight: %d, want %d", c.at, got, c.want)
+		}
 	}
 }
 
@@ -451,6 +487,16 @@ func TestARunSendsMoreRequestsWhileTheBudgetHasRoom(t *testing.T) {
 	w2.Budget = 146
 	if _, err := w2.Run(ctx, thirty(w2)); err != nil || fake2.count() != 1 {
 		t.Fatalf("%v, %d requests", err, fake2.count())
+	}
+	// Past the day's fair share by noon (200 of 400 + 33): one story request, the rest wait for the evening's share.
+	w3, fake3, _ := setup(t)
+	for range 240 {
+		if err := w3.Store.CountGeminiRequest(ctx, Day(now)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := w3.Run(ctx, thirty(w3)); err != nil || fake3.count() != 1 {
+		t.Fatalf("%v, %d requests", err, fake3.count())
 	}
 }
 
@@ -596,3 +642,49 @@ func TestGeminiGroupsTheNewHeadlinesOnce(t *testing.T) {
 
 // rainBody makes the test article's body longer than a paywall stub.
 var rainBody = strings.TrimSpace(strings.Repeat("המשטרה ביקשה מהנהגים להימנע מנסיעה באזור עד שהמים ייסוגו. ", 4))
+
+// A rewrite whose "new" is longer than its sentences put the story into "new": it isn't saved, and the version before
+// stays.
+func TestARewriteWithMoreNewThanStoryIsNotSaved(t *testing.T) {
+	w, fake, found := setup(t)
+	ctx := context.Background()
+	if _, err := w.Run(ctx, found); err != nil {
+		t.Fatal(err)
+	}
+	third := scrape.ArticleSummary{SourceID: "siteg", URL: "https://siteg/rain", Title: "גשם"}
+	grown := stories.Story{Reports: append(append([]scrape.ArticleSummary{}, found[0].Reports...), third)}
+	fake.mu.Lock()
+	fake.stories = `{"stories": [{"story": "s1", "unrelated": [], "title": "גשם בגליל",
+		"sentences": [{"text": "גשם ירד גם בגליל.", "sources": ["a3"]}], "contradictions": [],
+		"new": [{"text": "גשם כבד ירד הבוקר בצפון.", "sources": ["a1", "a2"]}, {"text": "שני כבישים נסגרו.", "sources": ["a2"]},
+			{"text": "גשם ירד גם בגליל.", "sources": ["a3"]}]}]}`
+	fake.mu.Unlock()
+	if _, err := w.Run(ctx, []stories.Story{grown}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := Summaries(ctx, w.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, current, ok := Latest(grown, saved)
+	if !ok || current || latest.Title != "גשם כבד בצפון" || len(latest.Sentences) < 2 {
+		t.Fatalf("%+v current %v ok %v", latest, current, ok)
+	}
+}
+
+func TestTheStoriesSchemaAsksForTheSentencesBeforeWhatsNew(t *testing.T) {
+	var schema any
+	if err := json.Unmarshal(storiesSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	text := string(storiesSchema)
+	order := []string{`"story"`, `"unrelated"`, `"title"`, `"sentences"`, `"contradictions"`, `"new"`}
+	at := -1
+	for _, key := range order {
+		i := strings.Index(text, key)
+		if i <= at {
+			t.Fatalf("%s out of order in %s", key, text)
+		}
+		at = i
+	}
+}

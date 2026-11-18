@@ -134,13 +134,25 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 	}
 	more = len(waiting) > threadStories
 	waiting = waiting[:min(len(waiting), threadStories)]
-	threads, err := w.Store.Threads(ctx, threadsShown)
+	threads, older, all, err := w.candidates(ctx, waiting)
 	if err != nil {
-		return false, err
+		// The vectors are a shortlist: without them, every thread, as before.
+		w.logf("threads: no shortlist by the narrative vectors: %v; every thread is listed", err)
+		all = true
+	}
+	if all {
+		older = nil
+		if threads, err = w.Store.Threads(ctx, threadsShown); err != nil {
+			return false, err
+		}
 	}
 	var prompt strings.Builder
 	threadOf := map[string]store.Thread{}
-	prompt.WriteString("=== חוטים קיימים ===\n")
+	if all {
+		prompt.WriteString("=== חוטים קיימים ===\n")
+	} else {
+		prompt.WriteString("=== חוטים קיימים (הקרובים לסיפורים החדשים) ===\n")
+	}
 	if len(threads) == 0 {
 		prompt.WriteString("(אין עדיין)\n")
 	}
@@ -161,6 +173,22 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 		storyOf[ref] = r
 		fmt.Fprintf(&prompt, "[%s] %s · %s\n", ref, israelDate(r.FirstWritten), oneLine(s.Title))
 		for _, sentence := range s.Sentences[:min(len(s.Sentences), 3)] {
+			fmt.Fprintf(&prompt, "- %s\n", oneLine(sentence.Text))
+		}
+	}
+	olderOf := map[string]store.StoryRecord{}
+	if len(older) > 0 {
+		prompt.WriteString("\n=== סיפורים קודמים שאינם בחוט ===\n")
+	}
+	for i, r := range older {
+		var s StorySummary
+		if err := json.Unmarshal(r.Summary, &s); err != nil {
+			continue
+		}
+		ref := fmt.Sprintf("o%d", i+1)
+		olderOf[ref] = r
+		fmt.Fprintf(&prompt, "[%s] %s · %s\n", ref, israelDate(r.FirstWritten), oneLine(s.Title))
+		for _, sentence := range s.Sentences[:min(len(s.Sentences), 1)] {
 			fmt.Fprintf(&prompt, "- %s\n", oneLine(sentence.Text))
 		}
 	}
@@ -226,9 +254,17 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 	}
 	// Each story Gemini decided on: its threads, existing by id or new by name; the ones it left out wait.
 	decided := map[string]bool{}
+	type join struct {
+		r       store.StoryRecord
+		threads []string
+	}
+	var joins []join
 	for _, d := range answer.Stories {
 		r, ok := storyOf[strings.TrimSpace(d.Story)]
 		if !ok {
+			if r, ok := olderOf[strings.TrimSpace(d.Story)]; ok {
+				joins = append(joins, join{r, d.Threads})
+			}
 			continue
 		}
 		decided[r.ID] = true
@@ -242,6 +278,31 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 				placed[r.ID] = append(placed[r.ID], t.ID)
 				touch(t, r)
 			}
+		}
+	}
+	// An earlier story joins only a thread a new story is in: the new story is its next chapter.
+	inNew := map[string]bool{}
+	for _, ids := range placed {
+		for _, id := range ids {
+			inNew[id] = true
+		}
+	}
+	var rejoins []join
+	for _, j := range joins {
+		var keep []string
+		for _, ref := range j.threads {
+			ref = strings.TrimSpace(ref)
+			t, ok := threadOf[ref]
+			if !ok {
+				t, ok = fresh[ref]
+			}
+			if ok && inNew[t.ID] && !contains(keep, t.ID) {
+				keep = append(keep, t.ID)
+				touch(t, j.r)
+			}
+		}
+		if len(keep) > 0 {
+			rejoins = append(rejoins, join{j.r, keep})
 		}
 	}
 	created := 0
@@ -286,6 +347,11 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 			}
 		}
 	}
+	for _, j := range rejoins {
+		if err := w.Store.LinkStory(ctx, j.r.ID, j.threads); err != nil {
+			return false, err
+		}
+	}
 	linked := 0
 	for _, r := range storyOf {
 		if !decided[r.ID] {
@@ -298,7 +364,8 @@ func (w *Writer) linkThreads(ctx context.Context, day string, now time.Time) (mo
 			linked++
 		}
 	}
-	w.logf("threads: %d new stories, %d decided, %d in threads; %d threads new, %d updated; %d related", len(storyOf), len(decided), linked, created, len(touched)-created, related)
+	w.logf("threads: %d new stories, %d decided, %d in threads; %d earlier joined; %d threads new, %d updated; %d related; %d threads listed",
+		len(storyOf), len(decided), linked, len(rejoins), created, len(touched)-created, related, len(threads))
 	if len(decided) == 0 {
 		// Nothing decided: asking again now would get the same.
 		return false, nil
