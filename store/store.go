@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chencohensolutions/news-server-core-go/scrape"
@@ -148,10 +149,24 @@ CREATE TABLE IF NOT EXISTS user_reads (
 	PRIMARY KEY (user, url)
 );
 CREATE INDEX IF NOT EXISTS user_reads_at ON user_reads (user, read_at);
+CREATE TABLE IF NOT EXISTS narratives (
+	rowid INTEGER PRIMARY KEY,   -- its vector's rowid in narrative_vec_<dims> (narratives.go)
+	space TEXT NOT NULL,         -- the model and what was embedded, e.g. "bge-m3/narrative"
+	kind TEXT NOT NULL,          -- "story" or "thread"
+	ref TEXT NOT NULL,           -- the story's or thread's id
+	at INTEGER NOT NULL,         -- the story's first time, the thread's latest story's; Unix milliseconds
+	hash TEXT NOT NULL,          -- what the vector was made from
+	dims INTEGER NOT NULL,
+	UNIQUE (space, kind, ref)
+);
 `
 
 // Store is the database. Safe for concurrent use.
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+	// vecTables are the narrative vector tables known to exist, by vector size.
+	vecTables sync.Map
+}
 
 // Open opens (creating if needed) the database at path.
 func Open(path string) (*Store, error) {

@@ -42,6 +42,8 @@ const usage = `usage:
                                [-cases file] [-dry]
                                    replay the archive's rewrites through the incremental update and report; -cases
                                    writes every step with what was sent and answered, to read (docs/incremental.md)
+  news-server narratives           embed every kept story and thread for the thread linking's shortlist now (the server
+                                   does it before each linking), and measure the shortlist on the threads linked so far
   news-server archive              bring the archive folder (archive_dir) up to date now; the server does it after each read
   news-server restore              make a new database_file from the archive folder (after installing from scratch)
 
@@ -91,7 +93,8 @@ func Main() {
 		return
 	}
 	local := map[string]func(auth.AppConfig, io.Writer) error{"refresh": refreshOnce, "discovery": func(c auth.AppConfig, _ io.Writer) error { return discoveryCommand(c) }, "models": downloadModels, "stories": printStories, "summarize": summarizeCommand,
-		"eval-stories": evalStories, "eval-gemini-grouping": evalGeminiGrouping, "archive": archiveCommand, "restore": restoreCommand}
+		"eval-stories": evalStories, "eval-gemini-grouping": evalGeminiGrouping, "archive": archiveCommand, "restore": restoreCommand,
+		"narratives": narrativesCommand}
 	if run, ok := local[os.Args[1]]; ok && len(os.Args) == 2 {
 		if err := run(config, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)

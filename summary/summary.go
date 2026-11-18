@@ -19,6 +19,7 @@ import (
 	_ "time/tzdata" // the free tier's day is Pacific time, also on Windows
 
 	"github.com/chencohensolutions/news-server-core-go/gemini"
+	"github.com/chencohensolutions/news-server-core-go/narrative"
 	"github.com/chencohensolutions/news-server-core-go/scrape"
 	"github.com/chencohensolutions/news-server-core-go/store"
 	"github.com/chencohensolutions/news-server-core-go/stories"
@@ -231,6 +232,12 @@ type Writer struct {
 	MaxRequests int
 	// ThreadsEvery is how often stories are linked into threads; 0 is DefaultThreadsEvery, below 0 never.
 	ThreadsEvery time.Duration
+	// Narratives keeps the stories' and threads' vectors, so a linking lists only the threads near the new stories;
+	// nil lists every thread.
+	Narratives *narrative.Index
+	// ThreadCandidates is how many of the nearest threads and earlier stories each new story brings into a linking;
+	// 0 is DefaultThreadCandidates, below 0 lists every thread.
+	ThreadCandidates int
 	// Every is how often a run starts (refresh_minutes); 0 is 10 minutes. Extra requests keep the budget's share of
 	// the runs left in the day.
 	Every time.Duration

@@ -89,6 +89,7 @@ Key files:
 | Story clustering | [stories/](../stories/), eval in [stories/eval.go](../stories/eval.go) |
 | Summaries, threads, prompts | [summary/](../summary/), [summary/prompts.go](../summary/prompts.go), [summary/summary_test.go](../summary/summary_test.go) |
 | Incremental story updates: rules, shadow, on, replay | [incremental.md](incremental.md), [summary/incremental.go](../summary/incremental.go), [summary/shadow.go](../summary/shadow.go), [summary/on.go](../summary/on.go), [summary/replay.go](../summary/replay.go), tests beside them |
+| Narrative vectors and the threads' shortlist | [narratives.md](narratives.md), [narrative/](../narrative/), [store/narratives.go](../store/narratives.go), [summary/narratives.go](../summary/narratives.go) |
 | Gemini client | [gemini/gemini.go](../gemini/gemini.go) |
 | Gemini grouping eval | [evalgemini.go](../evalgemini.go) |
 | GraphQL schema | [graph/schema/](../graph/schema/) |
@@ -150,6 +151,13 @@ months. Grouping by Gemini instead of the embedding model is a setting. The app 
 (`setSummarySettings`, admins only). An incremental update of a story, from its version before and its new articles
 only, runs in shadow beside the rewrite and is replayed on the archive ([incremental.md](incremental.md)). Turned on
 (`news-server incremental on`), it is how a story that has a version gets its next one, in place of the rewrite.
+
+Narrative vectors (`narrative/`, [narratives.md](narratives.md)): every kept story gets a vector of its title and first
+sentences, by the story model, and every thread one from its stories' vectors, the recent ones weighing more; they
+are kept for good in news.db, searched with sqlite-vec (built into modernc's SQLite). A linking lists only the threads
+near each new story, the threads of the earlier stories near it, and the latest updated ones, in place of every
+thread, and the earlier stories in no thread near a new one, so a story that comes back after the grouping's days
+starts a thread with its first chapter. `news-server narratives` embeds the archive and measures the shortlist.
 
 ## Related repositories
 

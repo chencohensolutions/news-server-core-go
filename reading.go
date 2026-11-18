@@ -136,6 +136,7 @@ func startReading(config auth.AppConfig, found []sites.Source) (*store.Store, *s
 		} else {
 			job.summaries = true
 			job.byGemini = writer.Group
+			writer.Narratives = job.narratives()
 			summaries = writer
 			log.Printf("Summarizing stories with %s, at most %d requests a day", orDefault(config.GeminiModel, gemini.DefaultModel), orDefault(config.SummaryBudget, summary.DefaultBudget))
 		}

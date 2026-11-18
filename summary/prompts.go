@@ -106,8 +106,9 @@ const sentenceSchemaJSON = `{"type": "object", "properties": {"text": {"type": "
 
 const threadsSystem = `You keep the threads of a personal newspaper from Israeli news sites: affairs that run over weeks, months
 or years, such as a war, a police investigation, a trial, coalition talks, a strike, a scandal or a reform. The input
-lists the existing threads (id, name, how many stories and when, and the story so far), then the new stories (id,
-date, title and main facts).
+lists the existing threads (id, name, how many stories and when, and the story so far): every thread, or only the
+ones closest to the new stories and the latest ones; then the new stories (id, date, title and main facts); and
+sometimes earlier stories that are in no thread yet (ids o1, o2...), the ones closest to the new stories.
 
 Answer:
 - "stories": every new story, each with its id and its "threads": the ids of the existing threads it continues and
@@ -129,6 +130,9 @@ or a statement about an affair belongs to it. Don't put a story in an affair it 
 dispute is not the Iran war. Only a clearly one-time event
 with nothing before or after it (a road accident, a sports result, a celebrity item) is left out. A summary is 1 to 3 Hebrew
 sentences, facts only, the latest developments last; the first time a thread is named it says what the affair is.
+An earlier story (oN) is there for a new story that continues it, often weeks later: put both in the
+same thread, a new one named for the affair, by listing the earlier story in "stories" too with that thread. Leave an
+earlier story out when no new story continues its affair; it never goes in a thread without a new story.
 Use only ids from the input.`
 
 var threadsSchema = map[string]any{
