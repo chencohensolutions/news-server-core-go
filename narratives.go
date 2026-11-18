@@ -37,7 +37,48 @@ func narrativesCommand(config auth.AppConfig, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(out, "Narrative vectors (%s) up to date in %s\n\n", ix.Space, time.Since(start).Round(time.Millisecond))
-	return evalNarratives(db, ix, out)
+	if err := evalNarratives(db, ix, out); err != nil {
+		return err
+	}
+	return printTidyCandidates(w, db, out)
+}
+
+// printTidyCandidates prints what the weekly tidy-up would ask Gemini about now (nothing is asked or changed).
+func printTidyCandidates(w *summary.Writer, db *store.Store, out io.Writer) error {
+	ctx := context.Background()
+	result, err := w.Tidy(ctx, "", true)
+	if err != nil {
+		return err
+	}
+	c := result.Candidates
+	name := func(id string) string {
+		if t, err := db.ThreadByID(ctx, id); err == nil && t != nil {
+			return fmt.Sprintf("%s (%d)", t.Name, t.Stories)
+		}
+		return id
+	}
+	fmt.Fprintf(out, "\nThe tidy-up's candidates now: %d merges, %d splits, %d strays\n", len(c.Merges), len(c.Splits), len(c.Strays))
+	for _, m := range c.Merges {
+		fmt.Fprintf(out, "merge? %.3f, %d shared: %s | %s\n", m.Similarity, m.Shared, name(m.A), name(m.B))
+	}
+	for _, s := range c.Splits {
+		sizes := make([]int, len(s.Groups))
+		for i, g := range s.Groups {
+			sizes[i] = len(g)
+		}
+		fmt.Fprintf(out, "split? %s into %v\n", name(s.Thread), sizes)
+	}
+	for _, s := range c.Strays {
+		title := s.Story
+		if r, err := db.StoryRecord(ctx, s.Story); err == nil && r != nil {
+			var sum summary.StorySummary
+			if json.Unmarshal(r.Summary, &sum) == nil {
+				title = sum.Title
+			}
+		}
+		fmt.Fprintf(out, "stray? %.3f: %s in %s\n", s.Similarity, title, name(s.Thread))
+	}
+	return nil
 }
 
 // evalNarratives measures the shortlist on the threads Gemini linked so far (narrative.Evaluate).

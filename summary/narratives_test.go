@@ -119,3 +119,70 @@ func TestWithoutCandidatesEveryThreadIsListed(t *testing.T) {
 		t.Fatalf("shortlisted:\n%s", p)
 	}
 }
+
+func TestTheWeeklyTidyUpMergesThreadsAndTakesOutStrays(t *testing.T) {
+	w, fake, _ := setup(t)
+	ctx := context.Background()
+	w.Narratives = narrative.New(w.Store, meaningEmbedder{}, "m")
+	record := func(id, title string, at time.Time, thread string) {
+		t.Helper()
+		data, _ := json.Marshal(StorySummary{ID: id, Title: title})
+		if err := w.Store.SaveStoryRecord(ctx, id, data, at); err != nil {
+			t.Fatal(err)
+		}
+		if th, _ := w.Store.ThreadByID(ctx, thread); th == nil {
+			if err := w.Store.SaveThread(ctx, store.Thread{ID: thread, Name: "חוט " + thread, Summary: "עד כה", StartedAt: at, UpdatedAt: at}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := w.Store.LinkStory(ctx, id, []string{thread}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	day := 24 * time.Hour
+	// Two rain threads, one of them bigger; and a rain story in the budget thread.
+	record("r1", "גשם בצפון", now.Add(-30*day), "rain")
+	record("r2", "גשם בדרום", now.Add(-20*day), "rain")
+	record("r3", "שוב גשם", now.Add(-2*day), "rain2")
+	for i := range 4 {
+		record(fmt.Sprintf("b%d", i), "התקציב", now.Add(-time.Duration(10+i)*day), "budget")
+	}
+	record("stray", "גשם בירושלים", now.Add(-day), "budget")
+	fake.tidy = mustJSON(map[string]any{
+		"merges": []any{map[string]any{"candidate": "m1", "same": true, "name": "גשמי החורף", "summary": "גשם ירד בכל הארץ."}},
+		"splits": []any{},
+		"strays": []any{map[string]any{"candidate": "x1", "belongs": false}},
+	})
+	if err := w.tidyIfDue(ctx, Day(now), now); err != nil {
+		t.Fatal(err)
+	}
+	prompt := fake.prompts[len(fake.prompts)-1]
+	if !strings.Contains(prompt, "{m1}") || !strings.Contains(prompt, "{x1}") || !strings.Contains(prompt, "גשם בירושלים") {
+		t.Fatalf("prompt:\n%s", prompt)
+	}
+	// The bigger thread keeps its id and takes the other's stories; the other's id finds it.
+	merged, err := w.Store.ThreadByID(ctx, "rain2")
+	if err != nil || merged == nil || merged.ID != "rain" || merged.Name != "גשמי החורף" || merged.Stories != 3 ||
+		!merged.StartedAt.Equal(now.Add(-30*day)) || !merged.UpdatedAt.Equal(now.Add(-2*day)) {
+		t.Fatalf("merged %+v, %v", merged, err)
+	}
+	if all, _ := w.Store.Threads(ctx, 10); len(all) != 2 {
+		t.Fatalf("threads %+v", all)
+	}
+	if ths, _ := w.Store.StoryThreads(ctx, "stray"); len(ths) != 0 {
+		t.Fatalf("stray still in %+v", ths)
+	}
+	budget, _ := w.Store.ThreadByID(ctx, "budget")
+	if budget.Stories != 4 || !budget.UpdatedAt.Equal(now.Add(-10*day)) {
+		t.Fatalf("budget %+v", budget)
+	}
+	// The merged-away thread's vector is gone.
+	if v, _ := w.Narratives.Vector(ctx, store.KindThread, "rain2"); v != nil {
+		t.Fatal("rain2 kept its vector")
+	}
+	// Not again within the week.
+	n := fake.count()
+	if err := w.tidyIfDue(ctx, Day(now), now.Add(3*day)); err != nil || fake.count() != n {
+		t.Fatalf("%v, %d requests", err, fake.count())
+	}
+}

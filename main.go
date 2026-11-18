@@ -43,7 +43,8 @@ const usage = `usage:
                                    replay the archive's rewrites through the incremental update and report; -cases
                                    writes every step with what was sent and answered, to read (docs/incremental.md)
   news-server narratives           embed every kept story and thread for the thread linking's shortlist now (the server
-                                   does it before each linking), and measure the shortlist on the threads linked so far
+                                   does it before each linking), measure the shortlist on the threads linked so far, and
+                                   list what the weekly tidy-up (merge, split, strays) would ask Gemini about now
   news-server archive              bring the archive folder (archive_dir) up to date now; the server does it after each read
   news-server restore              make a new database_file from the archive folder (after installing from scratch)
 

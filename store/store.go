@@ -149,6 +149,10 @@ CREATE TABLE IF NOT EXISTS user_reads (
 	PRIMARY KEY (user, url)
 );
 CREATE INDEX IF NOT EXISTS user_reads_at ON user_reads (user, read_at);
+CREATE TABLE IF NOT EXISTS thread_aliases (
+	alias TEXT PRIMARY KEY,      -- a thread merged into another by the weekly tidy-up
+	thread TEXT NOT NULL         -- the thread it is part of now
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS narratives (
 	rowid INTEGER PRIMARY KEY,   -- its vector's rowid in narrative_vec_<dims> (narratives.go)
 	space TEXT NOT NULL,         -- the model and what was embedded, e.g. "bge-m3/narrative"
@@ -1015,15 +1019,22 @@ func (s *Store) Threads(ctx context.Context, limit int) ([]Thread, error) {
 	return scanThreads(rows)
 }
 
-// ThreadByID is thread id, or nil.
+// ThreadByID is thread id, or the thread it was merged into, or nil.
 func (s *Store) ThreadByID(ctx context.Context, id string) (*Thread, error) {
 	rows, err := s.db.QueryContext(ctx, threadQuery+` WHERE t.id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
 	out, err := scanThreads(rows)
-	if err != nil || len(out) == 0 {
+	if err != nil {
 		return nil, err
+	}
+	if len(out) == 0 {
+		alias, err := s.ThreadAlias(ctx, id)
+		if err != nil || alias == "" || alias == id {
+			return nil, err
+		}
+		return s.ThreadByID(ctx, alias)
 	}
 	return &out[0], nil
 }

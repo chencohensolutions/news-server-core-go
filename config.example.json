@@ -29,6 +29,7 @@
   "summary_requests_per_run": 4,
   "threads_hours": 24,
   "thread_candidates": 10,
+  "threads_tidy_days": 7,
   "port_mapping": true,
   "discovery": true
 }

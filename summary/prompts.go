@@ -135,6 +135,52 @@ same thread, a new one named for the affair, by listing the earlier story in "st
 earlier story out when no new story continues its affair; it never goes in a thread without a new story.
 Use only ids from the input.`
 
+const tidySystem = `You tidy the threads of a personal newspaper from Israeli news sites: affairs that run over weeks, months
+or years (a war, a police investigation, a trial, coalition talks, a strike, a scandal). A search found what may be
+wrong with them; decide on each candidate, by its id in braces.
+- "merges": two threads that may be one affair (ids like m1a and m1b, with their latest stories). "same" is true only
+  when they are the same affair under two names, not two related affairs (a war and the strike during it stay
+  apart). When same, the merged thread's short Hebrew "name" (2 to 5 words) and its "summary" so far.
+- "splits": a thread whose stories fall into groups (ids like s1g1, s1g2). "separate" is true only when the groups are
+  different affairs that were put together by mistake, not stages of one affair. When separate, every group's
+  "group" id, short Hebrew "name" and "summary".
+- "strays": a story that may not belong to its thread. "belongs" is false only when the story is clearly not part of
+  that affair.
+Answer every candidate. When in doubt, leave things as they are. A summary is 1 to 3 Hebrew sentences, facts only,
+the latest developments last.`
+
+// tidySchema is written out so its keys go to Gemini in this order (see incrementalSchema): each decision before
+// the names it brings.
+var tidySchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "merges": {"type": "array", "items": {
+      "type": "object",
+      "properties": {"candidate": {"type": "string"}, "same": {"type": "boolean"}, "name": {"type": "string"}, "summary": {"type": "string"}},
+      "required": ["candidate", "same"]
+    }},
+    "splits": {"type": "array", "items": {
+      "type": "object",
+      "properties": {
+        "candidate": {"type": "string"},
+        "separate": {"type": "boolean"},
+        "parts": {"type": "array", "items": {
+          "type": "object",
+          "properties": {"group": {"type": "string"}, "name": {"type": "string"}, "summary": {"type": "string"}},
+          "required": ["group", "name", "summary"]
+        }}
+      },
+      "required": ["candidate", "separate"]
+    }},
+    "strays": {"type": "array", "items": {
+      "type": "object",
+      "properties": {"candidate": {"type": "string"}, "belongs": {"type": "boolean"}},
+      "required": ["candidate", "belongs"]
+    }}
+  },
+  "required": ["merges", "splits", "strays"]
+}`)
+
 var threadsSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{

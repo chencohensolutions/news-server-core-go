@@ -238,6 +238,9 @@ type Writer struct {
 	// ThreadCandidates is how many of the nearest threads and earlier stories each new story brings into a linking;
 	// 0 is DefaultThreadCandidates, below 0 lists every thread.
 	ThreadCandidates int
+	// TidyEvery is how often the threads are tidied (merged, split, strays taken out); 0 is DefaultTidyEvery, below
+	// 0 never. Only with Narratives.
+	TidyEvery time.Duration
 	// Every is how often a run starts (refresh_minutes); 0 is 10 minutes. Extra requests keep the budget's share of
 	// the runs left in the day.
 	Every time.Duration
@@ -470,6 +473,9 @@ func (w *Writer) Run(ctx context.Context, found []stories.Story) (result Result,
 	}
 	if err := w.linkThreadsIfDue(ctx, day, now); err != nil {
 		w.logf("threads: %v", err)
+	}
+	if err := w.tidyIfDue(ctx, day, now); err != nil {
+		w.logf("threads tidy-up: %v", err)
 	}
 	// In shadow, the incremental update of the stories that got a new version, in the requests the day has to
 	// spare. What it does never reaches the stories above, and its failure is only logged.

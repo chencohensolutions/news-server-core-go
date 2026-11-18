@@ -36,6 +36,7 @@ func openSummaries(config auth.AppConfig, db *store.Store, found []sites.Source)
 		MaxRequests:      config.SummaryRequestsPerRun,
 		ThreadsEvery:     time.Duration(config.ThreadsHours) * time.Hour,
 		ThreadCandidates: config.ThreadCandidates,
+		TidyEvery:        time.Duration(config.ThreadsTidyDays) * 24 * time.Hour,
 		Every:            time.Duration(config.RefreshMinutes) * time.Minute,
 		SiteName:         func(id string) string { return names[id] },
 	}, nil

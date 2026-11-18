@@ -31,6 +31,7 @@ type fakeGemini struct {
 	busy     int    // answer 503 this many times first
 	stories  string // when set, the stories answer's text in place of testdata's
 	threads  string // when set, the threads answer's text in place of testdata's
+	tidy     string // the tidy-up's answer's text
 }
 
 func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
@@ -69,6 +70,11 @@ func (f *fakeGemini) serve(t *testing.T) *gemini.Client {
 		if name == "threads-answer.json" {
 			f.mu.Lock()
 			answer = f.threads
+			f.mu.Unlock()
+		}
+		if strings.Contains(string(system), "You tidy the threads") {
+			f.mu.Lock()
+			answer, name = f.tidy, "threads-answer.json"
 			f.mu.Unlock()
 		}
 		if answer != "" && (name == "stories-answer.json" || name == "threads-answer.json") {
