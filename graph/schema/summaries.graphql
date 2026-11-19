@@ -71,7 +71,10 @@ extend type Story {
 type StorySummary {
   title: String!
   sentences: [Sentence!]!
-  "Where sites state different facts about the story, one sentence each saying which says what; usually none."
+  """
+  Where sites state things about the story that can't both be true (a value or an account), one each: its topic and
+  sides, and a sentence saying which says what, for apps that show only that; usually none.
+  """
   contradictions: [Sentence!]!
   "URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article."
   unrelated: [String!]!
@@ -160,6 +163,20 @@ type StoryUpdate {
 type Sentence {
   text: String!
   "The articles the sentence comes from, at least one."
+  footnotes: [Footnote!]!
+  """
+  A contradiction's fact in dispute, in a few words ("מספר הפצועים", "סיבת האירוע"); null for other sentences and
+  for a contradiction written before the server kept it. Show [sides] under it instead of [text] when it has them.
+  """
+  topic: String
+  "A contradiction's versions of the fact, each with the articles that say it (two or more); empty otherwise."
+  sides: [ContradictionSide!]!
+}
+
+"One version of a contradiction's fact and the articles that state it."
+type ContradictionSide {
+  "A few words or a number: \"8\", \"פיגוע דריסה\". Never a site's name."
+  value: String!
   footnotes: [Footnote!]!
 }
 

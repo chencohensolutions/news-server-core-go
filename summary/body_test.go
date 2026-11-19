@@ -236,7 +236,7 @@ func TestAnIncrementalRequestSendsNewArticlesWholeAndTakesFewerStories(t *testin
 		articles[old.URL] = &scrape.Article{Body: longBody("ישנה "+name, 9000)}
 		articles[added.URL] = &scrape.Article{Body: longBody("חדשה "+name, 9000)}
 		prev := StorySummary{ID: name, Title: "סיפור " + name, WrittenAt: now.Add(-time.Hour), Reports: []string{old.URL},
-			Sentences: []Sentence{{"משפט ראשון בסיפור.", []string{old.URL}}, {"משפט שני בסיפור.", []string{old.URL}}}}
+			Sentences: []Sentence{{Text: "משפט ראשון בסיפור.", Sources: []string{old.URL}}, {Text: "משפט שני בסיפור.", Sources: []string{old.URL}}}}
 		step := Step{Story: stories.Story{Reports: []scrape.ArticleSummary{old, added}}, Prev: prev}
 		steps = append(steps, step)
 		plans = append(plans, plan(step, DefaultSettings, false))

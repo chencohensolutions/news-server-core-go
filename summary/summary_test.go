@@ -182,8 +182,9 @@ func TestChangedStoriesAreSummarizedWithTheirSources(t *testing.T) {
 	}
 	rain := saved[StoryKey(found[0])]
 	want := StorySummary{Title: "גשם כבד בצפון", WrittenAt: now,
-		Sentences:      []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}, {"שני כבישים נסגרו.", []string{rainSiteE.URL}}},
-		Contradictions: []Sentence{{"לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", []string{rainSiteh.URL, rainSiteE.URL}}},
+		Sentences:      []Sentence{{Text: "גשם כבד ירד הבוקר בצפון.", Sources: []string{rainSiteh.URL, rainSiteE.URL}}, {Text: "שני כבישים נסגרו.", Sources: []string{rainSiteE.URL}}},
+		Contradictions: []Sentence{{Text: "לפי siteh נסגרו שני כבישים, ולפי SiteE שלושה.", Sources: []string{rainSiteh.URL, rainSiteE.URL},
+			Topic: "מספר הכבישים שנסגרו", Sides: []Side{{Value: "שניים", Sources: []string{rainSiteh.URL}}, {Value: "שלושה", Sources: []string{rainSiteE.URL}}}}},
 		Reports:        []string{rainSiteh.URL, rainSiteE.URL}, ID: StoryKey(found[0]),
 		HeadlineOnly: []string{rainSiteE.URL}, // no article read: its title and subtitle only
 		Written:      &Settings{FullArticles: true, Length: "short"}}
@@ -567,7 +568,7 @@ func TestStoriesAreLinkedIntoThreadsOnceADay(t *testing.T) {
 	}
 	// A day later a new story is offered with the threads so far, and links to the latest updated (t1).
 	later := now.Add(25 * time.Hour)
-	data, _ := json.Marshal(StorySummary{ID: "x", Title: "עוד גשם", Sentences: []Sentence{{"ירד גשם.", []string{rainSiteh.URL}}}})
+	data, _ := json.Marshal(StorySummary{ID: "x", Title: "עוד גשם", Sentences: []Sentence{{Text: "ירד גשם.", Sources: []string{rainSiteh.URL}}}})
 	if err := w.Store.SaveStoryRecord(ctx, "x", data, later); err != nil {
 		t.Fatal(err)
 	}

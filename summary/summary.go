@@ -43,6 +43,16 @@ const (
 type Sentence struct {
 	Text    string   `json:"text"`
 	Sources []string `json:"sources"`
+	// A contradiction's: the fact the sites disagree on ("מספר הפצועים"), and each version of it with the articles
+	// that say it. Empty for a contradiction written before they were kept, and for every other sentence.
+	Topic string `json:"topic,omitempty"`
+	Sides []Side `json:"sides,omitempty"`
+}
+
+// Side is one version of a contradiction's fact ("8", "פיגוע") and the URLs of the articles that say it.
+type Side struct {
+	Value   string   `json:"value"`
+	Sources []string `json:"sources"`
 }
 
 // StorySummary is a story's generated article.
@@ -718,26 +728,28 @@ func finished(text string) bool {
 }
 
 // contradictions is those of in whose sides are at least two, each with its own sites and its own value: one site
-// on both sides, or two sides saying the same, is no contradiction between sources. Each is a sentence citing every
-// side.
-func (s *sources) contradictions(in []answerContradiction, own map[string]bool, story stories.Story) []answerSentence {
+// on both sides, or two sides saying the same, is no contradiction between sources. Each keeps its topic and sides,
+// and its sentence (for apps that show only that) citing every side; one without a finished sentence gets one made
+// of its sides.
+func (s *sources) contradictions(in []answerContradiction, own map[string]bool, story stories.Story) []Sentence {
 	siteOf := map[string]string{}
 	for _, r := range story.Reports {
 		siteOf[r.URL] = r.SourceID
 	}
-	out := []answerSentence{}
+	out := []Sentence{}
 	for _, c := range in {
 		sites := map[string]int{}
 		values := map[string]bool{}
-		var refs []string
+		var urls []string
+		var sides []Side
 		ok := len(c.Sides) >= 2
 		for i, side := range c.Sides {
-			value := strings.TrimSpace(side.Value)
-			n := 0
+			value := strings.TrimSpace(inlineRefs.ReplaceAllString(side.Value, ""))
+			var sideURLs []string
 			for _, ref := range side.Sources {
 				for _, id := range articleRef.FindAllString(ref, -1) {
 					url, known := s.ids[id]
-					if !known || !own[url] {
+					if !known || !own[url] || contains(sideURLs, url) {
 						continue
 					}
 					site := siteOf[url]
@@ -745,26 +757,49 @@ func (s *sources) contradictions(in []answerContradiction, own map[string]bool, 
 						ok = false
 					}
 					sites[site] = i
-					refs = append(refs, id)
-					n++
+					sideURLs = append(sideURLs, url)
+					if !contains(urls, url) {
+						urls = append(urls, url)
+					}
 				}
 			}
-			if n == 0 || value == "" || values[value] {
+			if len(sideURLs) == 0 || value == "" || values[value] || arabic.MatchString(value) {
 				ok = false
 			}
 			values[value] = true
+			sides = append(sides, Side{Value: value, Sources: sideURLs})
 		}
-		if ok {
-			out = append(out, answerSentence{Text: c.Text, Sources: refs})
-		} else {
+		if !ok {
 			s.oneSided++
+			continue
 		}
+		topic := strings.TrimSpace(inlineRefs.ReplaceAllString(c.Topic, ""))
+		text := strings.TrimSpace(inlineRefs.ReplaceAllString(c.Text, ""))
+		if text == "" || !finished(text) || arabic.MatchString(text) {
+			text = sidesText(topic, sides)
+		}
+		out = append(out, Sentence{Text: text, Sources: urls, Topic: topic, Sides: sides})
 	}
 	return out
 }
 
+// sidesText is a contradiction's sentence made of its topic and sides' values, for an app that shows only the
+// sentence: "מספר הפצועים: 8 או 3."
+func sidesText(topic string, sides []Side) string {
+	values := make([]string, len(sides))
+	for i, side := range sides {
+		values[i] = strings.TrimRight(side.Value, ".")
+	}
+	text := strings.Join(values, " או ")
+	if topic != "" {
+		text = topic + ": " + text
+	}
+	return text + "."
+}
+
 // answerContradiction is a fact the sites give differently: each side's value and the articles that say it.
 type answerContradiction struct {
+	Topic string `json:"topic"`
 	Text  string `json:"text"`
 	Sides []struct {
 		Value   string   `json:"value"`
@@ -949,7 +984,7 @@ func (w *Writer) writeStories(ctx context.Context, changed []stories.Story, day 
 			}
 		}
 		summary := StorySummary{Title: strings.TrimSpace(a.Title), Sentences: ids.sentences(a.Sentences, own),
-			Contradictions: ids.sentences(ids.contradictions(a.Contradictions, own, s), own), Unrelated: unrelated, WrittenAt: now, Written: &settings}
+			Contradictions: ids.contradictions(a.Contradictions, own, s), Unrelated: unrelated, WrittenAt: now, Written: &settings}
 		if len(summary.Sentences) == 0 {
 			continue
 		}

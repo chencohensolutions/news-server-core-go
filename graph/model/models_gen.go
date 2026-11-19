@@ -18,6 +18,13 @@ type EnrollmentPreviewResult interface {
 	IsEnrollmentPreviewResult()
 }
 
+// One version of a contradiction's fact and the articles that state it.
+type ContradictionSide struct {
+	// A few words or a number: "8", "פיגוע דריסה". Never a site's name.
+	Value     string      `json:"value"`
+	Footnotes []*Footnote `json:"footnotes"`
+}
+
 type Device struct {
 	Serial        string     `json:"serial"`
 	Name          string     `json:"name"`
@@ -166,6 +173,11 @@ type Sentence struct {
 	Text string `json:"text"`
 	// The articles the sentence comes from, at least one.
 	Footnotes []*Footnote `json:"footnotes"`
+	// A contradiction's fact in dispute, in a few words ("מספר הפצועים", "סיבת האירוע"); null for other sentences and
+	// for a contradiction written before the server kept it. Show [sides] under it instead of [text] when it has them.
+	Topic *string `json:"topic,omitempty"`
+	// A contradiction's versions of the fact, each with the articles that say it (two or more); empty otherwise.
+	Sides []*ContradictionSide `json:"sides"`
 }
 
 // How a sentence differs from the closest one in the version before.
@@ -251,7 +263,8 @@ type StoryChanges struct {
 type StorySummary struct {
 	Title     string      `json:"title"`
 	Sentences []*Sentence `json:"sentences"`
-	// Where sites state different facts about the story, one sentence each saying which says what; usually none.
+	// Where sites state things about the story that can't both be true (a value or an account), one each: its topic and
+	// sides, and a sentence saying which says what, for apps that show only that; usually none.
 	Contradictions []*Sentence `json:"contradictions"`
 	// URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article.
 	Unrelated []string  `json:"unrelated"`

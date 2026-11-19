@@ -135,16 +135,28 @@ func ArticleOf(a *scrape.Article) *Article {
 func SentencesOf(sentences []summary.Sentence, headlines map[string]store.Headline) []*Sentence {
 	out := make([]*Sentence, 0, len(sentences))
 	for _, s := range sentences {
-		sentence := &Sentence{Text: s.Text, Footnotes: make([]*Footnote, 0, len(s.Sources))}
-		for _, url := range s.Sources {
-			note := &Footnote{URL: url}
-			if h, ok := headlines[url]; ok {
-				note.SourceID, note.Title, note.Video = optional(h.SourceID), optional(h.Title), h.Video
-				note.PublishedAt = PublishedAt(h)
-			}
-			sentence.Footnotes = append(sentence.Footnotes, note)
+		sentence := &Sentence{Text: s.Text, Footnotes: footnotesOf(s.Sources, headlines), Sides: make([]*ContradictionSide, 0, len(s.Sides))}
+		if s.Topic != "" {
+			sentence.Topic = optional(s.Topic)
+		}
+		for _, side := range s.Sides {
+			sentence.Sides = append(sentence.Sides, &ContradictionSide{Value: side.Value, Footnotes: footnotesOf(side.Sources, headlines)})
 		}
 		out = append(out, sentence)
+	}
+	return out
+}
+
+// footnotesOf are urls' footnotes, with their sites and titles from headlines.
+func footnotesOf(urls []string, headlines map[string]store.Headline) []*Footnote {
+	out := make([]*Footnote, 0, len(urls))
+	for _, url := range urls {
+		note := &Footnote{URL: url}
+		if h, ok := headlines[url]; ok {
+			note.SourceID, note.Title, note.Video = optional(h.SourceID), optional(h.Title), h.Video
+			note.PublishedAt = PublishedAt(h)
+		}
+		out = append(out, note)
 	}
 	return out
 }

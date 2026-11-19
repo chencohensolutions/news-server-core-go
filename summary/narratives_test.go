@@ -35,7 +35,7 @@ func TestALinkingListsOnlyTheThreadsNearTheNewStoriesAndAnEarlierChapter(t *test
 	w.ThreadsEvery = 24 * time.Hour
 	record := func(id, title string, at time.Time, threads ...string) {
 		t.Helper()
-		data, _ := json.Marshal(StorySummary{ID: id, Title: title, Sentences: []Sentence{{"משפט על " + title + ".", nil}}})
+		data, _ := json.Marshal(StorySummary{ID: id, Title: title, Sentences: []Sentence{{Text: "משפט על " + title + ".", Sources: nil}}})
 		if err := w.Store.SaveStoryRecord(ctx, id, data, at); err != nil {
 			t.Fatal(err)
 		}

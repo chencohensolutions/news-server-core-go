@@ -281,7 +281,8 @@ func render(step Step, p Plan, sentences, added []Sentence, addedKinds []string,
 			out.HeadlineOnly = append(out.HeadlineOnly, url)
 		}
 	}
-	// A contradiction stays while two of its sources are in the story.
+	// A contradiction stays while two of its sources are in the story, and, when its sides are kept, two of them
+	// still have one.
 	out.Contradictions = []Sentence{}
 	for _, c := range prev.Contradictions {
 		var sources []string
@@ -290,8 +291,20 @@ func render(step Step, p Plan, sentences, added []Sentence, addedKinds []string,
 				sources = append(sources, url)
 			}
 		}
-		if len(sources) >= 2 {
-			out.Contradictions = append(out.Contradictions, Sentence{Text: c.Text, Sources: sources})
+		var sides []Side
+		for _, side := range c.Sides {
+			var urls []string
+			for _, url := range side.Sources {
+				if here[url] {
+					urls = append(urls, url)
+				}
+			}
+			if len(urls) > 0 {
+				sides = append(sides, Side{Value: side.Value, Sources: urls})
+			}
+		}
+		if len(sources) >= 2 && (len(c.Sides) == 0 || len(sides) >= 2) {
+			out.Contradictions = append(out.Contradictions, Sentence{Text: c.Text, Sources: sources, Topic: c.Topic, Sides: sides})
 		}
 	}
 	out.Contradictions = append(out.Contradictions, contradictions...)
@@ -341,10 +354,14 @@ For every story answer, in this order:
   ids of the new articles that state it. So an article that only repeats the story adds sources, not sentences.
 - "title": a new short factual Hebrew headline only when what was inserted or replaced makes the title wrong or
   stale; otherwise "" (the title stays).
-- "contradictions": only where a new article gives a different value than the story, or than another new article,
-  for the same fact: a number, a name, a date, a time or a place. Each one has "sides": every version as its "value"
-  and its "sources": the ids of the new articles that say it, or the number of the story's sentence that does. Its
-  "text" is one sentence naming each site once and what it says. Usually none: then an empty list.
+- "contradictions": only where a new article states something about a fact of the story that cannot be true together
+  with what the story, or another new article, says. Either a value: a number, a name, a date, a time or a place;
+  or an account: what happened or why, who did it, whether something happened, what was decided ("a ramming
+  attack" and "the driver lost control"). Look for both kinds; different emphasis or a fact only one has is none.
+  Each one has "topic": the fact in dispute in two to four Hebrew words ("מספר הפצועים", "סיבת האירוע"); "sides":
+  every version as its "value", a few Hebrew words or a number, never a site's name or a whole sentence, and its
+  "sources": the ids of the new articles that say it, or the number of the story's sentence that does; and "text":
+  one sentence naming each site once and what it says. Usually none: then an empty list.
 
 A sentence's "kind" is one of:
 - "development": something that happened or became known since the story was written; a new stage of the event.
@@ -441,7 +458,7 @@ var incrementalSchema = json.RawMessage(`{
         "contradictions": {"type": "array", "items": {
           "type": "object",
           "properties": {
-            "text": {"type": "string"},
+            "topic": {"type": "string"},
             "sides": {"type": "array", "items": {
               "type": "object",
               "properties": {
@@ -449,9 +466,10 @@ var incrementalSchema = json.RawMessage(`{
                 "sources": {"type": "array", "items": {"type": "string"}}
               },
               "required": ["value", "sources"]
-            }}
+            }},
+            "text": {"type": "string"}
           },
-          "required": ["text", "sides"]
+          "required": ["topic", "sides", "text"]
         }}
       },
       "required": ["story", "unrelated", "insert", "replace", "delete", "cite", "title", "contradictions"]
@@ -1568,10 +1586,12 @@ func (refs *cited) newContradictions(in []answerContradiction, id string, kept [
 	var out []Sentence
 	for _, c := range in {
 		text := strings.TrimSpace(inlineRefs.ReplaceAllString(c.Text, ""))
+		topic := strings.TrimSpace(inlineRefs.ReplaceAllString(c.Topic, ""))
 		sites := map[string]int{}
 		values := map[string]bool{}
 		var urls []string
-		ok := len(c.Sides) >= 2 && text != "" && finished(text) && !garbled(text)
+		var sides []Side
+		ok := len(c.Sides) >= 2
 		fresh := false
 		for i, side := range c.Sides {
 			var sideURLs []string
@@ -1597,14 +1617,19 @@ func (refs *cited) newContradictions(in []answerContradiction, id string, kept [
 					urls = append(urls, url)
 				}
 			}
-			value := strings.TrimSpace(side.Value)
-			if len(sideURLs) == 0 || value == "" || values[value] {
+			value := strings.TrimSpace(inlineRefs.ReplaceAllString(side.Value, ""))
+			if len(sideURLs) == 0 || value == "" || values[value] || garbled(value) {
 				ok = false
 			}
 			values[value] = true
+			sides = append(sides, Side{Value: value, Sources: sideURLs})
+		}
+		if text == "" || !finished(text) || garbled(text) {
+			// For an app that shows only the sentence: one made of the sides.
+			text = sidesText(topic, sides)
 		}
 		if ok && fresh {
-			out = append(out, Sentence{Text: text, Sources: urls})
+			out = append(out, Sentence{Text: text, Sources: urls, Topic: topic, Sides: sides})
 		} else {
 			refs.ids.oneSided++
 		}
