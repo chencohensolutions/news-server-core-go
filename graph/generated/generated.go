@@ -103,6 +103,23 @@ type ComplexityRoot struct {
 		Reason func(childComplexity int) int
 	}
 
+	FollowUpdate struct {
+		At         func(childComplexity int) int
+		Kinds      func(childComplexity int) int
+		NewStory   func(childComplexity int) int
+		Sentences  func(childComplexity int) int
+		StoryID    func(childComplexity int) int
+		StoryTitle func(childComplexity int) int
+	}
+
+	FollowedStory struct {
+		FollowedAt func(childComplexity int) int
+		ID         func(childComplexity int) int
+		Threads    func(childComplexity int) int
+		Title      func(childComplexity int) int
+		Updates    func(childComplexity int) int
+	}
+
 	Footnote struct {
 		PublishedAt func(childComplexity int) int
 		SourceID    func(childComplexity int) int
@@ -181,6 +198,7 @@ type ComplexityRoot struct {
 	Mutation struct {
 		CreateInvite       func(childComplexity int, user string, role *model.Role) int
 		EnrollDevice       func(childComplexity int, input model.EnrollDeviceInput) int
+		FollowStory        func(childComplexity int, id string, follow bool) int
 		MarkRead           func(childComplexity int, urls []string) int
 		RemoveUser         func(childComplexity int, user string) int
 		RenewCertificate   func(childComplexity int, csr string, keyProtection model.KeyProtection) int
@@ -196,6 +214,7 @@ type ComplexityRoot struct {
 		Article           func(childComplexity int, url string) int
 		Articles          func(childComplexity int, urls []string) int
 		EnrollmentPreview func(childComplexity int, code string) int
+		Following         func(childComplexity int) int
 		Grouping          func(childComplexity int) int
 		Headlines         func(childComplexity int, since *time.Time, sourceIds []string) int
 		Me                func(childComplexity int) int
@@ -374,6 +393,7 @@ type ComplexityRoot struct {
 type MutationResolver interface {
 	EnrollDevice(ctx context.Context, input model.EnrollDeviceInput) (model.EnrollDeviceResult, error)
 	RenewCertificate(ctx context.Context, csr string, keyProtection model.KeyProtection) (model.EnrollDeviceResult, error)
+	FollowStory(ctx context.Context, id string, follow bool) (bool, error)
 	SetGrouping(ctx context.Context, strictness *int, text *model.StoryText, days *int, method *model.GroupingMethod) (*model.Grouping, error)
 	SetSource(ctx context.Context, id string, enabled *bool, feed *bool, waitMs *int) (*sites.Source, error)
 	SetSourceHidden(ctx context.Context, id string, hidden bool) (*sites.Source, error)
@@ -387,6 +407,7 @@ type MutationResolver interface {
 type QueryResolver interface {
 	EnrollmentPreview(ctx context.Context, code string) (model.EnrollmentPreviewResult, error)
 	ServerInfo(ctx context.Context) (*model.ServerInfo, error)
+	Following(ctx context.Context) ([]*model.FollowedStory, error)
 	Grouping(ctx context.Context) (*model.Grouping, error)
 	Headlines(ctx context.Context, since *time.Time, sourceIds []string) ([]*model.Headline, error)
 	Article(ctx context.Context, url string) (*model.Article, error)
@@ -655,6 +676,74 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.EnrollmentRejected.Reason(childComplexity), true
+
+	case "FollowUpdate.at":
+		if e.ComplexityRoot.FollowUpdate.At == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowUpdate.At(childComplexity), true
+	case "FollowUpdate.kinds":
+		if e.ComplexityRoot.FollowUpdate.Kinds == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowUpdate.Kinds(childComplexity), true
+	case "FollowUpdate.newStory":
+		if e.ComplexityRoot.FollowUpdate.NewStory == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowUpdate.NewStory(childComplexity), true
+	case "FollowUpdate.sentences":
+		if e.ComplexityRoot.FollowUpdate.Sentences == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowUpdate.Sentences(childComplexity), true
+	case "FollowUpdate.storyId":
+		if e.ComplexityRoot.FollowUpdate.StoryID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowUpdate.StoryID(childComplexity), true
+	case "FollowUpdate.storyTitle":
+		if e.ComplexityRoot.FollowUpdate.StoryTitle == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowUpdate.StoryTitle(childComplexity), true
+
+	case "FollowedStory.followedAt":
+		if e.ComplexityRoot.FollowedStory.FollowedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowedStory.FollowedAt(childComplexity), true
+	case "FollowedStory.id":
+		if e.ComplexityRoot.FollowedStory.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowedStory.ID(childComplexity), true
+	case "FollowedStory.threads":
+		if e.ComplexityRoot.FollowedStory.Threads == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowedStory.Threads(childComplexity), true
+	case "FollowedStory.title":
+		if e.ComplexityRoot.FollowedStory.Title == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowedStory.Title(childComplexity), true
+	case "FollowedStory.updates":
+		if e.ComplexityRoot.FollowedStory.Updates == nil {
+			break
+		}
+
+		return e.ComplexityRoot.FollowedStory.Updates(childComplexity), true
 
 	case "Footnote.publishedAt":
 		if e.ComplexityRoot.Footnote.PublishedAt == nil {
@@ -992,6 +1081,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.EnrollDevice(childComplexity, args["input"].(model.EnrollDeviceInput)), true
+	case "Mutation.followStory":
+		if e.ComplexityRoot.Mutation.FollowStory == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_followStory_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.FollowStory(childComplexity, args["id"].(string), args["follow"].(bool)), true
 	case "Mutation.markRead":
 		if e.ComplexityRoot.Mutation.MarkRead == nil {
 			break
@@ -1125,6 +1225,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.EnrollmentPreview(childComplexity, args["code"].(string)), true
+	case "Query.following":
+		if e.ComplexityRoot.Query.Following == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Query.Following(childComplexity), true
 	case "Query.grouping":
 		if e.ComplexityRoot.Query.Grouping == nil {
 			break
@@ -1958,6 +2064,56 @@ type ServerDiscovery {
   addresses: [String!]!
 }
 `, BuiltIn: false},
+	{Name: "../schema/follows.graphql", Input: `# --- Following -------------------------------------------------------------------
+# A user follows a generated story to get short updates as it develops: the new facts each later version of it adds,
+# and the stories that join its threads afterwards, with what they add in turn. So following outlasts the story
+# itself (a week or so) and goes on as long as its threads do. Kept per user, on all their devices.
+
+extend type Query {
+  "The stories the calling user follows, latest followed first, each with its updates since."
+  following: [FollowedStory!]!
+}
+
+extend type Mutation {
+  """
+  Follows story id (StorySummary.id) for the calling user, or stops following it. A story followed already keeps the
+  time it was first followed. BAD_REQUEST for an id the server has no story of. Returns whether it is followed now.
+  """
+  followStory(id: ID!, follow: Boolean!): Boolean!
+}
+
+type FollowedStory {
+  "The story's id."
+  id: ID!
+  "Its latest version's title."
+  title: String!
+  followedAt: Time!
+  "The threads it is in, latest updated first: the stories that join them are part of its updates."
+  threads: [Thread!]!
+  """
+  What came after it was followed, newest first, at most 30: each later version's new facts, and each story that
+  joined its threads.
+  """
+  updates: [FollowUpdate!]!
+}
+
+"A short update on a followed story: a few sentences, with their footnotes."
+type FollowUpdate {
+  at: Time!
+  "The story it is about: the followed one, or one of its threads'."
+  storyId: ID!
+  storyTitle: String!
+  """
+  The story joined one of the followed story's threads after it was followed: sentences are the start of its first
+  version. False for the new facts of a later version.
+  """
+  newStory: Boolean!
+  "At most 3 (2 for a new story)."
+  sentences: [Sentence!]!
+  "What each of sentences is (development, correction, detail, background or reaction), when the server sorted them; else empty."
+  kinds: [String!]!
+}
+`, BuiltIn: false},
 	{Name: "../schema/grouping.graphql", Input: `# --- Grouping -------------------------------------------------------------------
 # How the server groups headlines into stories: the app's grouping settings, kept on the server. The model is the
 # one the server has downloaded (config.json's story_model); the rest the app's settings screen changes.
@@ -2753,6 +2909,40 @@ func (ec *executionContext) childFields_Device(ctx context.Context, field graphq
 	return nil, fmt.Errorf("no field named %q was found under type Device", field.Name)
 }
 
+func (ec *executionContext) childFields_FollowUpdate(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "at":
+		return ec.fieldContext_FollowUpdate_at(ctx, field)
+	case "storyId":
+		return ec.fieldContext_FollowUpdate_storyId(ctx, field)
+	case "storyTitle":
+		return ec.fieldContext_FollowUpdate_storyTitle(ctx, field)
+	case "newStory":
+		return ec.fieldContext_FollowUpdate_newStory(ctx, field)
+	case "sentences":
+		return ec.fieldContext_FollowUpdate_sentences(ctx, field)
+	case "kinds":
+		return ec.fieldContext_FollowUpdate_kinds(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type FollowUpdate", field.Name)
+}
+
+func (ec *executionContext) childFields_FollowedStory(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_FollowedStory_id(ctx, field)
+	case "title":
+		return ec.fieldContext_FollowedStory_title(ctx, field)
+	case "followedAt":
+		return ec.fieldContext_FollowedStory_followedAt(ctx, field)
+	case "threads":
+		return ec.fieldContext_FollowedStory_threads(ctx, field)
+	case "updates":
+		return ec.fieldContext_FollowedStory_updates(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type FollowedStory", field.Name)
+}
+
 func (ec *executionContext) childFields_Footnote(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "url":
@@ -3368,6 +3558,28 @@ func (ec *executionContext) field_Mutation_enrollDevice_args(ctx context.Context
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_followStory_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "follow",
+		func(ctx context.Context, v any) (bool, error) {
+			return ec.unmarshalNBoolean2bool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["follow"] = arg1
 	return args, nil
 }
 
@@ -4668,6 +4880,286 @@ func (ec *executionContext) fieldContext_EnrollmentRejected_reason(_ context.Con
 	return graphql.NewScalarFieldContext("EnrollmentRejected", field, false, false, errors.New("field of type EnrollmentRejectedReason does not have child fields"))
 }
 
+func (ec *executionContext) _FollowUpdate_at(ctx context.Context, field graphql.CollectedField, obj *model.FollowUpdate) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowUpdate_at(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.At, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowUpdate_at(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowUpdate", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _FollowUpdate_storyId(ctx context.Context, field graphql.CollectedField, obj *model.FollowUpdate) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowUpdate_storyId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.StoryID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowUpdate_storyId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowUpdate", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _FollowUpdate_storyTitle(ctx context.Context, field graphql.CollectedField, obj *model.FollowUpdate) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowUpdate_storyTitle(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.StoryTitle, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowUpdate_storyTitle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowUpdate", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _FollowUpdate_newStory(ctx context.Context, field graphql.CollectedField, obj *model.FollowUpdate) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowUpdate_newStory(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.NewStory, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowUpdate_newStory(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowUpdate", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _FollowUpdate_sentences(ctx context.Context, field graphql.CollectedField, obj *model.FollowUpdate) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowUpdate_sentences(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Sentences, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Sentence) graphql.Marshaler {
+			return ec.marshalNSentence2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐSentenceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowUpdate_sentences(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FollowUpdate",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Sentence(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FollowUpdate_kinds(ctx context.Context, field graphql.CollectedField, obj *model.FollowUpdate) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowUpdate_kinds(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Kinds, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
+			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowUpdate_kinds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowUpdate", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _FollowedStory_id(ctx context.Context, field graphql.CollectedField, obj *model.FollowedStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowedStory_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowedStory_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowedStory", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _FollowedStory_title(ctx context.Context, field graphql.CollectedField, obj *model.FollowedStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowedStory_title(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Title, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowedStory_title(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowedStory", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _FollowedStory_followedAt(ctx context.Context, field graphql.CollectedField, obj *model.FollowedStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowedStory_followedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FollowedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v time.Time) graphql.Marshaler {
+			return ec.marshalNTime2timeᚐTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowedStory_followedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("FollowedStory", field, false, false, errors.New("field of type Time does not have child fields"))
+}
+
+func (ec *executionContext) _FollowedStory_threads(ctx context.Context, field graphql.CollectedField, obj *model.FollowedStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowedStory_threads(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Threads, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Thread) graphql.Marshaler {
+			return ec.marshalNThread2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐThreadᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowedStory_threads(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FollowedStory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Thread(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FollowedStory_updates(ctx context.Context, field graphql.CollectedField, obj *model.FollowedStory) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_FollowedStory_updates(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Updates, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.FollowUpdate) graphql.Marshaler {
+			return ec.marshalNFollowUpdate2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowUpdateᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_FollowedStory_updates(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FollowedStory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FollowUpdate(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Footnote_url(ctx context.Context, field graphql.CollectedField, obj *model.Footnote) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -5960,6 +6452,50 @@ func (ec *executionContext) fieldContext_Mutation_renewCertificate(ctx context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_followStory(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_followStory(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().FollowStory(ctx, fc.Args["id"].(string), fc.Args["follow"].(bool))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_followStory(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_followStory_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_setGrouping(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -6531,6 +7067,38 @@ func (ec *executionContext) fieldContext_Query_serverInfo(_ context.Context, fie
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_ServerInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_following(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_following(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Query().Following(ctx)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.FollowedStory) graphql.Marshaler {
+			return ec.marshalNFollowedStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowedStoryᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_following(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_FollowedStory(ctx, field)
 		},
 	}
 	return fc, nil
@@ -11244,6 +11812,129 @@ func (ec *executionContext) _EnrollmentRejected(ctx context.Context, sel ast.Sel
 	return out
 }
 
+var followUpdateImplementors = []string{"FollowUpdate"}
+
+func (ec *executionContext) _FollowUpdate(ctx context.Context, sel ast.SelectionSet, obj *model.FollowUpdate) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, followUpdateImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FollowUpdate")
+		case "at":
+			out.Values[i] = ec._FollowUpdate_at(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "storyId":
+			out.Values[i] = ec._FollowUpdate_storyId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "storyTitle":
+			out.Values[i] = ec._FollowUpdate_storyTitle(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "newStory":
+			out.Values[i] = ec._FollowUpdate_newStory(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sentences":
+			out.Values[i] = ec._FollowUpdate_sentences(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "kinds":
+			out.Values[i] = ec._FollowUpdate_kinds(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var followedStoryImplementors = []string{"FollowedStory"}
+
+func (ec *executionContext) _FollowedStory(ctx context.Context, sel ast.SelectionSet, obj *model.FollowedStory) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, followedStoryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FollowedStory")
+		case "id":
+			out.Values[i] = ec._FollowedStory_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "title":
+			out.Values[i] = ec._FollowedStory_title(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "followedAt":
+			out.Values[i] = ec._FollowedStory_followedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "threads":
+			out.Values[i] = ec._FollowedStory_threads(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updates":
+			out.Values[i] = ec._FollowedStory_updates(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var footnoteImplementors = []string{"Footnote"}
 
 func (ec *executionContext) _Footnote(ctx context.Context, sel ast.SelectionSet, obj *model.Footnote) graphql.Marshaler {
@@ -11768,6 +12459,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "followStory":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_followStory(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "setGrouping":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_setGrouping(ctx, field)
@@ -11905,6 +12603,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_serverInfo(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "following":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_following(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -14110,6 +14830,58 @@ func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.S
 		}
 	}
 	return graphql.WrapContextMarshaler(ctx, res)
+}
+
+func (ec *executionContext) marshalNFollowUpdate2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowUpdateᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.FollowUpdate) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNFollowUpdate2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowUpdate(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNFollowUpdate2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowUpdate(ctx context.Context, sel ast.SelectionSet, v *model.FollowUpdate) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._FollowUpdate(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNFollowedStory2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowedStoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.FollowedStory) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNFollowedStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowedStory(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNFollowedStory2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFollowedStory(ctx context.Context, sel ast.SelectionSet, v *model.FollowedStory) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._FollowedStory(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {

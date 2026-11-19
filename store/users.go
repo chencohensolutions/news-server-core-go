@@ -79,11 +79,49 @@ func (s *Store) Reads(ctx context.Context, user string, since time.Time) ([]Read
 	return out, rows.Err()
 }
 
-// ForgetUser drops a removed user's choices and reads.
+// ForgetUser drops a removed user's choices, reads and follows.
 func (s *Store) ForgetUser(ctx context.Context, user string) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM user_hidden_sources WHERE user = ?`, user); err != nil {
+	for _, table := range []string{"user_hidden_sources", "user_reads", "user_follows"} {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM `+table+` WHERE user = ?`, user); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Follow is a story a user follows, and since when.
+type Follow struct {
+	Story      string
+	FollowedAt time.Time
+}
+
+// SetFollow has user follow story id from now, or stop; a story followed already keeps its first time.
+func (s *Store) SetFollow(ctx context.Context, user, id string, follow bool, now time.Time) error {
+	if follow {
+		_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO user_follows (user, story, followed_at) VALUES (?, ?, ?)`,
+			user, id, now.UnixMilli())
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM user_reads WHERE user = ?`, user)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM user_follows WHERE user = ? AND story = ?`, user, id)
 	return err
+}
+
+// Follows are the stories user follows, latest followed first.
+func (s *Store) Follows(ctx context.Context, user string) ([]Follow, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT story, followed_at FROM user_follows WHERE user = ? ORDER BY followed_at DESC, story`, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Follow
+	for rows.Next() {
+		var f Follow
+		var at int64
+		if err := rows.Scan(&f.Story, &at); err != nil {
+			return nil, err
+		}
+		f.FollowedAt = time.UnixMilli(at).UTC()
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }

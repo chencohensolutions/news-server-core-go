@@ -1,0 +1,49 @@
+# --- Following -------------------------------------------------------------------
+# A user follows a generated story to get short updates as it develops: the new facts each later version of it adds,
+# and the stories that join its threads afterwards, with what they add in turn. So following outlasts the story
+# itself (a week or so) and goes on as long as its threads do. Kept per user, on all their devices.
+
+extend type Query {
+  "The stories the calling user follows, latest followed first, each with its updates since."
+  following: [FollowedStory!]!
+}
+
+extend type Mutation {
+  """
+  Follows story id (StorySummary.id) for the calling user, or stops following it. A story followed already keeps the
+  time it was first followed. BAD_REQUEST for an id the server has no story of. Returns whether it is followed now.
+  """
+  followStory(id: ID!, follow: Boolean!): Boolean!
+}
+
+type FollowedStory {
+  "The story's id."
+  id: ID!
+  "Its latest version's title."
+  title: String!
+  followedAt: Time!
+  "The threads it is in, latest updated first: the stories that join them are part of its updates."
+  threads: [Thread!]!
+  """
+  What came after it was followed, newest first, at most 30: each later version's new facts, and each story that
+  joined its threads.
+  """
+  updates: [FollowUpdate!]!
+}
+
+"A short update on a followed story: a few sentences, with their footnotes."
+type FollowUpdate {
+  at: Time!
+  "The story it is about: the followed one, or one of its threads'."
+  storyId: ID!
+  storyTitle: String!
+  """
+  The story joined one of the followed story's threads after it was followed: sentences are the start of its first
+  version. False for the new facts of a later version.
+  """
+  newStory: Boolean!
+  "At most 3 (2 for a new story)."
+  sentences: [Sentence!]!
+  "What each of sentences is (development, correction, detail, background or reaction), when the server sorted them; else empty."
+  kinds: [String!]!
+}

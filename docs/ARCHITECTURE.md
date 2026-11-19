@@ -159,6 +159,12 @@ near each new story, the threads of the earlier stories near it, and the latest 
 thread, and the earlier stories in no thread near a new one, so a story that comes back after the grouping's days
 starts a thread with its first chapter. `news-server narratives` embeds the archive and measures the shortlist.
 
+Following (`graph/schema/follows.graphql`, `graph/resolver/follows.go`): a user follows a story (`followStory`), kept
+per user in `user_follows` like their reads. `following` gives each followed story's short updates since it was
+followed, worked out when asked from what is kept already, so it costs no Gemini request: the new facts of each later
+version (its `updates`), and each story that joined one of its threads, with what that one adds in turn. So following
+goes on through the story's threads after the story itself stops changing.
+
 ## Related repositories
 
 - The news app (Kotlin; the reference implementation of the scraper and clustering). Its repository is private.
