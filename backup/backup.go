@@ -10,7 +10,7 @@
 //	story_records/…  story_versions/…  story_shadow/…  summaries/…  digests/…  unrelated/…  gemini_groups/…  user_reads/…  the same, by the day written:
 //	                                    a row written again is added again, so every version is kept
 //	threads.json  story_threads.json  thread_links.json  thread_aliases.json  server_settings.json  site_settings.json
-//	gemini_requests.json  gemini_tokens.json  user_hidden_sources.json  the whole table, written again each time
+//	gemini_requests.json  gemini_tokens.json  user_hidden_sources.json  user_follows.json  the whole table, written again each time
 //
 // The database keeps an article's page only until it is archived: then it is emptied there, and the archive's copy is
 // the only one (a restore leaves it out of the database too).
@@ -52,7 +52,7 @@ var added = []struct{ table, by string }{
 }
 
 // whole are the small tables written whole each time.
-var whole = []string{"threads", "story_threads", "thread_links", "thread_aliases", "server_settings", "site_settings", "gemini_requests", "gemini_tokens", "user_hidden_sources"}
+var whole = []string{"threads", "story_threads", "thread_links", "thread_aliases", "server_settings", "site_settings", "gemini_requests", "gemini_tokens", "user_hidden_sources", "user_follows"}
 
 const (
 	batch = 2000

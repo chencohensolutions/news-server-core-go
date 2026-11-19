@@ -72,6 +72,34 @@ func (EnrollmentRejected) IsEnrollmentPreviewResult() {}
 
 func (EnrollmentRejected) IsEnrollDeviceResult() {}
 
+// A short update on a followed story: a few sentences, with their footnotes.
+type FollowUpdate struct {
+	At time.Time `json:"at"`
+	// The story it is about: the followed one, or one of its threads'.
+	StoryID    string `json:"storyId"`
+	StoryTitle string `json:"storyTitle"`
+	// The story joined one of the followed story's threads after it was followed: sentences are the start of its first
+	// version. False for the new facts of a later version.
+	NewStory bool `json:"newStory"`
+	// At most 3 (2 for a new story).
+	Sentences []*Sentence `json:"sentences"`
+	// What each of sentences is (development, correction, detail, background or reaction), when the server sorted them; else empty.
+	Kinds []string `json:"kinds"`
+}
+
+type FollowedStory struct {
+	// The story's id.
+	ID string `json:"id"`
+	// Its latest version's title.
+	Title      string    `json:"title"`
+	FollowedAt time.Time `json:"followedAt"`
+	// The threads it is in, latest updated first: the stories that join them are part of its updates.
+	Threads []*Thread `json:"threads"`
+	// What came after it was followed, newest first, at most 30: each later version's new facts, and each story that
+	// joined its threads.
+	Updates []*FollowUpdate `json:"updates"`
+}
+
 // One article a sentence comes from: tapping it opens the article.
 type Footnote struct {
 	URL string `json:"url"`

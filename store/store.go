@@ -149,6 +149,12 @@ CREATE TABLE IF NOT EXISTS user_reads (
 	PRIMARY KEY (user, url)
 );
 CREATE INDEX IF NOT EXISTS user_reads_at ON user_reads (user, read_at);
+CREATE TABLE IF NOT EXISTS user_follows (
+	user TEXT NOT NULL,       -- a story a user follows, with its threads, for short updates on it
+	story TEXT NOT NULL,      -- the story's id (story_records.id)
+	followed_at INTEGER NOT NULL, -- unix ms: updates are what came after
+	PRIMARY KEY (user, story)
+);
 CREATE TABLE IF NOT EXISTS thread_aliases (
 	alias TEXT PRIMARY KEY,      -- a thread merged into another by the weekly tidy-up
 	thread TEXT NOT NULL         -- the thread it is part of now
