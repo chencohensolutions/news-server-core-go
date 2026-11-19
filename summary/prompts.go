@@ -54,12 +54,17 @@ For every story, write:
   what happened since, as %s, each fact once, with sources like the sentences. Facts the previous
   version has, in other words, are not new. Without a previous version: an empty list.
 - The title, the sentences and "new" agree: a fact in the title or in "new" is in the sentences.
-- "contradictions": only where two sites give different values for the same fact: a number, a name, a date, a time
-  or a place. Two different facts are not a contradiction, nor two breakdowns that can both be true, nor a fact only
-  one site has, nor different emphasis. Each one has "sides": every site's version as its "value" and the ids of the
-  articles that say it ("sources"), each side other sites. Its "text" is one sentence naming each site once and what
-  it says ("לפי siteh ...  ולפי SiteE ..."); never an unnamed side ("the reports say 10 to 11"). Usually there are none:
-  then an empty list.
+- "contradictions": only where sites state things about the same fact that cannot both be true. Either a value: a
+  number, a name, a date, a time or a place ("8 injured" and "3 injured"); or an account: what happened or why, who
+  did it, whether something happened, what was decided ("a ramming attack" and "the driver lost control", "the
+  suspect was arrested" and "the suspect fled"). Look for both kinds. Two different facts are not a contradiction,
+  nor two breakdowns that can both be true, nor a fact only one site has, nor different emphasis, nor a claim one
+  site attributes to someone and another site denies in someone else's name. Each one has "topic": the fact in
+  dispute in two to four Hebrew words ("מספר הפצועים", "סיבת האירוע"); "sides": every site's version as its "value",
+  a few Hebrew words or a number, never a site's name or a whole sentence ("8", "פיגוע דריסה", "איבוד שליטה"), and
+  the ids of the articles that say it ("sources"), each side other sites; and "text": one sentence naming each site
+  once and what it says ("לפי siteh ...  ולפי SiteE ..."), never an unnamed side. Usually there are none: then an
+  empty list.
 
 ` + writingRules + `
 
@@ -85,14 +90,15 @@ var storiesSchema = json.RawMessage(`{
         "contradictions": {"type": "array", "items": {
           "type": "object",
           "properties": {
-            "text": {"type": "string"},
+            "topic": {"type": "string"},
             "sides": {"type": "array", "items": {
               "type": "object",
               "properties": {"value": {"type": "string"}, "sources": {"type": "array", "items": {"type": "string"}}},
               "required": ["value", "sources"]
-            }}
+            }},
+            "text": {"type": "string"}
           },
-          "required": ["text", "sides"]
+          "required": ["topic", "sides", "text"]
         }},
         "new": {"type": "array", "items": ` + sentenceSchemaJSON + `}
       },

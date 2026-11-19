@@ -296,9 +296,9 @@ func TestAHeadlineThatNamesWhatTheStoryLacksSendsItToBeWrittenWhole(t *testing.T
 func council(a *archiveMaker) {
 	reports := []scrape.ArticleSummary{a.report("siteh", "council", "ישיבת המועצה", "מועצת העיר התכנסה הערב לישיבה.", filler("הישיבה")), a.report("sitee", "council", "המועצה התכנסה"),
 		a.reportAt(a.t0.Add(100*time.Minute), "siteg", "council", "ראש העיר התפטר בישיבת המועצה", "מועצת העיר התכנסה הערב לישיבה.", filler("ההתפטרות"))}
-	text := []Sentence{{"מועצת העיר התכנסה הערב לישיבה.", []string{reports[0].URL, reports[1].URL}}, {"על סדר היום עמד תקציב העירייה.", []string{reports[1].URL}}}
+	text := []Sentence{{Text: "מועצת העיר התכנסה הערב לישיבה.", Sources: []string{reports[0].URL, reports[1].URL}}, {Text: "על סדר היום עמד תקציב העירייה.", Sources: []string{reports[1].URL}}}
 	a.version("council1", "council", a.t0.Add(50*time.Minute), text, nil, reports[:2]...)
-	a.version("council2", "council", a.t0.Add(110*time.Minute), text, []Sentence{{"ראש העיר התפטר מתפקידו.", []string{reports[2].URL}}}, reports...)
+	a.version("council2", "council", a.t0.Add(110*time.Minute), text, []Sentence{{Text: "ראש העיר התפטר מתפקידו.", Sources: []string{reports[2].URL}}}, reports...)
 }
 
 func TestTheReplayCountsTheHeadlineTripwire(t *testing.T) {

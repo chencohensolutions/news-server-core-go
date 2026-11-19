@@ -40,29 +40,29 @@ func replayArchiveOf(t *testing.T, more ...func(a *archiveMaker)) (dir string, d
 	}
 	rain := []scrape.ArticleSummary{report("siteh", "rain", "גשם בצפון", "גשם כבד ירד הבוקר בצפון.", filler("הגשם")), report("sitee", "rain", "סערה בצפון"),
 		joined("siteg", "rain", "הקישון עלה על גדותיו", "נחל הקישון עלה על גדותיו.", filler("הקישון"))}
-	rainText := []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rain[0].URL, rain[1].URL}}, {"2 כבישים נסגרו בגלל הגשם.", []string{rain[1].URL}}}
+	rainText := []Sentence{{Text: "גשם כבד ירד הבוקר בצפון.", Sources: []string{rain[0].URL, rain[1].URL}}, {Text: "2 כבישים נסגרו בגלל הגשם.", Sources: []string{rain[1].URL}}}
 	version("rain1", "rain", t0, rainText, nil, rain[:2]...)
-	version("rain2", "rain", t0.Add(60*time.Minute), rainText, []Sentence{{"נחל הקישון עלה על גדותיו.", []string{rain[2].URL}}}, rain...)
+	version("rain2", "rain", t0.Add(60*time.Minute), rainText, []Sentence{{Text: "נחל הקישון עלה על גדותיו.", Sources: []string{rain[2].URL}}}, rain...)
 
 	budget := []scrape.ArticleSummary{report("sited", "budget", "התקציב אושר", "הכנסת אישרה את התקציב בקריאה שלישית.", filler("התקציב")), report("siteg", "budget", "הכנסת אישרה את התקציב"),
 		joined("sitee", "budget", "התקציב עבר", "התקציב עבר בכנסת.", filler("ההצבעה"))}
-	budgetText := []Sentence{{"הכנסת אישרה את התקציב בקריאה שלישית.", []string{budget[0].URL, budget[1].URL}}, {"61 חברי כנסת תמכו בתקציב.", []string{budget[0].URL}}}
+	budgetText := []Sentence{{Text: "הכנסת אישרה את התקציב בקריאה שלישית.", Sources: []string{budget[0].URL, budget[1].URL}}, {Text: "61 חברי כנסת תמכו בתקציב.", Sources: []string{budget[0].URL}}}
 	version("budget1", "budget", t0.Add(10*time.Minute), budgetText, nil, budget[:2]...)
-	version("budget2", "budget", t0.Add(70*time.Minute), budgetText, []Sentence{{"בקריאה שלישית אישרה הכנסת את התקציב.", []string{budget[2].URL}}}, budget...)
+	version("budget2", "budget", t0.Add(70*time.Minute), budgetText, []Sentence{{Text: "בקריאה שלישית אישרה הכנסת את התקציב.", Sources: []string{budget[2].URL}}}, budget...)
 
 	strike := []scrape.ArticleSummary{report("siteh", "strike", "שביתה בנמלים", "עובדי הנמלים פתחו בשביתה.", filler("השביתה")), report("sitee", "strike", "הנמלים שובתים"), report("sited", "strike", "שביתה")}
-	strikeText := []Sentence{{"עובדי הנמלים פתחו בשביתה.", []string{strike[0].URL, strike[1].URL}}, {"השביתה החלה בשעה 6 בבוקר.", []string{strike[0].URL}}}
+	strikeText := []Sentence{{Text: "עובדי הנמלים פתחו בשביתה.", Sources: []string{strike[0].URL, strike[1].URL}}, {Text: "השביתה החלה בשעה 6 בבוקר.", Sources: []string{strike[0].URL}}}
 	version("strike1", "strike", t0.Add(20*time.Minute), strikeText, nil, strike...)
 	version("strike2", "strike", t0.Add(80*time.Minute), strikeText, nil, strike[:2]...)
 
 	fire := []scrape.ArticleSummary{report("siteh", "fire", "שריפה בדרום", "שריפה פרצה בדרום.", filler("השריפה")), report("sitee", "fire", "שריפה גדולה"),
 		joined("siteg", "fire", "השריפה כובתה", "השריפה בדרום כובתה לאחר 5 שעות.", filler("הכיבוי"))}
-	fireText := []Sentence{{"שריפה פרצה בדרום.", []string{fire[0].URL, fire[1].URL}}, {"תושבים פונו מבתיהם.", []string{fire[1].URL}}}
+	fireText := []Sentence{{Text: "שריפה פרצה בדרום.", Sources: []string{fire[0].URL, fire[1].URL}}, {Text: "תושבים פונו מבתיהם.", Sources: []string{fire[1].URL}}}
 	version("fire1", "", t0.Add(30*time.Minute), fireText, nil, fire[:2]...)
-	version("fire2", "", t0.Add(90*time.Minute), append([]Sentence{{"השריפה כובתה לאחר 5 שעות.", []string{fire[2].URL}}}, fireText...), nil, fire...)
+	version("fire2", "", t0.Add(90*time.Minute), append([]Sentence{{Text: "השריפה כובתה לאחר 5 שעות.", Sources: []string{fire[2].URL}}}, fireText...), nil, fire...)
 
 	vote := []scrape.ArticleSummary{report("siteh", "vote", "הצבעה במועצה"), report("sitee", "vote", "המועצה הצביעה"), joined("sited", "vote", "ההצבעה נדחתה")}
-	voteText := []Sentence{{"מועצת העיר הצביעה על התוכנית.", []string{vote[0].URL}}, {"7 חברים תמכו בתוכנית.", []string{vote[1].URL}}}
+	voteText := []Sentence{{Text: "מועצת העיר הצביעה על התוכנית.", Sources: []string{vote[0].URL}}, {Text: "7 חברים תמכו בתוכנית.", Sources: []string{vote[1].URL}}}
 	version("vote1", "vote", t0.Add(40*time.Minute), voteText, nil, vote[:2]...)
 	version("vote2", "vote", t0.Add(100*time.Minute), voteText[:1], nil, vote[0], vote[2])
 
@@ -387,9 +387,9 @@ func casesOf(t *testing.T, data []byte) []ReplayCase {
 func lake(a *archiveMaker) {
 	reports := []scrape.ArticleSummary{a.report("siteh", "lake", "מפלס הכנרת נמדד", "מפלס הכנרת נמדד הבוקר.", filler("המדידה")), a.report("sitee", "lake", "מדידה בכנרת"),
 		a.reportAt(a.t0.Add(100*time.Minute), "siteg", "lake", "הכנרת עלתה", news...)}
-	text := []Sentence{{"מפלס הכנרת נמדד הבוקר.", []string{reports[0].URL, reports[1].URL}}, {"המדידה נערכה בתחנה שבצפון האגם.", []string{reports[1].URL}}}
+	text := []Sentence{{Text: "מפלס הכנרת נמדד הבוקר.", Sources: []string{reports[0].URL, reports[1].URL}}, {Text: "המדידה נערכה בתחנה שבצפון האגם.", Sources: []string{reports[1].URL}}}
 	a.version("lake1", "lake", a.t0.Add(50*time.Minute), text, nil, reports[:2]...)
-	a.version("lake2", "lake", a.t0.Add(110*time.Minute), text, []Sentence{{"מפלס הכנרת עלה ב-14 סנטימטרים.", []string{reports[2].URL}}}, reports...)
+	a.version("lake2", "lake", a.t0.Add(110*time.Minute), text, []Sentence{{Text: "מפלס הכנרת עלה ב-14 סנטימטרים.", Sources: []string{reports[2].URL}}}, reports...)
 }
 
 // The replay's answer (replayAnswer) with a fourth story, the lake's, whose new article Gemini named nowhere.
@@ -524,9 +524,9 @@ func festival(a *archiveMaker) {
 	a.published = scrape.FormatInstant(a.t0.Add(-time.Hour))
 	reports = append(reports, a.reportAt(a.t0.Add(100*time.Minute), "siteg", "festival", "לקראת הפסטיבל", "בפסטיבל יוקרנו 40 סרטים.", filler("התוכנית")))
 	a.published = ""
-	text := []Sentence{{"פסטיבל הסרטים נפתח הערב בעיר.", []string{reports[0].URL, reports[1].URL}}, {"ראש העיר נשא דברים בטקס הפתיחה.", []string{reports[1].URL}}}
+	text := []Sentence{{Text: "פסטיבל הסרטים נפתח הערב בעיר.", Sources: []string{reports[0].URL, reports[1].URL}}, {Text: "ראש העיר נשא דברים בטקס הפתיחה.", Sources: []string{reports[1].URL}}}
 	a.version("festival1", "festival", a.t0.Add(50*time.Minute), text, nil, reports[:2]...)
-	a.version("festival2", "festival", a.t0.Add(110*time.Minute), text, []Sentence{{"בפסטיבל יוקרנו 40 סרטים.", []string{reports[2].URL}}}, reports...)
+	a.version("festival2", "festival", a.t0.Add(110*time.Minute), text, []Sentence{{Text: "בפסטיבל יוקרנו 40 סרטים.", Sources: []string{reports[2].URL}}}, reports...)
 }
 
 // The replay's answer (replayAnswer) with a fourth story, the festival's: a detail with a number from the preview.
@@ -708,7 +708,7 @@ func spreadArchiveOf(t *testing.T) (dir string, db *store.Store) {
 		a.t0 = time.Date(2026, 11, 8+i/4, 8, 10*(i%4), 0, 0, time.UTC)
 		reports := []scrape.ArticleSummary{a.report("siteh", name, "ידיעה ראשונה "+name, "דבר ראשון נמסר על "+name+".", filler("הידיעה "+name)), a.report("sitee", name, "ידיעה שנייה "+name),
 			a.report("siteg", name, "ידיעה שלישית "+name, "דבר נוסף נמסר על "+name+".", filler("ההמשך של "+name))}
-		text := []Sentence{{"דבר ראשון נמסר על " + name + ".", []string{reports[0].URL, reports[1].URL}}, {"פרט שני נמסר על " + name + ".", []string{reports[1].URL}}}
+		text := []Sentence{{Text: "דבר ראשון נמסר על " + name + ".", Sources: []string{reports[0].URL, reports[1].URL}}, {Text: "פרט שני נמסר על " + name + ".", Sources: []string{reports[1].URL}}}
 		a.version(name+"a", name, a.t0, text, nil, reports[:2]...)
 		a.version(name+"b", name, a.t0.Add(time.Hour), text, nil, reports...)
 	}

@@ -278,7 +278,8 @@ const (
 	// A development from an article published since, a footnote, and a title: a version.
 	versionAnswer = `{"stories": [{"story": "s1", "unrelated": [],
 		"insert": [{"after": "top", "kind": "development", "text": "נחל עלה על גדותיו והציף שכונה.", "sources": ["a1"]}],
-		"replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": ["a1"]}], "title": "הצפות בצפון", "contradictions": []}]}`
+		"replace": [], "delete": [], "cite": [{"sentence": "s1.1", "sources": ["a1"]}], "title": "הצפות בצפון",
+		"contradictions": [{"topic": "מספר הכבישים שנסגרו", "sides": [{"value": "שניים", "sources": ["s1.2"]}, {"value": "שלושה", "sources": ["a1"]}], "text": ""}]}]}`
 	// A detail from an article published before the version: into the text, quietly.
 	quietAnswer = `{"stories": [{"story": "s1", "unrelated": [],
 		"insert": [{"after": "s1.2", "kind": "detail", "text": "בעיר הסמוכה ירדו 80 מילימטרים של גשם.", "sources": ["a1"]}],
@@ -291,7 +292,7 @@ const (
 // appSummary is a story's generated article as the app asks for it (its ServerStorySummary fragment), with the
 // updates.
 const appSummary = `title sentences { text footnotes { url sourceId title video publishedAt } }
-	contradictions { text footnotes { url sourceId title video publishedAt } } unrelated reports headlineOnly writtenAt
+	contradictions { text footnotes { url sourceId title video publishedAt } topic sides { value footnotes { url sourceId title } } } unrelated reports headlineOnly writtenAt
 	writtenWith { fullArticles length } id version versions current
 	changes { since title sentences { kind parts { text added } } removed { text footnotes { url sourceId title video publishedAt } } }
 	updates { at sentences { text footnotes { url sourceId title video publishedAt } } kinds }`
@@ -303,6 +304,36 @@ type appSentence struct {
 		SourceID *string `json:"sourceId"`
 		Title    *string `json:"title"`
 	} `json:"footnotes"`
+	Topic *string `json:"topic"`
+	Sides []struct {
+		Value     string `json:"value"`
+		Footnotes []struct {
+			SourceID *string `json:"sourceId"`
+		} `json:"footnotes"`
+	} `json:"sides"`
+}
+
+// disputes is s's contradictions as "topic: value (sites) / value (sites)", each on its own line.
+func (s appStory) disputes() string {
+	var lines []string
+	for _, c := range s.Contradictions {
+		var sides []string
+		for _, side := range c.Sides {
+			var sites []string
+			for _, f := range side.Footnotes {
+				if f.SourceID != nil {
+					sites = append(sites, *f.SourceID)
+				}
+			}
+			sides = append(sides, side.Value+" ("+strings.Join(sites, ",")+")")
+		}
+		topic := ""
+		if c.Topic != nil {
+			topic = *c.Topic
+		}
+		lines = append(lines, topic+": "+strings.Join(sides, " / ")+" | "+c.Text)
+	}
+	return strings.Join(lines, "\n")
 }
 
 type appStory struct {
@@ -460,6 +491,10 @@ func TestTheAppReadsAStoryTheIncrementalUpdateKeeps(t *testing.T) {
 		second.text() != "נחל עלה על גדותיו והציף שכונה. | גשם כבד ירד הבוקר בצפון. | שני כבישים נסגרו." || second.kinds() != "NEW SAME SAME" ||
 		second.Changes.Title != first.Title || !second.Changes.Since.Equal(written) || len(second.Changes.Removed) != 0 || len(second.Sentences[1].Footnotes) != 3 {
 		t.Fatalf("%+v", second)
+	}
+	// It found a contradiction: its topic and sides, each with its sites; its sentence made of them, as Gemini wrote none.
+	if got := second.disputes(); got != "מספר הכבישים שנסגרו: שניים (sitee,sited) / שלושה (sitef) | מספר הכבישים שנסגרו: שניים או שלושה." {
+		t.Fatalf("contradictions %s", got)
 	}
 	if len(second.Updates) != 2 || !second.Updates[1].At.Equal(updated) || len(second.Updates[1].Sentences) != 1 || second.Updates[1].Sentences[0].Text != second.Sentences[0].Text ||
 		fmt.Sprint(second.Updates[1].Kinds) != "[development]" || len(second.Updates[0].Kinds) != 0 ||

@@ -55,13 +55,13 @@ var (
 func rainStory() StorySummary {
 	return StorySummary{ID: "rain", Title: "גשם כבד בצפון", WrittenAt: now.Add(-time.Hour),
 		Sentences: []Sentence{
-			{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}},
-			{"2 כבישים נסגרו בגלל הגשם.", []string{rainSiteE.URL}},
-			{"ראש העיר אמר שהכבישים ייפתחו מחר.", []string{rainSiteh.URL}},
+			{Text: "גשם כבד ירד הבוקר בצפון.", Sources: []string{rainSiteh.URL, rainSiteE.URL}},
+			{Text: "2 כבישים נסגרו בגלל הגשם.", Sources: []string{rainSiteE.URL}},
+			{Text: "ראש העיר אמר שהכבישים ייפתחו מחר.", Sources: []string{rainSiteh.URL}},
 		},
 		Contradictions: []Sentence{},
 		Reports:        []string{rainSiteh.URL, rainSiteE.URL},
-		Updates:        []Update{{At: now.Add(-time.Hour), Sentences: []Sentence{{"גשם כבד ירד הבוקר בצפון.", []string{rainSiteh.URL, rainSiteE.URL}}}}},
+		Updates:        []Update{{At: now.Add(-time.Hour), Sentences: []Sentence{{Text: "גשם כבד ירד הבוקר בצפון.", Sources: []string{rainSiteh.URL, rainSiteE.URL}}}}},
 	}
 }
 

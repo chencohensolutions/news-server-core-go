@@ -71,6 +71,11 @@ type ComplexityRoot struct {
 		Stream   func(childComplexity int) int
 	}
 
+	ContradictionSide struct {
+		Footnotes func(childComplexity int) int
+		Value     func(childComplexity int) int
+	}
+
 	Device struct {
 		Current       func(childComplexity int) int
 		ExpiresAt     func(childComplexity int) int
@@ -214,7 +219,9 @@ type ComplexityRoot struct {
 
 	Sentence struct {
 		Footnotes func(childComplexity int) int
+		Sides     func(childComplexity int) int
 		Text      func(childComplexity int) int
+		Topic     func(childComplexity int) int
 	}
 
 	SentenceChange struct {
@@ -541,6 +548,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ArticleVideo.Stream(childComplexity), true
+
+	case "ContradictionSide.footnotes":
+		if e.ComplexityRoot.ContradictionSide.Footnotes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ContradictionSide.Footnotes(childComplexity), true
+	case "ContradictionSide.value":
+		if e.ComplexityRoot.ContradictionSide.Value == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ContradictionSide.Value(childComplexity), true
 
 	case "Device.current":
 		if e.ComplexityRoot.Device.Current == nil {
@@ -1240,12 +1260,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Sentence.Footnotes(childComplexity), true
+	case "Sentence.sides":
+		if e.ComplexityRoot.Sentence.Sides == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Sentence.Sides(childComplexity), true
 	case "Sentence.text":
 		if e.ComplexityRoot.Sentence.Text == nil {
 			break
 		}
 
 		return e.ComplexityRoot.Sentence.Text(childComplexity), true
+	case "Sentence.topic":
+		if e.ComplexityRoot.Sentence.Topic == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Sentence.Topic(childComplexity), true
 
 	case "SentenceChange.kind":
 		if e.ComplexityRoot.SentenceChange.Kind == nil {
@@ -2377,7 +2409,10 @@ extend type Story {
 type StorySummary {
   title: String!
   sentences: [Sentence!]!
-  "Where sites state different facts about the story, one sentence each saying which says what; usually none."
+  """
+  Where sites state things about the story that can't both be true (a value or an account), one each: its topic and
+  sides, and a sentence saying which says what, for apps that show only that; usually none.
+  """
   contradictions: [Sentence!]!
   "URLs of the story's reports Gemini found to be about a different event (grouped by mistake): not used in the article."
   unrelated: [String!]!
@@ -2466,6 +2501,20 @@ type StoryUpdate {
 type Sentence {
   text: String!
   "The articles the sentence comes from, at least one."
+  footnotes: [Footnote!]!
+  """
+  A contradiction's fact in dispute, in a few words ("מספר הפצועים", "סיבת האירוע"); null for other sentences and
+  for a contradiction written before the server kept it. Show [sides] under it instead of [text] when it has them.
+  """
+  topic: String
+  "A contradiction's versions of the fact, each with the articles that say it (two or more); empty otherwise."
+  sides: [ContradictionSide!]!
+}
+
+"One version of a contradiction's fact and the articles that state it."
+type ContradictionSide {
+  "A few words or a number: \"8\", \"פיגוע דריסה\". Never a site's name."
+  value: String!
   footnotes: [Footnote!]!
 }
 
@@ -2674,6 +2723,16 @@ func (ec *executionContext) childFields_ArticleVideo(ctx context.Context, field 
 	return nil, fmt.Errorf("no field named %q was found under type ArticleVideo", field.Name)
 }
 
+func (ec *executionContext) childFields_ContradictionSide(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "value":
+		return ec.fieldContext_ContradictionSide_value(ctx, field)
+	case "footnotes":
+		return ec.fieldContext_ContradictionSide_footnotes(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ContradictionSide", field.Name)
+}
+
 func (ec *executionContext) childFields_Device(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "serial":
@@ -2860,6 +2919,10 @@ func (ec *executionContext) childFields_Sentence(ctx context.Context, field grap
 		return ec.fieldContext_Sentence_text(ctx, field)
 	case "footnotes":
 		return ec.fieldContext_Sentence_footnotes(ctx, field)
+	case "topic":
+		return ec.fieldContext_Sentence_topic(ctx, field)
+	case "sides":
+		return ec.fieldContext_Sentence_sides(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Sentence", field.Name)
 }
@@ -4203,6 +4266,61 @@ func (ec *executionContext) _ArticleVideo_duration(ctx context.Context, field gr
 }
 func (ec *executionContext) fieldContext_ArticleVideo_duration(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("ArticleVideo", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ContradictionSide_value(ctx context.Context, field graphql.CollectedField, obj *model.ContradictionSide) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ContradictionSide_value(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Value, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ContradictionSide_value(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ContradictionSide", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ContradictionSide_footnotes(ctx context.Context, field graphql.CollectedField, obj *model.ContradictionSide) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ContradictionSide_footnotes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Footnotes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Footnote) graphql.Marshaler {
+			return ec.marshalNFootnote2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐFootnoteᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ContradictionSide_footnotes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ContradictionSide",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Footnote(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _Device_serial(ctx context.Context, field graphql.CollectedField, obj *model.Device) (ret graphql.Marshaler) {
@@ -7179,6 +7297,61 @@ func (ec *executionContext) fieldContext_Sentence_footnotes(_ context.Context, f
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_Footnote(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Sentence_topic(ctx context.Context, field graphql.CollectedField, obj *model.Sentence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Sentence_topic(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Topic, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Sentence_topic(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Sentence", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Sentence_sides(ctx context.Context, field graphql.CollectedField, obj *model.Sentence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Sentence_sides(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Sides, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.ContradictionSide) graphql.Marshaler {
+			return ec.marshalNContradictionSide2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐContradictionSideᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Sentence_sides(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Sentence",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ContradictionSide(ctx, field)
 		},
 	}
 	return fc, nil
@@ -10819,6 +10992,50 @@ func (ec *executionContext) _ArticleVideo(ctx context.Context, sel ast.Selection
 	return out
 }
 
+var contradictionSideImplementors = []string{"ContradictionSide"}
+
+func (ec *executionContext) _ContradictionSide(ctx context.Context, sel ast.SelectionSet, obj *model.ContradictionSide) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, contradictionSideImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ContradictionSide")
+		case "value":
+			out.Values[i] = ec._ContradictionSide_value(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "footnotes":
+			out.Values[i] = ec._ContradictionSide_footnotes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferred), math.MaxInt32)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var deviceImplementors = []string{"Device"}
 
 func (ec *executionContext) _Device(ctx context.Context, sel ast.SelectionSet, obj *model.Device) graphql.Marshaler {
@@ -12108,6 +12325,13 @@ func (ec *executionContext) _Sentence(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "footnotes":
 			out.Values[i] = ec._Sentence_footnotes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "topic":
+			out.Values[i] = ec._Sentence_topic(ctx, field, obj)
+		case "sides":
+			out.Values[i] = ec._Sentence_sides(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -13779,6 +14003,32 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNContradictionSide2ᚕᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐContradictionSideᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ContradictionSide) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNContradictionSide2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐContradictionSide(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNContradictionSide2ᚖgithubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐContradictionSide(ctx context.Context, sel ast.SelectionSet, v *model.ContradictionSide) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ContradictionSide(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNDevice2githubᚗcomᚋchencohensolutionsᚋnewsᚑserverᚑcoreᚑgoᚋgraphᚋmodelᚐDevice(ctx context.Context, sel ast.SelectionSet, v model.Device) graphql.Marshaler {
